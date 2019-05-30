@@ -25,11 +25,13 @@ import (
 )
 
 type StatSCfg struct {
-	Enabled             bool
-	StoreInterval       time.Duration // Dump regularly from cache into dataDB
-	ThresholdSConns     []*HaPoolConfig
-	StringIndexedFields *[]string
-	PrefixIndexedFields *[]string
+	Enabled                bool
+	IndexedSelects         bool
+	StoreInterval          time.Duration // Dump regularly from cache into dataDB
+	StoreUncompressedLimit int
+	ThresholdSConns        []*RemoteHost
+	StringIndexedFields    *[]string
+	PrefixIndexedFields    *[]string
 }
 
 func (st *StatSCfg) loadFromJsonCfg(jsnCfg *StatServJsonCfg) (err error) {
@@ -39,15 +41,21 @@ func (st *StatSCfg) loadFromJsonCfg(jsnCfg *StatServJsonCfg) (err error) {
 	if jsnCfg.Enabled != nil {
 		st.Enabled = *jsnCfg.Enabled
 	}
+	if jsnCfg.Indexed_selects != nil {
+		st.IndexedSelects = *jsnCfg.Indexed_selects
+	}
 	if jsnCfg.Store_interval != nil {
 		if st.StoreInterval, err = utils.ParseDurationWithNanosecs(*jsnCfg.Store_interval); err != nil {
 			return err
 		}
 	}
+	if jsnCfg.Store_uncompressed_limit != nil {
+		st.StoreUncompressedLimit = *jsnCfg.Store_uncompressed_limit
+	}
 	if jsnCfg.Thresholds_conns != nil {
-		st.ThresholdSConns = make([]*HaPoolConfig, len(*jsnCfg.Thresholds_conns))
+		st.ThresholdSConns = make([]*RemoteHost, len(*jsnCfg.Thresholds_conns))
 		for idx, jsnHaCfg := range *jsnCfg.Thresholds_conns {
-			st.ThresholdSConns[idx] = NewDfltHaPoolConfig()
+			st.ThresholdSConns[idx] = NewDfltRemoteHost()
 			st.ThresholdSConns[idx].loadFromJsonCfg(jsnHaCfg)
 		}
 	}

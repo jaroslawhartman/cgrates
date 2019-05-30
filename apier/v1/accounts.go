@@ -82,7 +82,7 @@ func (self *ApierV1) GetAccountActionPlan(attrs AttrAcntAction, reply *[]*Accoun
 	return nil
 }
 
-type AttrRemActionTiming struct {
+type AttrRemoveActionTiming struct {
 	ActionPlanId    string // Id identifying the ActionTimings profile
 	ActionTimingId  string // Internal CGR id identifying particular ActionTiming, *all for all user related ActionTimings to be canceled
 	Tenant          string // Tenant the account belongs to
@@ -91,7 +91,7 @@ type AttrRemActionTiming struct {
 }
 
 // Removes an ActionTimings or parts of it depending on filters being set
-func (self *ApierV1) RemActionTiming(attrs AttrRemActionTiming, reply *string) (err error) {
+func (self *ApierV1) RemoveActionTiming(attrs AttrRemoveActionTiming, reply *string) (err error) {
 	if missing := utils.MissingStructFields(&attrs, []string{"ActionPlanId"}); len(missing) != 0 { // Only mandatory ActionPlanId
 		return utils.NewErrMandatoryIeMissing(missing...)
 	}
@@ -421,6 +421,7 @@ type AttrAddBalance struct {
 	Blocker        *bool
 	Disabled       *bool
 	Cdrlog         *bool
+	ExtraData      *map[string]interface{}
 }
 
 func (self *ApierV1) AddBalance(attr *AttrAddBalance, reply *string) error {
@@ -456,6 +457,10 @@ func (self *ApierV1) modifyBalance(aType string, attr *AttrAddBalance, reply *st
 		}
 	}
 	at := &engine.ActionTiming{}
+	//check if we have extra data
+	if attr.ExtraData != nil && len(*attr.ExtraData) != 0 {
+		at.ExtraData = *attr.ExtraData
+	}
 	at.SetAccountIDs(utils.StringMap{accID: true})
 
 	if attr.Overwrite {
@@ -534,6 +539,10 @@ func (self *ApierV1) SetBalance(attr *utils.AttrSetBalance, reply *string) error
 		}
 	}
 	at := &engine.ActionTiming{}
+	//check if we have extra data
+	if attr.ExtraData != nil && len(*attr.ExtraData) != 0 {
+		at.ExtraData = *attr.ExtraData
+	}
 	at.SetAccountIDs(utils.StringMap{accID: true})
 
 	a := &engine.Action{
@@ -601,6 +610,10 @@ func (self *ApierV1) RemoveBalances(attr *utils.AttrSetBalance, reply *string) e
 	}
 
 	at := &engine.ActionTiming{}
+	//check if we have extra data
+	if attr.ExtraData != nil && len(*attr.ExtraData) != 0 {
+		at.ExtraData = *attr.ExtraData
+	}
 	at.SetAccountIDs(utils.StringMap{accID: true})
 	a := &engine.Action{
 		ActionType: engine.REMOVE_BALANCE,

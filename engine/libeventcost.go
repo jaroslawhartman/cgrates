@@ -19,6 +19,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>
 package engine
 
 import (
+	"encoding/json"
+	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/cgrates/cgrates/utils"
@@ -383,6 +386,26 @@ func (cbs Accounting) Clone() (cln Accounting) {
 	cln = make(Accounting, len(cbs))
 	for k, v := range cbs {
 		cln[k] = v.Clone()
+	}
+	return
+}
+
+// IfaceAsEventCost converts an interface to EventCost
+func IfaceAsEventCost(itm interface{}) (ec *EventCost, err error) {
+	switch otm := itm.(type) {
+	case nil:
+	case *EventCost:
+		ec = otm
+	case string:
+		var rawEC EventCost
+		if errUnmarshal := json.Unmarshal([]byte(otm), &rawEC); errUnmarshal != nil {
+			return nil, fmt.Errorf("JSON cannot unmarshal to *EventCost, err: %s", errUnmarshal.Error())
+		}
+		ec = &rawEC
+	case map[string]interface{}:
+		ec, err = IfaceAsEventCost(utils.ToJSON(otm))
+	default:
+		err = utils.ErrNotConvertibleTF(reflect.TypeOf(otm).String(), "*EventCost")
 	}
 	return
 }

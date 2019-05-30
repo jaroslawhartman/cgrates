@@ -50,12 +50,12 @@ var sTestsDspIT = []func(t *testing.T){
 func TestDispatcherITMove1(t *testing.T) {
 	var err error
 	dspPathIn = path.Join(*dataDir, "conf", "samples", "tutmongo")
-	dspCfgIn, err = config.NewCGRConfigFromFolder(dspPathIn)
+	dspCfgIn, err = config.NewCGRConfigFromPath(dspPathIn)
 	if err != nil {
 		t.Fatal(err)
 	}
 	dspPathOut = path.Join(*dataDir, "conf", "samples", "tutmysql")
-	dspCfgOut, err = config.NewCGRConfigFromFolder(dspPathOut)
+	dspCfgOut, err = config.NewCGRConfigFromPath(dspPathOut)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,12 +68,12 @@ func TestDispatcherITMove1(t *testing.T) {
 func TestDispatcherITMove2(t *testing.T) {
 	var err error
 	dspPathIn = path.Join(*dataDir, "conf", "samples", "tutmysql")
-	dspCfgIn, err = config.NewCGRConfigFromFolder(dspPathIn)
+	dspCfgIn, err = config.NewCGRConfigFromPath(dspPathIn)
 	if err != nil {
 		t.Fatal(err)
 	}
 	dspPathOut = path.Join(*dataDir, "conf", "samples", "tutmongo")
-	dspCfgOut, err = config.NewCGRConfigFromFolder(dspPathOut)
+	dspCfgOut, err = config.NewCGRConfigFromPath(dspPathOut)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,12 +86,12 @@ func TestDispatcherITMove2(t *testing.T) {
 func TestDispatcherITMoveEncoding(t *testing.T) {
 	var err error
 	dspPathIn = path.Join(*dataDir, "conf", "samples", "tutmongo")
-	dspCfgIn, err = config.NewCGRConfigFromFolder(dspPathIn)
+	dspCfgIn, err = config.NewCGRConfigFromPath(dspPathIn)
 	if err != nil {
 		t.Fatal(err)
 	}
 	dspPathOut = path.Join(*dataDir, "conf", "samples", "tutmongojson")
-	dspCfgOut, err = config.NewCGRConfigFromFolder(dspPathOut)
+	dspCfgOut, err = config.NewCGRConfigFromPath(dspPathOut)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,12 +104,12 @@ func TestDispatcherITMoveEncoding(t *testing.T) {
 func TestDispatcherITMoveEncoding2(t *testing.T) {
 	var err error
 	dspPathIn = path.Join(*dataDir, "conf", "samples", "tutmysql")
-	dspCfgIn, err = config.NewCGRConfigFromFolder(dspPathIn)
+	dspCfgIn, err = config.NewCGRConfigFromPath(dspPathIn)
 	if err != nil {
 		t.Fatal(err)
 	}
 	dspPathOut = path.Join(*dataDir, "conf", "samples", "tutmysqljson")
-	dspCfgOut, err = config.NewCGRConfigFromFolder(dspPathOut)
+	dspCfgOut, err = config.NewCGRConfigFromPath(dspPathOut)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +181,20 @@ func testDspITMigrateAndMove(t *testing.T) {
 		Strategy: utils.MetaRandom,
 		Weight:   20,
 	}
+	dspHost := &engine.DispatcherHost{
+		Tenant: "cgrates.org",
+		ID:     "ALL",
+		Conns: []*config.RemoteHost{
+			&config.RemoteHost{
+				Address:   "127.0.0.1",
+				Transport: utils.MetaJSONrpc,
+			},
+		},
+	}
 	if err := dspMigrator.dmIN.DataManager().SetDispatcherProfile(dspPrf, false); err != nil {
+		t.Error(err)
+	}
+	if err := dspMigrator.dmIN.DataManager().SetDispatcherHost(dspHost); err != nil {
 		t.Error(err)
 	}
 	currentVersion := engine.CurrentDataDBVersions()
@@ -210,6 +223,20 @@ func testDspITMigrateAndMove(t *testing.T) {
 	}
 	result, err = dspMigrator.dmIN.DataManager().GetDispatcherProfile("cgrates.org",
 		"Dsp1", false, false, utils.NonTransactional)
+	if err != utils.ErrNotFound {
+		t.Error(err)
+	}
+
+	resultHost, err := dspMigrator.dmOut.DataManager().GetDispatcherHost("cgrates.org",
+		"ALL", false, false, utils.NonTransactional)
+	if err != nil {
+		t.Error(err)
+	}
+	if !reflect.DeepEqual(resultHost, dspHost) {
+		t.Errorf("Expecting: %+v, received: %+v", dspHost, resultHost)
+	}
+	resultHost, err = dspMigrator.dmIN.DataManager().GetDispatcherHost("cgrates.org",
+		"ALL", false, false, utils.NonTransactional)
 	if err != utils.ErrNotFound {
 		t.Error(err)
 	}

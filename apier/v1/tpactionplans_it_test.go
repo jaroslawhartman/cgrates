@@ -1,4 +1,4 @@
-// +build offline_tp
+// +build integration
 
 /*
 Real-time Online/Offline Charging System (OCS) for Telecom & ISP environments
@@ -84,7 +84,7 @@ func TestTPAccPlansITPG(t *testing.T) {
 func testTPAccPlansInitCfg(t *testing.T) {
 	var err error
 	tpAccPlansCfgPath = path.Join(tpAccPlansDataDir, "conf", "samples", tpAccPlansConfigDIR)
-	tpAccPlansCfg, err = config.NewCGRConfigFromFolder(tpAccPlansCfgPath)
+	tpAccPlansCfg, err = config.NewCGRConfigFromPath(tpAccPlansCfgPath)
 	if err != nil {
 		t.Error(err)
 	}
@@ -224,7 +224,7 @@ func testTPAccPlansGetTPAccPlanAfterUpdate(t *testing.T) {
 
 func testTPAccPlansRemTPAccPlan(t *testing.T) {
 	var resp string
-	if err := tpAccPlansRPC.Call("ApierV1.RemTPActionPlan",
+	if err := tpAccPlansRPC.Call("ApierV1.RemoveTPActionPlan",
 		&AttrGetTPActionPlan{TPid: "TPAcc", ID: "ID"}, &resp); err != nil {
 		t.Error(err)
 	} else if resp != utils.OK {

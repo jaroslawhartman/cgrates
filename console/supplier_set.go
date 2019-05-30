@@ -18,13 +18,17 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>
 
 package console
 
-import "github.com/cgrates/cgrates/engine"
+import (
+	v1 "github.com/cgrates/cgrates/apier/v1"
+	"github.com/cgrates/cgrates/engine"
+	"github.com/cgrates/cgrates/utils"
+)
 
 func init() {
 	c := &CmdSetSupplier{
 		name:      "supplier_set",
-		rpcMethod: "ApierV1.SetSupplierProfile",
-		rpcParams: &engine.SupplierProfile{},
+		rpcMethod: utils.ApierV1SetSupplierProfile,
+		rpcParams: &v1.SupplierWithCache{},
 	}
 	commands[c.Name()] = c
 	c.CommandExecuter = &CommandExecuter{c}
@@ -33,7 +37,7 @@ func init() {
 type CmdSetSupplier struct {
 	name      string
 	rpcMethod string
-	rpcParams *engine.SupplierProfile
+	rpcParams *v1.SupplierWithCache
 	*CommandExecuter
 }
 
@@ -47,7 +51,7 @@ func (self *CmdSetSupplier) RpcMethod() string {
 
 func (self *CmdSetSupplier) RpcParams(reset bool) interface{} {
 	if reset || self.rpcParams == nil {
-		self.rpcParams = &engine.SupplierProfile{}
+		self.rpcParams = &v1.SupplierWithCache{SupplierProfile: new(engine.SupplierProfile)}
 	}
 	return self.rpcParams
 }

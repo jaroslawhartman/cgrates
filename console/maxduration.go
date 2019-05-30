@@ -22,12 +22,13 @@ import (
 	"time"
 
 	"github.com/cgrates/cgrates/engine"
+	"github.com/cgrates/cgrates/utils"
 )
 
 func init() {
 	c := &CmdGetMaxDuration{
 		name:       "maxduration",
-		rpcMethod:  "Responder.GetMaxSessionTime",
+		rpcMethod:  utils.ResponderGetMaxSessionTime,
 		clientArgs: []string{"Direction", "Category", "TOR", "Tenant", "Subject", "Account", "Destination", "TimeStart", "TimeEnd", "CallDuration", "FallbackSubject"},
 	}
 	commands[c.Name()] = c
@@ -38,7 +39,7 @@ func init() {
 type CmdGetMaxDuration struct {
 	name       string
 	rpcMethod  string
-	rpcParams  *engine.CallDescriptor
+	rpcParams  *engine.CallDescriptorWithArgDispatcher
 	clientArgs []string
 	*CommandExecuter
 }
@@ -53,7 +54,10 @@ func (self *CmdGetMaxDuration) RpcMethod() string {
 
 func (self *CmdGetMaxDuration) RpcParams(reset bool) interface{} {
 	if reset || self.rpcParams == nil {
-		self.rpcParams = new(engine.CallDescriptor)
+		self.rpcParams = &engine.CallDescriptorWithArgDispatcher{
+			CallDescriptor: new(engine.CallDescriptor),
+			ArgDispatcher:  new(utils.ArgDispatcher),
+		}
 	}
 	return self.rpcParams
 }

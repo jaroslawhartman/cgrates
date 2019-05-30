@@ -23,11 +23,11 @@ import (
 )
 
 // Creates a new threshold within a tariff plan
-func (self *ApierV1) SetTPThreshold(attr *utils.TPThreshold, reply *string) error {
+func (self *ApierV1) SetTPThreshold(attr *utils.TPThresholdProfile, reply *string) error {
 	if missing := utils.MissingStructFields(attr, []string{"TPid", "Tenant", "ID"}); len(missing) != 0 {
 		return utils.NewErrMandatoryIeMissing(missing...)
 	}
-	if err := self.StorDb.SetTPThresholds([]*utils.TPThreshold{attr}); err != nil {
+	if err := self.StorDb.SetTPThresholds([]*utils.TPThresholdProfile{attr}); err != nil {
 		return utils.APIErrorHandler(err)
 	}
 	*reply = utils.OK
@@ -35,7 +35,7 @@ func (self *ApierV1) SetTPThreshold(attr *utils.TPThreshold, reply *string) erro
 }
 
 // Queries specific Threshold on Tariff plan
-func (self *ApierV1) GetTPThreshold(attr *utils.TPTntID, reply *utils.TPThreshold) error {
+func (self *ApierV1) GetTPThreshold(attr *utils.TPTntID, reply *utils.TPThresholdProfile) error {
 	if missing := utils.MissingStructFields(attr, []string{"TPid", "Tenant", "ID"}); len(missing) != 0 { //Params missing
 		return utils.NewErrMandatoryIeMissing(missing...)
 	}
@@ -53,7 +53,7 @@ func (self *ApierV1) GetTPThreshold(attr *utils.TPTntID, reply *utils.TPThreshol
 type AttrGetTPThresholdIds struct {
 	TPid   string // Tariff plan id
 	Tenant string
-	utils.Paginator
+	utils.PaginatorWithSearch
 }
 
 // Queries Threshold identities on specific tariff plan.
@@ -61,7 +61,8 @@ func (self *ApierV1) GetTPThresholdIDs(attrs *AttrGetTPThresholdIds, reply *[]st
 	if missing := utils.MissingStructFields(attrs, []string{"TPid"}); len(missing) != 0 { //Params missing
 		return utils.NewErrMandatoryIeMissing(missing...)
 	}
-	if ids, err := self.StorDb.GetTpTableIds(attrs.TPid, utils.TBLTPThresholds, utils.TPDistinctIds{"id"}, nil, &attrs.Paginator); err != nil {
+	if ids, err := self.StorDb.GetTpTableIds(attrs.TPid, utils.TBLTPThresholds,
+		utils.TPDistinctIds{"id"}, nil, &attrs.PaginatorWithSearch); err != nil {
 		if err.Error() != utils.ErrNotFound.Error() {
 			err = utils.NewErrServerError(err)
 		}
@@ -73,7 +74,7 @@ func (self *ApierV1) GetTPThresholdIDs(attrs *AttrGetTPThresholdIds, reply *[]st
 }
 
 // Removes specific Threshold on Tariff plan
-func (self *ApierV1) RemTPThreshold(attrs *utils.TPTntID, reply *string) error {
+func (self *ApierV1) RemoveTPThreshold(attrs *utils.TPTntID, reply *string) error {
 	if missing := utils.MissingStructFields(attrs, []string{"TPid", "Tenant", "ID"}); len(missing) != 0 { //Params missing
 		return utils.NewErrMandatoryIeMissing(missing...)
 	}

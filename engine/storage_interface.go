@@ -128,6 +128,11 @@ type DataDB interface {
 	GetDispatcherProfileDrv(string, string) (*DispatcherProfile, error)
 	SetDispatcherProfileDrv(*DispatcherProfile) error
 	RemoveDispatcherProfileDrv(string, string) error
+	GetItemLoadIDsDrv(itemIDPrefix string) (loadIDs map[string]int64, err error)
+	SetLoadIDsDrv(loadIDs map[string]int64) error
+	GetDispatcherHostDrv(string, string) (*DispatcherHost, error)
+	SetDispatcherHostDrv(*DispatcherHost) error
+	RemoveDispatcherHostDrv(string, string) error
 }
 
 type StorDB interface {
@@ -142,6 +147,7 @@ type CdrStorage interface {
 	SetSMCost(smc *SMCost) error
 	GetSMCosts(cgrid, runid, originHost, originIDPrfx string) ([]*SMCost, error)
 	RemoveSMCost(*SMCost) error
+	RemoveSMCosts(qryFltr *utils.SMCostFilter) error
 	GetCDRs(*utils.CDRsFilter, bool) ([]*CDR, int64, error)
 }
 
@@ -155,7 +161,7 @@ type LoadStorage interface {
 type LoadReader interface {
 	GetTpIds(string) ([]string, error)
 	GetTpTableIds(string, string, utils.TPDistinctIds,
-		map[string]string, *utils.Paginator) ([]string, error)
+		map[string]string, *utils.PaginatorWithSearch) ([]string, error)
 	GetTPTimings(string, string) ([]*utils.ApierTPTiming, error)
 	GetTPDestinations(string, string) ([]*utils.TPDestination, error)
 	GetTPRates(string, string) ([]*utils.TPRate, error)
@@ -167,14 +173,15 @@ type LoadReader interface {
 	GetTPActionPlans(string, string) ([]*utils.TPActionPlan, error)
 	GetTPActionTriggers(string, string) ([]*utils.TPActionTriggers, error)
 	GetTPAccountActions(*utils.TPAccountActions) ([]*utils.TPAccountActions, error)
-	GetTPResources(string, string, string) ([]*utils.TPResource, error)
-	GetTPStats(string, string, string) ([]*utils.TPStats, error)
-	GetTPThresholds(string, string, string) ([]*utils.TPThreshold, error)
+	GetTPResources(string, string, string) ([]*utils.TPResourceProfile, error)
+	GetTPStats(string, string, string) ([]*utils.TPStatProfile, error)
+	GetTPThresholds(string, string, string) ([]*utils.TPThresholdProfile, error)
 	GetTPFilters(string, string, string) ([]*utils.TPFilterProfile, error)
 	GetTPSuppliers(string, string, string) ([]*utils.TPSupplierProfile, error)
 	GetTPAttributes(string, string, string) ([]*utils.TPAttributeProfile, error)
 	GetTPChargers(string, string, string) ([]*utils.TPChargerProfile, error)
-	GetTPDispatchers(string, string, string) ([]*utils.TPDispatcherProfile, error)
+	GetTPDispatcherProfiles(string, string, string) ([]*utils.TPDispatcherProfile, error)
+	GetTPDispatcherHosts(string, string, string) ([]*utils.TPDispatcherHost, error)
 }
 
 type LoadWriter interface {
@@ -190,14 +197,15 @@ type LoadWriter interface {
 	SetTPActionPlans([]*utils.TPActionPlan) error
 	SetTPActionTriggers([]*utils.TPActionTriggers) error
 	SetTPAccountActions([]*utils.TPAccountActions) error
-	SetTPResources([]*utils.TPResource) error
-	SetTPStats([]*utils.TPStats) error
-	SetTPThresholds([]*utils.TPThreshold) error
+	SetTPResources([]*utils.TPResourceProfile) error
+	SetTPStats([]*utils.TPStatProfile) error
+	SetTPThresholds([]*utils.TPThresholdProfile) error
 	SetTPFilters([]*utils.TPFilterProfile) error
 	SetTPSuppliers([]*utils.TPSupplierProfile) error
 	SetTPAttributes([]*utils.TPAttributeProfile) error
 	SetTPChargers([]*utils.TPChargerProfile) error
-	SetTPDispatchers([]*utils.TPDispatcherProfile) error
+	SetTPDispatcherProfiles([]*utils.TPDispatcherProfile) error
+	SetTPDispatcherHosts([]*utils.TPDispatcherHost) error
 }
 
 // NewMarshaler returns the marshaler type selected by mrshlerStr

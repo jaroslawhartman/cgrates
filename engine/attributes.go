@@ -20,6 +20,8 @@ package engine
 
 import (
 	"fmt"
+	"math"
+	"strconv"
 
 	"github.com/cgrates/cgrates/config"
 	"github.com/cgrates/cgrates/utils"
@@ -69,14 +71,14 @@ func (alS *AttributeService) attributeProfileForEvent(args *AttrArgsProcessEvent
 		attrIDs = args.AttributeIDs
 	} else {
 		aPrflIDs, err := MatchingItemIDsForEvent(args.Event, alS.stringIndexedFields, alS.prefixIndexedFields,
-			alS.dm, utils.CacheAttributeFilterIndexes, attrIdxKey, alS.filterS.cfg.FilterSCfg().IndexedSelects)
+			alS.dm, utils.CacheAttributeFilterIndexes, attrIdxKey, alS.filterS.cfg.AttributeSCfg().IndexedSelects)
 		if err != nil {
 			if err != utils.ErrNotFound {
 				return nil, err
 			}
 			if aPrflIDs, err = MatchingItemIDsForEvent(args.Event, alS.stringIndexedFields, alS.prefixIndexedFields,
 				alS.dm, utils.CacheAttributeFilterIndexes, utils.ConcatenatedKey(args.Tenant, utils.META_ANY),
-				alS.filterS.cfg.FilterSCfg().IndexedSelects); err != nil {
+				alS.filterS.cfg.AttributeSCfg().IndexedSelects); err != nil {
 				return nil, err
 			}
 		}
@@ -144,7 +146,8 @@ type AttrArgsProcessEvent struct {
 	AttributeIDs []string
 	Context      *string // attach the event to a context
 	ProcessRuns  *int    // number of loops for ProcessEvent
-	utils.CGREvent
+	*utils.CGREvent
+	*utils.ArgDispatcher
 }
 
 // processEvent will match event with attribute profile and do the necessary replacements
@@ -169,22 +172,105 @@ func (alS *AttributeService) processEvent(args *AttrArgsProcessEvent) (
 				continue
 			}
 		}
-		substitute, err := attribute.Substitute.ParseEvent(args.Event)
+		var substitute string
+		var err error
+		switch attribute.Type {
+		case utils.META_CONSTANT:
+			substitute, err = attribute.Value.ParseValue(utils.EmptyString)
+		case utils.MetaVariable, utils.META_COMPOSED:
+			substitute, err = attribute.Value.ParseEvent(args.Event)
+		case utils.META_USAGE_DIFFERENCE:
+			if len(attribute.Value) != 2 {
+				return nil, fmt.Errorf("invalid arguments <%s>", utils.ToJSON(attribute.Value))
+			}
+			strVal1, err := attribute.Value[0].ParseEvent(args.Event)
+			if err != nil {
+				return nil, err
+			}
+			strVal2, err := attribute.Value[1].ParseEvent(args.Event)
+			if err != nil {
+				return nil, err
+			}
+			tEnd, err := utils.ParseTimeDetectLayout(strVal1, utils.EmptyString)
+			if err != nil {
+				return nil, err
+			}
+			tStart, err := utils.ParseTimeDetectLayout(strVal2, utils.EmptyString)
+			if err != nil {
+				return nil, err
+			}
+			substitute = tEnd.Sub(tStart).String()
+		case utils.MetaSum:
+			iFaceVals := make([]interface{}, len(attribute.Value))
+			for i, val := range attribute.Value {
+				strVal, err := val.ParseEvent(args.Event)
+				if err != nil {
+					return nil, err
+				}
+				iFaceVals[i] = utils.StringToInterface(strVal)
+			}
+			ifaceSum, err := utils.Sum(iFaceVals...)
+			if err != nil {
+				return nil, err
+			}
+			substitute, err = utils.IfaceAsString(ifaceSum)
+		case utils.MetaValueExponent:
+			if len(attribute.Value) != 2 {
+				return nil, fmt.Errorf("invalid arguments <%s> to %s",
+					utils.ToJSON(attribute.Value), utils.MetaValueExponent)
+			}
+			strVal1, err := attribute.Value[0].ParseEvent(args.Event) // String Value
+			if err != nil {
+				return nil, err
+			}
+			val, err := strconv.ParseFloat(strVal1, 64)
+			if err != nil {
+				return nil, fmt.Errorf("invalid value <%s> to %s",
+					strVal1, utils.MetaValueExponent)
+			}
+			strVal2, err := attribute.Value[1].ParseEvent(args.Event) // String Exponent
+			if err != nil {
+				return nil, err
+			}
+			exp, err := strconv.Atoi(strVal2)
+			if err != nil {
+				return nil, err
+			}
+			substitute = strconv.FormatFloat(utils.Round(val*math.Pow10(exp),
+				config.CgrConfig().GeneralCfg().RoundingDecimals, utils.ROUNDING_MIDDLE), 'f', -1, 64)
+		default: // backwards compatible in case that Type is empty
+			substitute, err = attribute.Value.ParseEvent(args.Event)
+		}
+
 		if err != nil {
 			return nil, err
 		}
+		//add only once the FieldName in AlteredFields
+		if !utils.IsSliceMember(rply.AlteredFields, attribute.FieldName) {
+			rply.AlteredFields = append(rply.AlteredFields, attribute.FieldName)
+		}
 		if substitute == utils.META_NONE {
 			delete(rply.CGREvent.Event, attribute.FieldName)
-		} else {
-			rply.CGREvent.Event[attribute.FieldName] = substitute
+			continue
 		}
-		rply.AlteredFields = append(rply.AlteredFields, attribute.FieldName)
+		if attribute.Type == utils.META_COMPOSED {
+			evStrVal, err := utils.IfaceAsString(rply.CGREvent.Event[attribute.FieldName])
+			if err != nil {
+				return nil, err
+			}
+			substitute = evStrVal + substitute
+		}
+		rply.CGREvent.Event[attribute.FieldName] = substitute
+
 	}
 	return
 }
 
 func (alS *AttributeService) V1GetAttributeForEvent(args *AttrArgsProcessEvent,
 	attrPrfl *AttributeProfile) (err error) {
+	if args.CGREvent == nil {
+		return utils.NewErrMandatoryIeMissing(utils.CGREventString)
+	}
 	attrPrf, err := alS.attributeProfileForEvent(args)
 	if err != nil {
 		if err != utils.ErrNotFound {
@@ -198,8 +284,11 @@ func (alS *AttributeService) V1GetAttributeForEvent(args *AttrArgsProcessEvent,
 
 func (alS *AttributeService) V1ProcessEvent(args *AttrArgsProcessEvent,
 	reply *AttrSProcessEventReply) (err error) {
+	if args.CGREvent == nil {
+		return utils.NewErrMandatoryIeMissing(utils.CGREventString)
+	}
 	if args.Event == nil {
-		return utils.NewErrMandatoryIeMissing("Event")
+		return utils.NewErrMandatoryIeMissing(utils.Event)
 	}
 	if args.ProcessRuns == nil || *args.ProcessRuns == 0 {
 		args.ProcessRuns = utils.IntPointer(alS.processRuns)
@@ -217,7 +306,7 @@ func (alS *AttributeService) V1ProcessEvent(args *AttrArgsProcessEvent,
 			break
 		}
 		if len(evRply.AlteredFields) != 0 {
-			args.CGREvent = *evRply.CGREvent // for next loop
+			args.CGREvent = evRply.CGREvent // for next loop
 		}
 		if apiRply == nil { // first reply
 			apiRply = evRply

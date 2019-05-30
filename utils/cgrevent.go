@@ -19,9 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>
 package utils
 
 import (
-	"fmt"
 	"reflect"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -54,11 +52,7 @@ func (ev *CGREvent) FieldAsString(fldName string) (val string, err error) {
 	if !has {
 		return "", ErrNotFound
 	}
-	val, err = IfaceAsString(iface)
-	if err != nil {
-		return "", fmt.Errorf("cannot cast %s to string", fldName)
-	}
-	return val, nil
+	return IfaceAsString(iface)
 }
 
 // FieldAsTime returns a field as Time instance
@@ -68,16 +62,7 @@ func (ev *CGREvent) FieldAsTime(fldName string, timezone string) (t time.Time, e
 		err = ErrNotFound
 		return
 	}
-	var canCast bool
-	if t, canCast = iface.(time.Time); canCast {
-		return
-	}
-	s, canCast := iface.(string)
-	if !canCast {
-		err = fmt.Errorf("cannot cast %s to string", fldName)
-		return
-	}
-	return ParseTimeDetectLayout(s, timezone)
+	return IfaceAsTime(iface, timezone)
 }
 
 // FieldAsDuration returns a field as Duration instance
@@ -87,19 +72,7 @@ func (ev *CGREvent) FieldAsDuration(fldName string) (d time.Duration, err error)
 		err = ErrNotFound
 		return
 	}
-	var canCast bool
-	if d, canCast = iface.(time.Duration); canCast {
-		return
-	}
-	if f, canCast := iface.(float64); canCast {
-		return time.Duration(int64(f)), nil
-	}
-	s, canCast := iface.(string)
-	if !canCast {
-		err = fmt.Errorf("cannot cast %s to string", fldName)
-		return
-	}
-	return ParseDurationWithNanosecs(s)
+	return IfaceAsDuration(iface)
 }
 
 // FieldAsFloat64 returns a field as float64 instance
@@ -108,15 +81,7 @@ func (ev *CGREvent) FieldAsFloat64(fldName string) (f float64, err error) {
 	if !has {
 		return f, ErrNotFound
 	}
-	if val, canCast := iface.(float64); canCast {
-		return val, nil
-	}
-	csStr, canCast := iface.(string)
-	if !canCast {
-		err = fmt.Errorf("cannot cast %s to string", fldName)
-		return
-	}
-	return strconv.ParseFloat(csStr, 64)
+	return IfaceAsFloat64(iface)
 }
 
 func (ev *CGREvent) TenantID() string {
@@ -170,4 +135,124 @@ func (ev *CGREvent) RemFldsWithPrefix(prfx string) {
 			delete(ev.Event, fldName)
 		}
 	}
+}
+
+// RemFldsWithPrefix will remove fields starting with prefix from event
+func (ev *CGREvent) consumeArgDispatcher() (arg *ArgDispatcher) {
+	if ev == nil {
+		return
+	}
+	//check if we have APIKey in event and in case it has add it in ArgDispatcher
+	apiKeyIface, hasApiKey := ev.Event[MetaApiKey]
+	if hasApiKey {
+		delete(ev.Event, MetaApiKey)
+		arg = &ArgDispatcher{
+			APIKey: StringPointer(apiKeyIface.(string)),
+		}
+	}
+	//check if we have RouteID in event and in case it has add it in ArgDispatcher
+	routeIDIface, hasRouteID := ev.Event[MetaRouteID]
+	if !hasRouteID {
+		return
+	}
+	delete(ev.Event, MetaRouteID)
+	if !hasApiKey { //in case we don't have APIKey, but we have RouteID we need to initialize the struct
+		return &ArgDispatcher{
+			RouteID: StringPointer(routeIDIface.(string)),
+		}
+	}
+	arg.RouteID = StringPointer(routeIDIface.(string))
+	return
+}
+
+// ConsumeSupplierPaginator will consume supplierPaginator if presented
+func (ev *CGREvent) consumeSupplierPaginator() (args *Paginator) {
+	args = new(Paginator)
+	if ev == nil {
+		return
+	}
+	//check if we have suppliersLimit in event and in case it has add it in args
+	limitIface, hasSuppliersLimit := ev.Event[MetaSuppliersLimit]
+	if hasSuppliersLimit {
+		delete(ev.Event, MetaSuppliersLimit)
+		limit, err := IfaceAsInt64(limitIface)
+		if err != nil {
+			Logger.Err(err.Error())
+			return
+		}
+		args = &Paginator{
+			Limit: IntPointer(int(limit)),
+		}
+	}
+	//check if we have offset in event and in case it has add it in args
+	offsetIface, hasSuppliersOffset := ev.Event[MetaSuppliersOffset]
+	if hasSuppliersOffset {
+		delete(ev.Event, MetaSuppliersOffset)
+		offset, err := IfaceAsInt64(offsetIface)
+		if err != nil {
+			Logger.Err(err.Error())
+			return
+		}
+		if !hasSuppliersLimit { //in case we don't have limit, but we have offset we need to initialize the struct
+			args = &Paginator{
+				Offset: IntPointer(int(offset)),
+			}
+		} else {
+			args.Offset = IntPointer(int(offset))
+		}
+	}
+	return
+}
+
+type ConsumeArgs struct {
+	ArgDispatcher     *ArgDispatcher
+	SupplierPaginator *Paginator
+}
+
+func (ev *CGREvent) ConsumeArgs(dispatcherFlag, consumeSupplierPaginator bool) (ca ConsumeArgs) {
+	ca = ConsumeArgs{
+		ArgDispatcher: ev.consumeArgDispatcher(),
+	}
+	if dispatcherFlag && ca.ArgDispatcher == nil {
+		ca.ArgDispatcher = new(ArgDispatcher)
+	}
+	if consumeSupplierPaginator {
+		ca.SupplierPaginator = ev.consumeSupplierPaginator()
+	}
+	return
+}
+
+// CGREvents is a group of generic events processed by CGR services
+// ie: derived CDRs
+type CGREvents struct {
+	Tenant string
+	ID     string
+	Time   *time.Time // event time
+	Events []map[string]interface{}
+}
+
+type CGREventWithArgDispatcher struct {
+	*CGREvent
+	*ArgDispatcher
+}
+
+func (ev *CGREventWithArgDispatcher) Clone() (clned *CGREventWithArgDispatcher) {
+	clned = &CGREventWithArgDispatcher{
+		CGREvent: &CGREvent{
+			Tenant: ev.Tenant,
+			ID:     ev.ID,
+			Event:  make(map[string]interface{}), // a bit forced but safe
+		},
+	}
+	if ev.Time != nil {
+		clned.Time = TimePointer(*ev.Time)
+	}
+	for k, v := range ev.Event {
+		clned.Event[k] = v
+	}
+	if ev.ArgDispatcher != nil {
+		clned.ArgDispatcher = new(ArgDispatcher)
+		*clned.ArgDispatcher = *ev.ArgDispatcher
+	}
+	return
 }

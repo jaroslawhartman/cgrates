@@ -32,9 +32,9 @@ import (
 )
 
 func TestLoaderProcessContentSingleFile(t *testing.T) {
-	attrsCSV := `#Tenant,ID,Contexts,FilterIDs,ActivationInterval,AttributeFilterIDs,FieldName,Substitute,Weight
-cgrates.org,TestLoader1,*sessions;*cdrs,*string:Account:1007,2014-01-14T00:00:00Z,*exist:Account:,Account,1001,10
-cgrates.org,TestLoader1,lcr,*string:Account:1008;*string:Account:1009,,,Subject,1001,
+	attrsCSV := `#Tenant,ID,Contexts,FilterIDs,ActivationInterval,AttributeFilterIDs,FieldName,Type,Value,Weight
+cgrates.org,TestLoader1,*sessions;*cdrs,*string:Account:1007,2014-01-14T00:00:00Z,*exist:Account:,Account,*constant,1001,10
+cgrates.org,TestLoader1,lcr,*string:Account:1008;*string:Account:1009,,,Subject,*constant,1001,
 `
 	data, _ := engine.NewMapStorage()
 	ldr := &Loader{
@@ -75,14 +75,18 @@ cgrates.org,TestLoader1,lcr,*string:Account:1008;*string:Account:1009,,,Subject,
 				FieldId: "FieldName",
 				Type:    utils.META_COMPOSED,
 				Value:   config.NewRSRParsersMustCompile("~6", true, utils.INFIELD_SEP)},
-			&config.FCTemplate{Tag: "Substitute",
-				FieldId: "Substitute",
+			&config.FCTemplate{Tag: "Type",
+				FieldId: "Type",
 				Type:    utils.META_COMPOSED,
 				Value:   config.NewRSRParsersMustCompile("~7", true, utils.INFIELD_SEP)},
+			&config.FCTemplate{Tag: "Value",
+				FieldId: "Value",
+				Type:    utils.META_COMPOSED,
+				Value:   config.NewRSRParsersMustCompile("~8", true, utils.INFIELD_SEP)},
 			&config.FCTemplate{Tag: "Weight",
 				FieldId: "Weight",
 				Type:    utils.META_COMPOSED,
-				Value:   config.NewRSRParsersMustCompile("~8", true, utils.INFIELD_SEP)},
+				Value:   config.NewRSRParsersMustCompile("~9", true, utils.INFIELD_SEP)},
 		},
 	}
 	rdr := ioutil.NopCloser(strings.NewReader(attrsCSV))
@@ -106,14 +110,16 @@ cgrates.org,TestLoader1,lcr,*string:Account:1008;*string:Account:1009,,,Subject,
 			ActivationTime: time.Date(2014, 1, 14, 0, 0, 0, 0, time.UTC)},
 		Attributes: []*engine.Attribute{
 			&engine.Attribute{
-				FilterIDs:  []string{"*exist:Account:"},
-				FieldName:  "Account",
-				Substitute: config.NewRSRParsersMustCompile("1001", true, utils.INFIELD_SEP),
+				FilterIDs: []string{"*exist:Account:"},
+				FieldName: "Account",
+				Type:      utils.META_CONSTANT,
+				Value:     config.NewRSRParsersMustCompile("1001", true, utils.INFIELD_SEP),
 			},
 			&engine.Attribute{
-				FilterIDs:  []string{},
-				FieldName:  "Subject",
-				Substitute: config.NewRSRParsersMustCompile("1001", true, utils.INFIELD_SEP),
+				FilterIDs: []string{},
+				FieldName: "Subject",
+				Type:      utils.META_CONSTANT,
+				Value:     config.NewRSRParsersMustCompile("1001", true, utils.INFIELD_SEP),
 			}},
 		Weight: 10.0,
 	}
@@ -159,8 +165,8 @@ func TestLoaderProcessContentMultiFiles(t *testing.T) {
 				FieldId: "FieldName",
 				Type:    utils.META_COMPOSED,
 				Value:   config.NewRSRParsersMustCompile("~File1.csv:6", true, utils.INFIELD_SEP)},
-			&config.FCTemplate{Tag: "Substitute",
-				FieldId: "Substitute",
+			&config.FCTemplate{Tag: "Value",
+				FieldId: "Value",
 				Type:    utils.META_COMPOSED,
 				Value:   config.NewRSRParsersMustCompile("~File1.csv:7", true, utils.INFIELD_SEP)},
 			&config.FCTemplate{Tag: "Weight",
@@ -191,9 +197,9 @@ func TestLoaderProcessContentMultiFiles(t *testing.T) {
 		Contexts: []string{utils.ANY},
 		Attributes: []*engine.Attribute{
 			&engine.Attribute{
-				FieldName:  "Subject",
-				FilterIDs:  []string{},
-				Substitute: config.NewRSRParsersMustCompile("1001", true, utils.INFIELD_SEP),
+				FieldName: "Subject",
+				FilterIDs: []string{},
+				Value:     config.NewRSRParsersMustCompile("1001", true, utils.INFIELD_SEP),
 			}},
 		Weight: 10.0,
 	}
@@ -577,9 +583,9 @@ cgrates.org,THD_ACNT_1002,*string:Account:1002,2014-07-29T15:00:00Z,-1,1,1s,true
 
 func TestLoaderProcessStats(t *testing.T) {
 	statsCSV := `
-#Tenant[0],Id[1],FilterIDs[2],ActivationInterval[3],QueueLength[4],TTL[5],Metrics[6],Blocker[7],Stored[8],Weight[9],MinItems[10],ThresholdIDs[11]
-cgrates.org,Stats1,*string:Account:1001;*string:Account:1002,2014-07-29T15:00:00Z,100,1s,*asr;*acc;*tcc;*acd;*tcd;*pdd,true,true,20,2,THRESH1;THRESH2
-cgrates.org,Stats1,*string:Account:1003,2014-07-29T15:00:00Z,100,1s,*sum#Value;*average#Value,true,true,20,2,THRESH1;THRESH2
+#Tenant[0],Id[1],FilterIDs[2],ActivationInterval[3],QueueLength[4],TTL[5],MinItems[6],Metrics[7],MetricFilterIDs[8],Stored[9],Blocker[10],Weight[11],ThresholdIDs[12]
+cgrates.org,Stats1,*string:Account:1001;*string:Account:1002,2014-07-29T15:00:00Z,100,1s,2,*asr;*acc;*tcc;*acd;*tcd;*pdd,,true,true,20,THRESH1;THRESH2
+cgrates.org,Stats1,*string:Account:1003,2014-07-29T15:00:00Z,100,1s,2,*sum#Value;*average#Value,,true,true,20,THRESH1;THRESH2
 `
 	data, _ := engine.NewMapStorage()
 	ldr := &Loader{
@@ -616,30 +622,35 @@ cgrates.org,Stats1,*string:Account:1003,2014-07-29T15:00:00Z,100,1s,*sum#Value;*
 				FieldId: "TTL",
 				Type:    utils.META_COMPOSED,
 				Value:   config.NewRSRParsersMustCompile("~5", true, utils.INFIELD_SEP)},
-			&config.FCTemplate{Tag: "Metrics",
-				FieldId: "Metrics",
-				Type:    utils.META_COMPOSED,
-				Value:   config.NewRSRParsersMustCompile("~6", true, utils.INFIELD_SEP)},
-			&config.FCTemplate{Tag: "Blocker",
-				FieldId: "Blocker",
-				Type:    utils.META_COMPOSED,
-				Value:   config.NewRSRParsersMustCompile("~7", true, utils.INFIELD_SEP)},
-			&config.FCTemplate{Tag: "Stored",
-				FieldId: "Stored",
-				Type:    utils.META_COMPOSED,
-				Value:   config.NewRSRParsersMustCompile("~8", true, utils.INFIELD_SEP)},
-			&config.FCTemplate{Tag: "Weight",
-				FieldId: "Weight",
-				Type:    utils.META_COMPOSED,
-				Value:   config.NewRSRParsersMustCompile("~9", true, utils.INFIELD_SEP)},
 			&config.FCTemplate{Tag: "MinItems",
 				FieldId: "MinItems",
 				Type:    utils.META_COMPOSED,
+				Value:   config.NewRSRParsersMustCompile("~6", true, utils.INFIELD_SEP)},
+			&config.FCTemplate{Tag: "MetricIDs",
+				FieldId: "MetricIDs",
+				Type:    utils.META_COMPOSED,
+				Value:   config.NewRSRParsersMustCompile("~7", true, utils.INFIELD_SEP)},
+			&config.FCTemplate{Tag: "MetricFilterIDs",
+				FieldId: "MetricFilterIDs",
+				Type:    utils.META_COMPOSED,
+				Value:   config.NewRSRParsersMustCompile("~8", true, utils.INFIELD_SEP)},
+			&config.FCTemplate{Tag: "Stored",
+				FieldId: "Stored",
+				Type:    utils.META_COMPOSED,
+				Value:   config.NewRSRParsersMustCompile("~9", true, utils.INFIELD_SEP)},
+			&config.FCTemplate{Tag: "Blocker",
+				FieldId: "Blocker",
+				Type:    utils.META_COMPOSED,
 				Value:   config.NewRSRParsersMustCompile("~10", true, utils.INFIELD_SEP)},
+			&config.FCTemplate{Tag: "Weight",
+				FieldId: "Weight",
+				Type:    utils.META_COMPOSED,
+				Value:   config.NewRSRParsersMustCompile("~11", true, utils.INFIELD_SEP)},
+
 			&config.FCTemplate{Tag: "ThresholdIDs",
 				FieldId: "ThresholdIDs",
 				Type:    utils.META_COMPOSED,
-				Value:   config.NewRSRParsersMustCompile("~11", true, utils.INFIELD_SEP)},
+				Value:   config.NewRSRParsersMustCompile("~12", true, utils.INFIELD_SEP)},
 		},
 	}
 	rdr := ioutil.NopCloser(strings.NewReader(statsCSV))
@@ -665,15 +676,31 @@ cgrates.org,Stats1,*string:Account:1003,2014-07-29T15:00:00Z,100,1s,*sum#Value;*
 		},
 		QueueLength: 100,
 		TTL:         time.Duration(1 * time.Second),
-		Metrics: []string{
-			utils.MetaASR,
-			utils.MetaACC,
-			utils.MetaTCC,
-			utils.MetaACD,
-			utils.MetaTCD,
-			utils.MetaPDD,
-			utils.MetaSum + "#Value",
-			utils.MetaAverage + "#Value",
+		Metrics: []*engine.MetricWithFilters{
+			&engine.MetricWithFilters{
+				MetricID: utils.MetaASR,
+			},
+			&engine.MetricWithFilters{
+				MetricID: utils.MetaACC,
+			},
+			&engine.MetricWithFilters{
+				MetricID: utils.MetaTCC,
+			},
+			&engine.MetricWithFilters{
+				MetricID: utils.MetaACD,
+			},
+			&engine.MetricWithFilters{
+				MetricID: utils.MetaTCD,
+			},
+			&engine.MetricWithFilters{
+				MetricID: utils.MetaPDD,
+			},
+			&engine.MetricWithFilters{
+				MetricID: utils.MetaSum + "#Value",
+			},
+			&engine.MetricWithFilters{
+				MetricID: utils.MetaAverage + "#Value",
+			},
 		},
 		Blocker:      true,
 		Stored:       true,
@@ -988,7 +1015,7 @@ cgrates.org,Charge2,*string:Account:1003,2014-07-29T15:00:00Z,*default,Attr3,10
 		ActivationInterval: &utils.ActivationInterval{
 			ActivationTime: time.Date(2014, 7, 29, 15, 00, 0, 0, time.UTC),
 		},
-		RunID:        "*default",
+		RunID:        utils.MetaDefault,
 		AttributeIDs: []string{"Attr3"},
 		Weight:       10,
 	}
@@ -1110,8 +1137,8 @@ cgrates.org,EVENT1,,,,,,ALL,,10,,,
 	csvRdr.Comment = '#'
 	ldr.rdrs = map[string]map[string]*openedCSVFile{
 		utils.MetaDispatchers: map[string]*openedCSVFile{
-			utils.DispatchersCsv: &openedCSVFile{
-				fileName: utils.DispatchersCsv,
+			utils.DispatcherProfilesCsv: &openedCSVFile{
+				fileName: utils.DispatcherProfilesCsv,
 				rdr:      rdr,
 				csvRdr:   csvRdr,
 			},
@@ -1131,14 +1158,14 @@ cgrates.org,EVENT1,,,,,,ALL,,10,,,
 		Strategy:       "*weight",
 		StrategyParams: map[string]interface{}{},
 		Weight:         20,
-		Conns: engine.DispatcherConns{
-			&engine.DispatcherConn{
+		Hosts: engine.DispatcherHostProfiles{
+			&engine.DispatcherHostProfile{
 				ID:        "ALL2",
 				FilterIDs: make([]string, 0),
 				Weight:    20,
 				Params:    map[string]interface{}{},
 			},
-			&engine.DispatcherConn{
+			&engine.DispatcherHostProfile{
 				ID:        "ALL",
 				FilterIDs: make([]string, 0),
 				Weight:    10,
@@ -1152,10 +1179,98 @@ cgrates.org,EVENT1,,,,,,ALL,,10,,,
 	if err != nil {
 		t.Fatal(err)
 	}
-	rcv.Conns.Sort()
-	eDisp.Conns.Sort()
+	rcv.Hosts.Sort()
+	eDisp.Hosts.Sort()
 	if !reflect.DeepEqual(eDisp, rcv) {
 		t.Errorf("expecting: %+v, received: %+v", utils.ToJSON(eDisp), utils.ToJSON(rcv))
+	}
+
+}
+
+func TestLoaderProcessDispatcheHosts(t *testing.T) {
+	dipatcherHostCSV := `
+#Tenant[0],ID[1],Address[2],Transport[3],TLS[4]
+cgrates.org,ALL,127.0.0.1:6012,*json,false
+`
+	data, _ := engine.NewMapStorage()
+	ldr := &Loader{
+		ldrID:         "TestLoaderProcessContent",
+		bufLoaderData: make(map[string][]LoaderData),
+		dm:            engine.NewDataManager(data),
+		timezone:      "UTC",
+	}
+	ldr.dataTpls = map[string][]*config.FCTemplate{
+		utils.MetaDispatcherHosts: []*config.FCTemplate{
+			&config.FCTemplate{
+				Tag:       "Tenant",
+				FieldId:   "Tenant",
+				Type:      utils.META_COMPOSED,
+				Value:     config.NewRSRParsersMustCompile("~0", true, utils.INFIELD_SEP),
+				Mandatory: true,
+			},
+			&config.FCTemplate{
+				Tag:       "ID",
+				FieldId:   "ID",
+				Type:      utils.META_COMPOSED,
+				Value:     config.NewRSRParsersMustCompile("~1", true, utils.INFIELD_SEP),
+				Mandatory: true,
+			},
+			&config.FCTemplate{
+				Tag:     "Address",
+				FieldId: "Address",
+				Type:    utils.META_COMPOSED,
+				Value:   config.NewRSRParsersMustCompile("~2", true, utils.INFIELD_SEP),
+			},
+			&config.FCTemplate{
+				Tag:     "Transport",
+				FieldId: "Transport",
+				Type:    utils.META_COMPOSED,
+				Value:   config.NewRSRParsersMustCompile("~3", true, utils.INFIELD_SEP),
+			},
+			&config.FCTemplate{
+				Tag:     "TLS",
+				FieldId: "TLS",
+				Type:    utils.META_COMPOSED,
+				Value:   config.NewRSRParsersMustCompile("~4", true, utils.INFIELD_SEP),
+			},
+		},
+	}
+	rdr := ioutil.NopCloser(strings.NewReader(dipatcherHostCSV))
+	csvRdr := csv.NewReader(rdr)
+	csvRdr.Comment = '#'
+	ldr.rdrs = map[string]map[string]*openedCSVFile{
+		utils.MetaDispatcherHosts: map[string]*openedCSVFile{
+			utils.DispatcherProfilesCsv: &openedCSVFile{
+				fileName: utils.DispatcherProfilesCsv,
+				rdr:      rdr,
+				csvRdr:   csvRdr,
+			},
+		},
+	}
+	if err := ldr.processContent(utils.MetaDispatcherHosts); err != nil {
+		t.Error(err)
+	}
+	if len(ldr.bufLoaderData) != 0 {
+		t.Errorf("wrong buffer content: %+v", ldr.bufLoaderData)
+	}
+	eDispHost := &engine.DispatcherHost{
+		Tenant: "cgrates.org",
+		ID:     "ALL",
+		Conns: []*config.RemoteHost{
+			&config.RemoteHost{
+				Address:   "127.0.0.1:6012",
+				Transport: utils.MetaJSONrpc,
+			},
+		},
+	}
+
+	rcv, err := ldr.dm.GetDispatcherHost("cgrates.org", "ALL",
+		true, false, utils.NonTransactional)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(eDispHost, rcv) {
+		t.Errorf("expecting: %+v, received: %+v", utils.ToJSON(eDispHost), utils.ToJSON(rcv))
 	}
 
 }

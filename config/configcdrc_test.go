@@ -26,7 +26,7 @@ import (
 )
 
 func TestLoadCdrcConfigMultipleFiles(t *testing.T) {
-	cgrCfg, err := NewCGRConfigFromFolder(".")
+	cgrCfg, err := NewCGRConfigFromPath(".")
 	if err != nil {
 		t.Error(err)
 	}
@@ -37,7 +37,7 @@ func TestLoadCdrcConfigMultipleFiles(t *testing.T) {
 		{
 			ID:                       utils.META_DEFAULT,
 			Enabled:                  false,
-			CdrsConns:                []*HaPoolConfig{{Address: utils.MetaInternal}},
+			CdrsConns:                []*RemoteHost{{Address: utils.MetaInternal}},
 			CdrFormat:                "csv",
 			FieldSeparator:           ',',
 			DataUsageMultiplyFactor:  1024,
@@ -115,7 +115,7 @@ func TestLoadCdrcConfigMultipleFiles(t *testing.T) {
 		{
 			ID:                       "CDRC-CSV1",
 			Enabled:                  true,
-			CdrsConns:                []*HaPoolConfig{{Address: utils.MetaInternal}},
+			CdrsConns:                []*RemoteHost{{Address: utils.MetaInternal}},
 			CdrFormat:                "csv",
 			FieldSeparator:           ',',
 			DataUsageMultiplyFactor:  1024,
@@ -193,7 +193,7 @@ func TestLoadCdrcConfigMultipleFiles(t *testing.T) {
 		{
 			ID:                       "CDRC-CSV2",
 			Enabled:                  true,
-			CdrsConns:                []*HaPoolConfig{{Address: utils.MetaInternal}},
+			CdrsConns:                []*RemoteHost{{Address: utils.MetaInternal}},
 			CdrFormat:                "csv",
 			FieldSeparator:           ',',
 			DataUsageMultiplyFactor:  0.000976563,
@@ -209,11 +209,11 @@ func TestLoadCdrcConfigMultipleFiles(t *testing.T) {
 			PartialCacheExpiryAction: utils.MetaDumpToFile,
 			HeaderFields:             make([]*FCTemplate, 0),
 			ContentFields: []*FCTemplate{
-				{FieldId: utils.ToR,
+				{Tag: utils.ToR, FieldId: utils.ToR,
 					Value: NewRSRParsersMustCompile("~7:s/^(voice|data|sms|mms|generic)$/*$1/", true, utils.INFIELD_SEP)},
-				{Tag: "", Type: "", FieldId: utils.AnswerTime,
+				{Tag: utils.AnswerTime, Type: "", FieldId: utils.AnswerTime,
 					Value: NewRSRParsersMustCompile("~1", true, utils.INFIELD_SEP)},
-				{FieldId: utils.Usage,
+				{Tag: utils.Usage, FieldId: utils.Usage,
 					Value: NewRSRParsersMustCompile("~9:s/^(\\d+)$/${1}s/", true, utils.INFIELD_SEP)},
 			},
 			TrailerFields: make([]*FCTemplate, 0),
@@ -255,7 +255,7 @@ func TestLoadCdrcConfigMultipleFiles(t *testing.T) {
 		{
 			ID:                       "CDRC-CSV3",
 			Enabled:                  true,
-			CdrsConns:                []*HaPoolConfig{{Address: utils.MetaInternal}},
+			CdrsConns:                []*RemoteHost{{Address: utils.MetaInternal}},
 			CdrFormat:                "csv",
 			FieldSeparator:           ',',
 			DataUsageMultiplyFactor:  1024,

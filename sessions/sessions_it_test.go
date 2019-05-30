@@ -39,7 +39,7 @@ func TestSessionsItInitCfg(t *testing.T) {
 	sItCfgPath = path.Join(*dataDir, "conf", "samples", "smg")
 	// Init config first
 	var err error
-	sItCfg, err = config.NewCGRConfigFromFolder(sItCfgPath)
+	sItCfg, err = config.NewCGRConfigFromPath(sItCfgPath)
 	if err != nil {
 		t.Error(err)
 	}
@@ -100,7 +100,7 @@ func TestSessionsItTerminatUnexist(t *testing.T) {
 	usage := time.Duration(2 * time.Minute)
 	termArgs := &V1TerminateSessionArgs{
 		TerminateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsItTerminatUnexist",
 			Event: map[string]interface{}{
@@ -142,11 +142,14 @@ func TestSessionsItTerminatUnexist(t *testing.T) {
 	}
 
 	var cdrs []*engine.ExternalCDR
-	req := utils.RPCCDRsFilter{DestinationPrefixes: []string{"1002"}}
+	req := utils.RPCCDRsFilter{
+		DestinationPrefixes: []string{"1002"},
+		RunIDs:              []string{utils.MetaDefault},
+	}
 	if err := sItRPC.Call(utils.ApierV2GetCDRs, req, &cdrs); err != nil {
 		t.Error("Unexpected error: ", err.Error())
 	} else if len(cdrs) != 1 {
-		t.Error("Unexpected number of CDRs returned: ", len(cdrs))
+		t.Errorf("Unexpected number of CDRs returned: %v \n cdrs=%s", len(cdrs), utils.ToJSON(cdrs))
 	} else {
 		if cdrs[0].Usage != "2m0s" {
 			t.Errorf("Unexpected CDR Usage received, cdr: %v %+v ", cdrs[0].Usage, cdrs[0])
@@ -168,7 +171,7 @@ func TestSessionsItUpdateUnexist(t *testing.T) {
 	usage := time.Duration(2 * time.Minute)
 	updtArgs := &V1UpdateSessionArgs{
 		UpdateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsItUpdateUnexist",
 			Event: map[string]interface{}{
@@ -208,7 +211,7 @@ func TestSessionsItUpdateUnexist(t *testing.T) {
 	var rpl string
 	termArgs := &V1TerminateSessionArgs{
 		TerminateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsItTerminatUnexist",
 			Event: map[string]interface{}{
@@ -258,6 +261,7 @@ func TestSessionsItTerminatePassive(t *testing.T) {
 			&SRun{
 				Event:      engine.NewMapEvent(sEv.AsMapInterface()),
 				TotalUsage: time.Minute,
+				CD:         &engine.CallDescriptor{},
 			},
 		},
 	}
@@ -283,7 +287,7 @@ func TestSessionsItTerminatePassive(t *testing.T) {
 
 	termArgs := &V1TerminateSessionArgs{
 		TerminateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsItTerminatUnexist",
 			Event: map[string]interface{}{
@@ -336,7 +340,7 @@ func TestSessionsItEventCostCompressing(t *testing.T) {
 	// Init the session
 	initArgs := &V1InitSessionArgs{
 		InitSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsItEventCostCompressing",
 			Event: map[string]interface{}{
@@ -359,7 +363,7 @@ func TestSessionsItEventCostCompressing(t *testing.T) {
 	}
 	updateArgs := &V1UpdateSessionArgs{
 		UpdateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsItEventCostCompressing",
 			Event: map[string]interface{}{
@@ -383,7 +387,7 @@ func TestSessionsItEventCostCompressing(t *testing.T) {
 	}
 	termArgs := &V1TerminateSessionArgs{
 		TerminateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsDataLastUsedData",
 			Event: map[string]interface{}{
@@ -412,7 +416,7 @@ func TestSessionsItEventCostCompressing(t *testing.T) {
 	if err := sItRPC.Call(utils.ApierV1GetEventCost,
 		utils.AttrGetCallCost{CgrId: cgrID, RunId: utils.META_DEFAULT},
 		&ec); err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 	// make sure we only have one aggregated Charge
 	if len(ec.Charges) != 1 ||

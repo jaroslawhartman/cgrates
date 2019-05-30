@@ -18,6 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>
 package config
 
 import (
+	"path"
 	"reflect"
 	"testing"
 	"time"
@@ -204,7 +205,7 @@ func TestCgrCfgCDRC(t *testing.T) {
 			ID:                       utils.META_DEFAULT,
 			Enabled:                  true,
 			DryRun:                   false,
-			CdrsConns:                []*HaPoolConfig{{Address: utils.MetaInternal}},
+			CdrsConns:                []*RemoteHost{{Address: utils.MetaInternal}},
 			CdrFormat:                "csv",
 			FieldSeparator:           rune(','),
 			DataUsageMultiplyFactor:  1024,
@@ -222,11 +223,11 @@ func TestCgrCfgCDRC(t *testing.T) {
 			PartialCacheExpiryAction: "*dump_to_file",
 			HeaderFields:             make([]*FCTemplate, 0),
 			ContentFields: []*FCTemplate{
-				{FieldId: "ToR", Type: utils.META_COMPOSED,
+				{Tag: "ToR", FieldId: "ToR", Type: utils.META_COMPOSED,
 					Value: NewRSRParsersMustCompile("~7:s/^(voice|data|sms|mms|generic)$/*$1/", true, utils.INFIELD_SEP)},
-				{FieldId: "AnswerTime", Type: utils.META_COMPOSED,
+				{Tag: "AnswerTime", FieldId: "AnswerTime", Type: utils.META_COMPOSED,
 					Value: NewRSRParsersMustCompile("~1", true, utils.INFIELD_SEP)},
-				{FieldId: "Usage", Type: utils.META_COMPOSED,
+				{Tag: "Usage", FieldId: "Usage", Type: utils.META_COMPOSED,
 					Value: NewRSRParsersMustCompile("~9:s/^(\\d+)$/${1}s/", true, utils.INFIELD_SEP)},
 			},
 			TrailerFields: make([]*FCTemplate, 0),
@@ -297,7 +298,7 @@ func TestHttpAgentCfg(t *testing.T) {
 			Url:            "/conecto",
 			RequestPayload: utils.MetaUrl,
 			ReplyPayload:   utils.MetaXml,
-			SessionSConns: []*HaPoolConfig{
+			SessionSConns: []*RemoteHost{
 				{Address: utils.MetaInternal}},
 			RequestProcessors: nil,
 		},
@@ -345,6 +346,9 @@ func TestCgrCfgJSONDefaultsGeneral(t *testing.T) {
 	if cgrCfg.GeneralCfg().DefaultTenant != "cgrates.org" {
 		t.Errorf("Expected: cgrates.org, received: %+v", cgrCfg.GeneralCfg().DefaultTenant)
 	}
+	if cgrCfg.GeneralCfg().DefaultCaching != utils.MetaReload {
+		t.Errorf("Expected: *reload, received: %+v", cgrCfg.GeneralCfg().DefaultCaching)
+	}
 	if cgrCfg.GeneralCfg().DefaultTimezone != "Local" {
 		t.Errorf("Expected: Local, received: %+v", cgrCfg.GeneralCfg().DefaultTimezone)
 	}
@@ -359,9 +363,6 @@ func TestCgrCfgJSONDefaultsGeneral(t *testing.T) {
 	}
 	if cgrCfg.GeneralCfg().ReplyTimeout != 2*time.Second {
 		t.Errorf("Expected: 2s, received: %+v", cgrCfg.GeneralCfg().ReplyTimeout)
-	}
-	if cgrCfg.GeneralCfg().InternalTtl != 5*time.Second {
-		t.Errorf("Expected: 2m, received: %+v", cgrCfg.GeneralCfg().InternalTtl)
 	}
 	if cgrCfg.GeneralCfg().LockingTimeout != 0 {
 		t.Errorf("Expected: 0, received: %+v", cgrCfg.GeneralCfg().LockingTimeout)
@@ -453,7 +454,7 @@ func TestCgrCfgJSONDefaultsStorDB(t *testing.T) {
 }
 
 func TestCgrCfgJSONDefaultsRALs(t *testing.T) {
-	eHaPoolcfg := []*HaPoolConfig{}
+	eHaPoolcfg := []*RemoteHost{}
 
 	if cgrCfg.RalsCfg().RALsEnabled != false {
 		t.Errorf("Expecting: false , received: %+v", cgrCfg.RalsCfg().RALsEnabled)
@@ -473,12 +474,23 @@ func TestCgrCfgJSONDefaultsRALs(t *testing.T) {
 	if !reflect.DeepEqual(eMaxCU, cgrCfg.RalsCfg().RALsMaxComputedUsage) {
 		t.Errorf("Expecting: %+v , received: %+v", eMaxCU, cgrCfg.RalsCfg().RALsMaxComputedUsage)
 	}
+	eBalRatingSbj := map[string]string{
+		utils.ANY:      "*zero1ns",
+		utils.VOICE:    "*zero1s",
+		utils.DATA:     "*zero1ns",
+		utils.SMS:      "*zero1ns",
+		utils.MONETARY: "*zero1ns",
+		utils.GENERIC:  "*zero1ns",
+	}
+	if !reflect.DeepEqual(eBalRatingSbj, cgrCfg.RalsCfg().RALsBalanceRatingSubject) {
+		t.Errorf("Expecting: %+v , received: %+v", eBalRatingSbj, cgrCfg.RalsCfg().RALsBalanceRatingSubject)
+	}
 }
 
 func TestCgrCfgJSONDefaultsScheduler(t *testing.T) {
 	eSchedulerCfg := &SchedulerCfg{
 		Enabled:   false,
-		CDRsConns: []*HaPoolConfig{},
+		CDRsConns: []*RemoteHost{},
 	}
 
 	if !reflect.DeepEqual(cgrCfg.schedulerCfg, eSchedulerCfg) {
@@ -487,7 +499,7 @@ func TestCgrCfgJSONDefaultsScheduler(t *testing.T) {
 }
 
 func TestCgrCfgJSONDefaultsCDRS(t *testing.T) {
-	eHaPoolCfg := []*HaPoolConfig{}
+	eHaPoolCfg := []*RemoteHost{}
 	var eCdrExtr []*utils.RSRField
 	if cgrCfg.CdrsCfg().CDRSEnabled != false {
 		t.Errorf("Expecting: false , received: %+v", cgrCfg.CdrsCfg().CDRSEnabled)
@@ -501,10 +513,10 @@ func TestCgrCfgJSONDefaultsCDRS(t *testing.T) {
 	if cgrCfg.CdrsCfg().CDRSSMCostRetries != 5 {
 		t.Errorf("Expecting: 5 , received: %+v", cgrCfg.CdrsCfg().CDRSSMCostRetries)
 	}
-	if expected := []*HaPoolConfig{{Address: utils.MetaInternal}}; !reflect.DeepEqual(cgrCfg.CdrsCfg().CDRSRaterConns, expected) {
+	if expected := []*RemoteHost{{Address: utils.MetaInternal}}; !reflect.DeepEqual(cgrCfg.CdrsCfg().CDRSRaterConns, expected) {
 		t.Errorf("Expecting: %+v , received: %+v", expected, cgrCfg.CdrsCfg().CDRSRaterConns)
 	}
-	if expected := []*HaPoolConfig{{Address: utils.MetaInternal}}; !reflect.DeepEqual(cgrCfg.CdrsCfg().CDRSChargerSConns, expected) {
+	if expected := []*RemoteHost{{Address: utils.MetaInternal}}; !reflect.DeepEqual(cgrCfg.CdrsCfg().CDRSChargerSConns, expected) {
 		t.Errorf("Expecting: %+v , received: %+v", expected, cgrCfg.CdrsCfg().CDRSChargerSConns)
 	}
 	if !reflect.DeepEqual(cgrCfg.CdrsCfg().CDRSAttributeSConns, eHaPoolCfg) {
@@ -542,7 +554,7 @@ func TestCgrCfgJSONLoadCDRS(t *testing.T) {
 	if !cgrCfg.CdrsCfg().CDRSEnabled {
 		t.Errorf("Expecting: true , received: %+v", cgrCfg.CdrsCfg().CDRSEnabled)
 	}
-	expected := []*HaPoolConfig{{Address: utils.MetaInternal}}
+	expected := []*RemoteHost{{Address: utils.MetaInternal}}
 	if !reflect.DeepEqual(cgrCfg.CdrsCfg().CDRSChargerSConns, expected) {
 		t.Errorf("Expecting: %+v , received: %+v", expected, cgrCfg.CdrsCfg().CDRSChargerSConns)
 	}
@@ -587,7 +599,7 @@ func TestCgrCfgJSONDefaultsCdreProfiles(t *testing.T) {
 			RoundingDecimals: 4},
 	}
 	eCdreCfg := map[string]*CdreCfg{
-		"*default": {
+		utils.MetaDefault: {
 			ExportFormat:        utils.MetaFileCSV,
 			ExportPath:          "/var/spool/cgrates/cdre",
 			Filters:             []string{},
@@ -608,21 +620,19 @@ func TestCgrCfgJSONDefaultsCdreProfiles(t *testing.T) {
 
 func TestCgrCfgJSONDefaultsSMGenericCfg(t *testing.T) {
 	eSessionSCfg := &SessionSCfg{
-		Enabled:      false,
-		ListenBijson: "127.0.0.1:2014",
-		ChargerSConns: []*HaPoolConfig{
-			{Address: "*internal"}},
-		RALsConns: []*HaPoolConfig{
-			{Address: "*internal"}},
-		CDRsConns: []*HaPoolConfig{
-			{Address: "*internal"}},
-		ResSConns:               []*HaPoolConfig{},
-		ThreshSConns:            []*HaPoolConfig{},
-		StatSConns:              []*HaPoolConfig{},
-		SupplSConns:             []*HaPoolConfig{},
-		AttrSConns:              []*HaPoolConfig{},
-		SessionReplicationConns: []*HaPoolConfig{},
+		Enabled:                 false,
+		ListenBijson:            "127.0.0.1:2014",
+		ChargerSConns:           []*RemoteHost{},
+		RALsConns:               []*RemoteHost{},
+		CDRsConns:               []*RemoteHost{},
+		ResSConns:               []*RemoteHost{},
+		ThreshSConns:            []*RemoteHost{},
+		StatSConns:              []*RemoteHost{},
+		SupplSConns:             []*RemoteHost{},
+		AttrSConns:              []*RemoteHost{},
+		SessionReplicationConns: []*RemoteHost{},
 		DebitInterval:           0 * time.Second,
+		StoreSCosts:             false,
 		MinCallDuration:         0 * time.Second,
 		MaxCallDuration:         3 * time.Hour,
 		SessionTTL:              0 * time.Second,
@@ -682,6 +692,8 @@ func TestCgrCfgJSONDefaultsCacheCFG(t *testing.T) {
 			TTL: time.Duration(0), StaticTTL: false, Precache: false},
 		utils.CacheDispatcherProfiles: &CacheParamCfg{Limit: -1,
 			TTL: time.Duration(0), StaticTTL: false, Precache: false},
+		utils.CacheDispatcherHosts: &CacheParamCfg{Limit: -1,
+			TTL: time.Duration(0), StaticTTL: false, Precache: false},
 		utils.CacheResourceFilterIndexes: &CacheParamCfg{Limit: -1,
 			TTL: time.Duration(0), StaticTTL: false, Precache: false},
 		utils.CacheStatFilterIndexes: &CacheParamCfg{Limit: -1,
@@ -702,6 +714,10 @@ func TestCgrCfgJSONDefaultsCacheCFG(t *testing.T) {
 			TTL: time.Duration(3 * time.Hour), StaticTTL: false},
 		utils.CacheRPCResponses: &CacheParamCfg{Limit: 0,
 			TTL: time.Duration(2 * time.Second), StaticTTL: false},
+		utils.CacheClosedSessions: &CacheParamCfg{Limit: -1,
+			TTL: time.Duration(10 * time.Second), StaticTTL: false},
+		utils.CacheLoadIDs: &CacheParamCfg{Limit: -1,
+			TTL: time.Duration(0), StaticTTL: false, Precache: false},
 	}
 
 	if !reflect.DeepEqual(eCacheCfg, cgrCfg.CacheCfg()) {
@@ -713,7 +729,7 @@ func TestCgrCfgJSONDefaultsCacheCFG(t *testing.T) {
 func TestCgrCfgJSONDefaultsFsAgentConfig(t *testing.T) {
 	eFsAgentCfg := &FsAgentCfg{
 		Enabled: false,
-		SessionSConns: []*HaPoolConfig{
+		SessionSConns: []*RemoteHost{
 			{Address: "*internal"}},
 		SubscribePark:       true,
 		CreateCdr:           false,
@@ -737,7 +753,7 @@ func TestCgrCfgJSONDefaultsFsAgentConfig(t *testing.T) {
 func TestCgrCfgJSONDefaultsKamAgentConfig(t *testing.T) {
 	eKamAgentCfg := &KamAgentCfg{
 		Enabled: false,
-		SessionSConns: []*HaPoolConfig{
+		SessionSConns: []*RemoteHost{
 			{Address: "*internal"}},
 		CreateCdr: false,
 		EvapiConns: []*KamConnCfg{{
@@ -754,7 +770,7 @@ func TestCgrCfgJSONDefaultsKamAgentConfig(t *testing.T) {
 func TestCgrCfgJSONDefaultssteriskAgentCfg(t *testing.T) {
 	eAstAgentCfg := &AsteriskAgentCfg{
 		Enabled: false,
-		SessionSConns: []*HaPoolConfig{
+		SessionSConns: []*RemoteHost{
 			{Address: "*internal"}},
 		CreateCDR: false,
 		AsteriskConns: []*AsteriskConnCfg{
@@ -770,9 +786,8 @@ func TestCgrCfgJSONDefaultssteriskAgentCfg(t *testing.T) {
 
 func TestCgrCfgJSONDefaultFiltersCfg(t *testing.T) {
 	eFiltersCfg := &FilterSCfg{
-		StatSConns:     []*HaPoolConfig{},
-		ResourceSConns: []*HaPoolConfig{},
-		IndexedSelects: true,
+		StatSConns:     []*RemoteHost{},
+		ResourceSConns: []*RemoteHost{},
 	}
 	if !reflect.DeepEqual(cgrCfg.filterSCfg, eFiltersCfg) {
 		t.Errorf("received: %+v, expecting: %+v", cgrCfg.filterSCfg, eFiltersCfg)
@@ -782,7 +797,8 @@ func TestCgrCfgJSONDefaultFiltersCfg(t *testing.T) {
 func TestCgrCfgJSONDefaultSChargerSCfg(t *testing.T) {
 	eChargerSCfg := &ChargerSCfg{
 		Enabled:             false,
-		AttributeSConns:     []*HaPoolConfig{},
+		IndexedSelects:      true,
+		AttributeSConns:     []*RemoteHost{},
 		StringIndexedFields: nil,
 		PrefixIndexedFields: &[]string{},
 	}
@@ -794,7 +810,8 @@ func TestCgrCfgJSONDefaultSChargerSCfg(t *testing.T) {
 func TestCgrCfgJSONDefaultsResLimCfg(t *testing.T) {
 	eResLiCfg := &ResourceSConfig{
 		Enabled:             false,
-		ThresholdSConns:     []*HaPoolConfig{},
+		IndexedSelects:      true,
+		ThresholdSConns:     []*RemoteHost{},
 		StoreInterval:       0,
 		StringIndexedFields: nil,
 		PrefixIndexedFields: &[]string{},
@@ -808,8 +825,9 @@ func TestCgrCfgJSONDefaultsResLimCfg(t *testing.T) {
 func TestCgrCfgJSONDefaultStatsCfg(t *testing.T) {
 	eStatsCfg := &StatSCfg{
 		Enabled:             false,
+		IndexedSelects:      true,
 		StoreInterval:       0,
-		ThresholdSConns:     []*HaPoolConfig{},
+		ThresholdSConns:     []*RemoteHost{},
 		StringIndexedFields: nil,
 		PrefixIndexedFields: &[]string{},
 	}
@@ -821,6 +839,7 @@ func TestCgrCfgJSONDefaultStatsCfg(t *testing.T) {
 func TestCgrCfgJSONDefaultThresholdSCfg(t *testing.T) {
 	eThresholdSCfg := &ThresholdSCfg{
 		Enabled:             false,
+		IndexedSelects:      true,
 		StoreInterval:       0,
 		StringIndexedFields: nil,
 		PrefixIndexedFields: &[]string{},
@@ -833,14 +852,15 @@ func TestCgrCfgJSONDefaultThresholdSCfg(t *testing.T) {
 func TestCgrCfgJSONDefaultSupplierSCfg(t *testing.T) {
 	eSupplSCfg := &SupplierSCfg{
 		Enabled:             false,
+		IndexedSelects:      true,
 		StringIndexedFields: nil,
 		PrefixIndexedFields: &[]string{},
-		AttributeSConns:     []*HaPoolConfig{},
-		RALsConns: []*HaPoolConfig{
+		AttributeSConns:     []*RemoteHost{},
+		RALsConns: []*RemoteHost{
 			{Address: "*internal"},
 		},
-		ResourceSConns: []*HaPoolConfig{},
-		StatSConns:     []*HaPoolConfig{},
+		ResourceSConns: []*RemoteHost{},
+		StatSConns:     []*RemoteHost{},
 	}
 	if !reflect.DeepEqual(eSupplSCfg, cgrCfg.supplierSCfg) {
 		t.Errorf("received: %+v, expecting: %+v", eSupplSCfg, cgrCfg.supplierSCfg)
@@ -853,7 +873,7 @@ func TestCgrCfgJSONDefaultsDiameterAgentCfg(t *testing.T) {
 		Listen:           "127.0.0.1:3868",
 		ListenNet:        "tcp",
 		DictionariesPath: "/usr/share/cgrates/diameter/dict/",
-		SessionSConns: []*HaPoolConfig{
+		SessionSConns: []*RemoteHost{
 			{Address: "*internal"}},
 		OriginHost:        "CGR-DA",
 		OriginRealm:       "cgrates.org",
@@ -977,7 +997,7 @@ func TestRadiusAgentCfg(t *testing.T) {
 		ListenAcct:         "127.0.0.1:1813",
 		ClientSecrets:      map[string]string{utils.META_DEFAULT: "CGRateS.org"},
 		ClientDictionaries: map[string]string{utils.META_DEFAULT: "/usr/share/cgrates/radius/dict/"},
-		SessionSConns:      []*HaPoolConfig{{Address: utils.MetaInternal}},
+		SessionSConns:      []*RemoteHost{{Address: utils.MetaInternal}},
 		RequestProcessors:  nil,
 	}
 	if !reflect.DeepEqual(cgrCfg.radiusAgentCfg, testRA) {
@@ -1021,7 +1041,7 @@ func TestCgrLoaderCfgITDefaults(t *testing.T) {
 			DryRun:       false,
 			RunDelay:     0,
 			LockFileName: ".cgr.lck",
-			CacheSConns: []*HaPoolConfig{
+			CacheSConns: []*RemoteHost{
 				{
 					Address: utils.MetaInternal,
 				},
@@ -1064,14 +1084,18 @@ func TestCgrLoaderCfgITDefaults(t *testing.T) {
 							FieldId: "FieldName",
 							Type:    utils.META_COMPOSED,
 							Value:   NewRSRParsersMustCompile("~6", true, utils.INFIELD_SEP)},
-						{Tag: "Substitute",
-							FieldId: "Substitute",
+						{Tag: "Type",
+							FieldId: "Type",
 							Type:    utils.META_COMPOSED,
 							Value:   NewRSRParsersMustCompile("~7", true, utils.INFIELD_SEP)},
+						{Tag: "Value",
+							FieldId: "Value",
+							Type:    utils.META_COMPOSED,
+							Value:   NewRSRParsersMustCompile("~8", true, utils.INFIELD_SEP)},
 						{Tag: "Weight",
 							FieldId: "Weight",
 							Type:    utils.META_COMPOSED,
-							Value:   NewRSRParsersMustCompile("~8", true, utils.INFIELD_SEP)},
+							Value:   NewRSRParsersMustCompile("~9", true, utils.INFIELD_SEP)},
 					},
 				},
 				{
@@ -1376,7 +1400,7 @@ func TestCgrLoaderCfgITDefaults(t *testing.T) {
 				},
 				{
 					Type:     utils.MetaDispatchers,
-					Filename: utils.DispatchersCsv,
+					Filename: utils.DispatcherProfilesCsv,
 					Fields: []*FCTemplate{
 						{Tag: "Tenant",
 							FieldId:   "Tenant",
@@ -1445,6 +1469,37 @@ func TestCgrLoaderCfgITDefaults(t *testing.T) {
 						},
 					},
 				},
+				{
+					Type:     utils.MetaDispatcherHosts,
+					Filename: utils.DispatcherHostsCsv,
+					Fields: []*FCTemplate{
+						{Tag: "Tenant",
+							FieldId:   "Tenant",
+							Type:      utils.META_COMPOSED,
+							Value:     NewRSRParsersMustCompile("~0", true, utils.INFIELD_SEP),
+							Mandatory: true},
+						{Tag: "ID",
+							FieldId:   "ID",
+							Type:      utils.META_COMPOSED,
+							Value:     NewRSRParsersMustCompile("~1", true, utils.INFIELD_SEP),
+							Mandatory: true},
+						{Tag: "Address",
+							FieldId: "Address",
+							Type:    utils.META_COMPOSED,
+							Value:   NewRSRParsersMustCompile("~2", true, utils.INFIELD_SEP),
+						},
+						{Tag: "Transport",
+							FieldId: "Transport",
+							Type:    utils.META_COMPOSED,
+							Value:   NewRSRParsersMustCompile("~3", true, utils.INFIELD_SEP),
+						},
+						{Tag: "TLS",
+							FieldId: "TLS",
+							Type:    utils.META_COMPOSED,
+							Value:   NewRSRParsersMustCompile("~4", true, utils.INFIELD_SEP),
+						},
+					},
+				},
 			},
 		},
 	}
@@ -1457,10 +1512,10 @@ func TestCgrLoaderCfgITDefaults(t *testing.T) {
 func TestCgrCfgJSONDefaultDispatcherSCfg(t *testing.T) {
 	eDspSCfg := &DispatcherSCfg{
 		Enabled:             false,
+		IndexedSelects:      true,
 		StringIndexedFields: nil,
 		PrefixIndexedFields: &[]string{},
-		AttributeSConns:     []*HaPoolConfig{},
-		Conns:               map[string][]*HaPoolConfig{},
+		AttributeSConns:     []*RemoteHost{},
 	}
 	if !reflect.DeepEqual(cgrCfg.dispatcherSCfg, eDspSCfg) {
 		t.Errorf("received: %+v, expecting: %+v", cgrCfg.dispatcherSCfg, eDspSCfg)
@@ -1473,15 +1528,16 @@ func TestCgrLoaderCfgDefault(t *testing.T) {
 		DataPath:       "./",
 		DisableReverse: false,
 		FieldSeparator: rune(','),
-		CachesConns: []*HaPoolConfig{
+		CachesConns: []*RemoteHost{
 			{
 				Address:   "127.0.0.1:2012",
 				Transport: utils.MetaJSONrpc,
 			},
 		},
-		SchedulerConns: []*HaPoolConfig{
+		SchedulerConns: []*RemoteHost{
 			{
-				Address: "127.0.0.1:2012",
+				Address:   "127.0.0.1:2012",
+				Transport: utils.MetaJSONrpc,
 			},
 		},
 	}
@@ -1518,7 +1574,7 @@ func TestCDRCWithDefault(t *testing.T) {
 			ID:                       utils.META_DEFAULT,
 			Enabled:                  false,
 			DryRun:                   false,
-			CdrsConns:                []*HaPoolConfig{{Address: utils.MetaInternal}},
+			CdrsConns:                []*RemoteHost{{Address: utils.MetaInternal}},
 			CdrFormat:                "csv",
 			FieldSeparator:           rune(','),
 			DataUsageMultiplyFactor:  1024,
@@ -1667,5 +1723,72 @@ func TestCgrCfgJSONDefaultAnalyzerSCfg(t *testing.T) {
 	}
 	if !reflect.DeepEqual(cgrCfg.analyzerSCfg, aSCfg) {
 		t.Errorf("received: %+v, expecting: %+v", cgrCfg.analyzerSCfg, aSCfg)
+	}
+}
+
+func TestNewCGRConfigFromPathNotFound(t *testing.T) {
+	fpath := path.Join("/usr", "share", "cgrates", "conf", "samples", "notValid")
+	_, err := NewCGRConfigFromPath(fpath)
+	if err == nil || err.Error() != utils.ErrPathNotReachable(fpath).Error() {
+		t.Fatalf("Expected %s ,received %s", utils.ErrPathNotReachable(fpath), err)
+	}
+	fpath = path.Join("/usr", "share", "cgrates", "conf", "samples", "tutmongo", "cgrates.json")
+	cfg, err := NewCGRConfigFromPath(fpath)
+	if err == nil {
+		t.Fatalf("Expected error,received %v", cfg)
+	}
+	fpath = "https://not_a_reacheble_website"
+	_, err = NewCGRConfigFromPath(fpath)
+	if err == nil || err.Error() != utils.ErrPathNotReachable(fpath).Error() {
+		t.Fatalf("Expected %s ,received %s", utils.ErrPathNotReachable(fpath), err)
+	}
+	cfg, err = NewCGRConfigFromPath("https://github.com/")
+	if err == nil {
+		t.Fatalf("Expected error,received %v", cfg)
+	}
+}
+
+func TestCgrCfgJSONDefaultApierCfg(t *testing.T) {
+	aCfg := &ApierCfg{
+		CachesConns: []*RemoteHost{
+			{
+				Address: utils.MetaInternal,
+			},
+		},
+		SchedulerConns: []*RemoteHost{
+			{
+				Address: utils.MetaInternal,
+			},
+		},
+	}
+	if !reflect.DeepEqual(cgrCfg.apier, aCfg) {
+		t.Errorf("received: %+v, expecting: %+v", cgrCfg.apier, aCfg)
+	}
+}
+
+func TestCgrCfgV1GetConfigSection(t *testing.T) {
+	JSN_CFG := `
+{
+"listen": {
+	"rpc_json": ":2012",
+	"rpc_gob": ":2013",
+	"http": ":2080",
+	}
+}`
+	expected := map[string]interface{}{
+		"HTTPListen":       ":2080",
+		"HTTPTLSListen":    "127.0.0.1:2280",
+		"RPCGOBListen":     ":2013",
+		"RPCGOBTLSListen":  "127.0.0.1:2023",
+		"RPCJSONListen":    ":2012",
+		"RPCJSONTLSListen": "127.0.0.1:2022",
+	}
+	var rcv map[string]interface{}
+	if cgrCfg, err := NewCGRConfigFromJsonStringWithDefaults(JSN_CFG); err != nil {
+		t.Error(err)
+	} else if err := cgrCfg.V1GetConfigSection(&StringWithArgDispatcher{Section: LISTEN_JSN}, &rcv); err != nil {
+		t.Error(err)
+	} else if !reflect.DeepEqual(expected, rcv) {
+		t.Errorf("Expected: %+v, received: %+v", expected, rcv)
 	}
 }

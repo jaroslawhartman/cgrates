@@ -284,6 +284,28 @@ func (self *TPExporter) Run() error {
 		}
 	}
 
+	storDataDispatcherProfiles, err := self.storDb.GetTPDispatcherProfiles(self.tpID, "", "")
+	if err != nil && err.Error() != utils.ErrNotFound.Error() {
+		return err
+	}
+	for _, sd := range storDataDispatcherProfiles {
+		sdModels := APItoModelTPDispatcherProfile(sd)
+		for _, sdModel := range sdModels {
+			toExportMap[utils.DispatcherProfilesCsv] = append(toExportMap[utils.DispatcherProfilesCsv], sdModel)
+		}
+	}
+
+	storDataDispatcherHosts, err := self.storDb.GetTPDispatcherHosts(self.tpID, "", "")
+	if err != nil && err.Error() != utils.ErrNotFound.Error() {
+		return err
+	}
+	for _, sd := range storDataDispatcherHosts {
+		sdModels := APItoModelTPDispatcherHost(sd)
+		for _, sdModel := range sdModels {
+			toExportMap[utils.DispatcherHostsCsv] = append(toExportMap[utils.DispatcherHostsCsv], sdModel)
+		}
+	}
+
 	for fileName, storData := range toExportMap {
 		if err := self.writeOut(fileName, storData); err != nil {
 			self.removeFiles()

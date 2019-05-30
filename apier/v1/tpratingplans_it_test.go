@@ -1,4 +1,4 @@
-// +build offline_tp
+// +build integration
 
 /*
 Real-time Online/Offline Charging System (OCS) for Telecom & ISP environments
@@ -53,7 +53,7 @@ var sTestsTPRatingPlans = []func(t *testing.T){
 	testTPRatingPlansGetTPRatingPlanIds,
 	testTPRatingPlansUpdateTPRatingPlan,
 	testTPRatingPlansGetTPRatingPlanAfterUpdate,
-	testTPRatingPlansRemTPRatingPlan,
+	testTPRatingPlansRemoveTPRatingPlan,
 	testTPRatingPlansGetTPRatingPlanAfterRemove,
 	testTPRatingPlansKillEngine,
 }
@@ -83,7 +83,7 @@ func TestTPRatingPlansITPG(t *testing.T) {
 func testTPRatingPlansInitCfg(t *testing.T) {
 	var err error
 	tpRatingPlanCfgPath = path.Join(tpRatingPlanDataDir, "conf", "samples", tpRatingPlanConfigDIR)
-	tpRatingPlanCfg, err = config.NewCGRConfigFromFolder(tpRatingPlanCfgPath)
+	tpRatingPlanCfg, err = config.NewCGRConfigFromPath(tpRatingPlanCfgPath)
 	if err != nil {
 		t.Error(err)
 	}
@@ -218,9 +218,9 @@ func testTPRatingPlansGetTPRatingPlanAfterUpdate(t *testing.T) {
 	}
 }
 
-func testTPRatingPlansRemTPRatingPlan(t *testing.T) {
+func testTPRatingPlansRemoveTPRatingPlan(t *testing.T) {
 	var resp string
-	if err := tpRatingPlanRPC.Call("ApierV1.RemTPRatingPlan",
+	if err := tpRatingPlanRPC.Call("ApierV1.RemoveTPRatingPlan",
 		&AttrGetTPRatingPlan{TPid: "TPRP1", ID: "Plan1"}, &resp); err != nil {
 		t.Error(err)
 	} else if resp != utils.OK {

@@ -48,7 +48,7 @@ var dm *engine.DataManager // share db connection here so we can check data we s
 
 func TestApierV2itLoadConfig(t *testing.T) {
 	apierCfgPath = path.Join(*dataDir, "conf", "samples", "tutmysql")
-	if apierCfg, err = config.NewCGRConfigFromFolder(apierCfgPath); err != nil {
+	if apierCfg, err = config.NewCGRConfigFromPath(apierCfgPath); err != nil {
 		t.Error(err)
 	}
 }
@@ -210,10 +210,11 @@ func TestApierV2itSetAccountWithAP(t *testing.T) {
 	if err := apierRPC.Call("ApierV2.SetActions", argActs1, &reply); err != nil {
 		t.Error(err)
 	}
+	tNow := time.Now().Add(time.Duration(time.Minute))
 	argAP1 := &v1.AttrSetActionPlan{Id: "TestApierV2itSetAccountWithAP_AP_1",
 		ActionPlan: []*v1.AttrActionPlan{
 			{ActionsId: argActs1.ActionsId,
-				Time:   time.Now().Add(time.Duration(time.Minute)).String(),
+				Time:   fmt.Sprintf("%v:%v:%v", tNow.Hour(), tNow.Minute(), tNow.Second()), // 10:4:12
 				Weight: 20.0}}}
 	if _, err := dm.DataDB().GetActionPlan(argAP1.Id, true, utils.NonTransactional); err == nil || err != utils.ErrNotFound {
 		t.Error(err)
@@ -308,6 +309,81 @@ func TestApierV2itSetAccountWithAP(t *testing.T) {
 		t.Error(err)
 	} else if !reflect.DeepEqual(eAAPids, aapIDs) {
 		t.Errorf("Expecting: %+v, received: %+v", eAAPids, aapIDs)
+	}
+}
+
+func TestApierV2itSetActionWithCategory(t *testing.T) {
+	var reply string
+	attrsSetAccount := &utils.AttrSetAccount{Tenant: "cgrates.org", Account: "TestApierV2itSetActionWithCategory"}
+	if err := apierRPC.Call("ApierV1.SetAccount", attrsSetAccount, &reply); err != nil {
+		t.Error("Got error on ApierV1.SetAccount: ", err.Error())
+	} else if reply != utils.OK {
+		t.Errorf("Calling ApierV1.SetAccount received: %s", reply)
+	}
+
+	argActs1 := utils.AttrSetActions{ActionsId: "TestApierV2itSetActionWithCategory_ACT",
+		Actions: []*utils.TPAction{
+			{Identifier: engine.TOPUP_RESET,
+				BalanceType: utils.MONETARY, Categories: "test", Units: "5.0", Weight: 20.0},
+		}}
+
+	if err := apierRPC.Call("ApierV2.SetActions", argActs1, &reply); err != nil {
+		t.Error(err)
+	}
+
+	attrsEA := &utils.AttrExecuteAction{Tenant: attrsSetAccount.Tenant, Account: attrsSetAccount.Account, ActionsId: argActs1.ActionsId}
+	if err := apierRPC.Call("ApierV1.ExecuteAction", attrsEA, &reply); err != nil {
+		t.Error("Got error on ApierV1.ExecuteAction: ", err.Error())
+	} else if reply != utils.OK {
+		t.Errorf("Calling ApierV1.ExecuteAction received: %s", reply)
+	}
+
+	var acnt engine.Account
+	if err := apierRPC.Call("ApierV2.GetAccount", &utils.AttrGetAccount{Tenant: "cgrates.org",
+		Account: "TestApierV2itSetActionWithCategory"}, &acnt); err != nil {
+		t.Error(err)
+	} else if len(acnt.BalanceMap) != 1 || acnt.BalanceMap[utils.MONETARY][0].Value != 5.0 {
+		t.Errorf("Unexpected balance received: %+v", acnt.BalanceMap[utils.MONETARY][0])
+	} else if len(acnt.BalanceMap[utils.MONETARY][0].Categories) != 1 &&
+		acnt.BalanceMap[utils.MONETARY][0].Categories["test"] != true {
+		t.Fatalf("Unexpected category received: %+v", utils.ToJSON(acnt))
+	}
+}
+
+func TestApierV2itSetActionPlanWithWrongTiming(t *testing.T) {
+	var reply string
+	tNow := time.Now().Add(time.Duration(time.Minute)).String()
+	argAP1 := &v1.AttrSetActionPlan{Id: "TestApierV2itSetAccountWithAPWithWrongTiming",
+		ActionPlan: []*v1.AttrActionPlan{
+			&v1.AttrActionPlan{
+				ActionsId: "TestApierV2itSetAccountWithAP_ACT_1",
+				Time:      tNow,
+				Weight:    20.0,
+			},
+		},
+	}
+
+	if err := apierRPC.Call("ApierV1.SetActionPlan", argAP1, &reply); err == nil ||
+		err.Error() != fmt.Sprintf("UNSUPPORTED_FORMAT:%s", tNow) {
+		t.Error("Expecting error ", err)
+	}
+}
+
+func TestApierV2itSetActionPlanWithWrongTiming2(t *testing.T) {
+	var reply string
+	argAP1 := &v1.AttrSetActionPlan{Id: "TestApierV2itSetAccountWithAPWithWrongTiming",
+		ActionPlan: []*v1.AttrActionPlan{
+			&v1.AttrActionPlan{
+				ActionsId: "TestApierV2itSetAccountWithAP_ACT_1",
+				Time:      "aa:bb:cc",
+				Weight:    20.0,
+			},
+		},
+	}
+
+	if err := apierRPC.Call("ApierV1.SetActionPlan", argAP1, &reply); err == nil ||
+		err.Error() != fmt.Sprintf("UNSUPPORTED_FORMAT:aa:bb:cc") {
+		t.Error("Expecting error ", err)
 	}
 }
 

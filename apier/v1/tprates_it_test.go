@@ -1,4 +1,4 @@
-// +build offline_tp
+// +build integration
 
 /*
 Real-time Online/Offline Charging System (OCS) for Telecom & ISP environments
@@ -53,7 +53,7 @@ var sTestsTPRates = []func(t *testing.T){
 	testTPRatesGetTPRateIds,
 	testTPRatesUpdateTPRate,
 	testTPRatesGetTPRateAfterUpdate,
-	testTPRatesRemTPRate,
+	testTPRatesRemoveTPRate,
 	testTPRatesGetTPRateAfterRemove,
 	testTPRatesKillEngine,
 }
@@ -83,7 +83,7 @@ func TestTPRatesITPG(t *testing.T) {
 func testTPRatesInitCfg(t *testing.T) {
 	var err error
 	tpRateCfgPath = path.Join(tpRateDataDir, "conf", "samples", tpRateConfigDIR)
-	tpRateCfg, err = config.NewCGRConfigFromFolder(tpRateCfgPath)
+	tpRateCfg, err = config.NewCGRConfigFromPath(tpRateCfgPath)
 	if err != nil {
 		t.Error(err)
 	}
@@ -219,9 +219,9 @@ func testTPRatesGetTPRateAfterUpdate(t *testing.T) {
 
 }
 
-func testTPRatesRemTPRate(t *testing.T) {
+func testTPRatesRemoveTPRate(t *testing.T) {
 	var resp string
-	if err := tpRateRPC.Call("ApierV1.RemTPRate",
+	if err := tpRateRPC.Call("ApierV1.RemoveTPRate",
 		&AttrGetTPRate{TPid: "TPidTpRate", ID: "RT_FS_USERS"}, &resp); err != nil {
 		t.Error(err)
 	} else if resp != utils.OK {

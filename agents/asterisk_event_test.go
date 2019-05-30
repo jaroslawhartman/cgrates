@@ -343,7 +343,7 @@ func TestSMAEventV1AuthorizeArgs(t *testing.T) {
 	}
 	exp := &sessions.V1AuthorizeArgs{
 		GetMaxUsage: true,
-		CGREvent:    *cgrEv,
+		CGREvent:    cgrEv,
 	}
 	if rcv := smaEv.V1AuthorizeArgs(); !reflect.DeepEqual(exp.GetMaxUsage, rcv.GetMaxUsage) {
 		t.Errorf("Expecting: %+v, received: %+v", exp.GetMaxUsage, rcv.GetMaxUsage)
@@ -368,7 +368,7 @@ func TestSMAEventV1AuthorizeArgs(t *testing.T) {
 		ProcessThresholds:  true,
 		ProcessStats:       true,
 		GetSuppliers:       true,
-		CGREvent:           *cgrEv2,
+		CGREvent:           cgrEv2,
 	}
 	if rcv := smaEv2.V1AuthorizeArgs(); !reflect.DeepEqual(exp2.GetAttributes, rcv.GetAttributes) {
 		t.Errorf("Expecting: %+v, received: %+v", exp2.GetAttributes, rcv.GetAttributes)
@@ -384,7 +384,7 @@ func TestSMAEventV1AuthorizeArgs(t *testing.T) {
 }
 
 func TestSMAEventV1InitSessionArgs(t *testing.T) {
-	cgrEv := utils.CGREvent{
+	cgrEv := &utils.CGREvent{
 		Tenant: "cgrates.org",
 		ID:     "AsteriskEvent",
 		Event: map[string]interface{}{
@@ -400,7 +400,7 @@ func TestSMAEventV1InitSessionArgs(t *testing.T) {
 		t.Error(err)
 	}
 	smaEv := NewSMAsteriskEvent(ev, "127.0.0.1")
-	if rcv := smaEv.V1InitSessionArgs(cgrEv); !reflect.DeepEqual(exp, rcv) {
+	if rcv := smaEv.V1InitSessionArgs(utils.CGREventWithArgDispatcher{CGREvent: cgrEv}); !reflect.DeepEqual(exp, rcv) {
 		t.Errorf("Expecting: %+v, received: %+v", utils.ToJSON(exp), utils.ToJSON(rcv))
 	}
 
@@ -411,13 +411,13 @@ func TestSMAEventV1InitSessionArgs(t *testing.T) {
 		CGREvent:          cgrEv,
 	}
 	cgrEv.Event[utils.CGRSubsystems] = "*resources*accounts*attributes"
-	if rcv := smaEv.V1InitSessionArgs(cgrEv); !reflect.DeepEqual(exp2, rcv) {
+	if rcv := smaEv.V1InitSessionArgs(utils.CGREventWithArgDispatcher{CGREvent: cgrEv}); !reflect.DeepEqual(exp2, rcv) {
 		t.Errorf("Expecting: %+v, received: %+v", utils.ToJSON(exp2), utils.ToJSON(rcv))
 	}
 }
 
 func TestSMAEventV1TerminateSessionArgs(t *testing.T) {
-	cgrEv := utils.CGREvent{
+	cgrEv := &utils.CGREvent{
 		Tenant: "cgrates.org",
 		ID:     "AsteriskEvent",
 		Event: map[string]interface{}{
@@ -433,7 +433,7 @@ func TestSMAEventV1TerminateSessionArgs(t *testing.T) {
 		t.Error(err)
 	}
 	smaEv := NewSMAsteriskEvent(ev, "127.0.0.1")
-	if rcv := smaEv.V1TerminateSessionArgs(cgrEv); !reflect.DeepEqual(exp, rcv) {
+	if rcv := smaEv.V1TerminateSessionArgs(utils.CGREventWithArgDispatcher{CGREvent: cgrEv}); !reflect.DeepEqual(exp, rcv) {
 		t.Errorf("Expecting: %+v, received: %+v", utils.ToJSON(exp), utils.ToJSON(rcv))
 	}
 
@@ -444,7 +444,7 @@ func TestSMAEventV1TerminateSessionArgs(t *testing.T) {
 		CGREvent:         cgrEv,
 	}
 	cgrEv.Event[utils.CGRSubsystems] = "*resources*accounts*stats"
-	if rcv := smaEv.V1TerminateSessionArgs(cgrEv); !reflect.DeepEqual(exp2, rcv) {
+	if rcv := smaEv.V1TerminateSessionArgs(utils.CGREventWithArgDispatcher{CGREvent: cgrEv}); !reflect.DeepEqual(exp2, rcv) {
 		t.Errorf("Expecting: %+v, received: %+v", utils.ToJSON(exp2), utils.ToJSON(rcv))
 	}
 }

@@ -57,10 +57,11 @@ var sTestsStorDBit = []func(t *testing.T){
 	testStorDBitCRUDTpStats,
 	testStorDBitCRUDCDRs,
 	testStorDBitCRUDSMCosts,
+	testStorDBitCRUDSMCosts2,
 }
 
 func TestStorDBitMySQL(t *testing.T) {
-	if cfg, err = config.NewCGRConfigFromFolder(path.Join(*dataDir, "conf", "samples", "storage", "mysql")); err != nil {
+	if cfg, err = config.NewCGRConfigFromPath(path.Join(*dataDir, "conf", "samples", "storage", "mysql")); err != nil {
 		t.Fatal(err)
 	}
 	if storDB, err = NewMySQLStorage(cfg.StorDbCfg().StorDBHost,
@@ -80,7 +81,7 @@ func TestStorDBitMySQL(t *testing.T) {
 }
 
 func TestStorDBitPostgresSQL(t *testing.T) {
-	if cfg, err = config.NewCGRConfigFromFolder(path.Join(*dataDir, "conf", "samples", "storage", "postgres")); err != nil {
+	if cfg, err = config.NewCGRConfigFromPath(path.Join(*dataDir, "conf", "samples", "storage", "postgres")); err != nil {
 		t.Fatal(err)
 	}
 	if storDB, err = NewPostgresStorage(cfg.StorDbCfg().StorDBHost,
@@ -100,7 +101,7 @@ func TestStorDBitPostgresSQL(t *testing.T) {
 }
 
 func TestStorDBitMongo(t *testing.T) {
-	if cfg, err = config.NewCGRConfigFromFolder(path.Join(*dataDir, "conf", "samples", "storage", "mongo")); err != nil {
+	if cfg, err = config.NewCGRConfigFromPath(path.Join(*dataDir, "conf", "samples", "storage", "mongo")); err != nil {
 		t.Fatal(err)
 	}
 	if storDB, err = NewMongoStorage(cfg.StorDbCfg().StorDBHost,
@@ -989,7 +990,7 @@ func testStorDBitCRUDTpResources(t *testing.T) {
 		t.Error(err)
 	}
 	//WRITE
-	var snd = []*utils.TPResource{
+	var snd = []*utils.TPResourceProfile{
 		{
 			TPid:         "testTPid",
 			ID:           "testTag1",
@@ -1088,7 +1089,7 @@ func testStorDBitCRUDTpStats(t *testing.T) {
 		t.Error(err)
 	}
 	//WRITE
-	eTPs := []*utils.TPStats{
+	eTPs := []*utils.TPStatProfile{
 		{
 			TPid:      "TEST_TPID",
 			Tenant:    "Test",
@@ -1097,11 +1098,16 @@ func testStorDBitCRUDTpStats(t *testing.T) {
 			ActivationInterval: &utils.TPActivationInterval{
 				ActivationTime: "2014-07-29T15:00:00Z",
 			},
-			QueueLength:  100,
-			TTL:          "1s",
-			Metrics:      []string{"*asr", "*acd", "*acc"},
-			ThresholdIDs: []string{"THRESH1", "THRESH2"},
+			QueueLength: 100,
+			TTL:         "1s",
+			Metrics: []*utils.MetricWithFilters{
+				&utils.MetricWithFilters{
+					MetricID: "*asr",
+				},
+			},
+			ThresholdIDs: []string{"*none"},
 			Weight:       20.0,
+			Stored:       true,
 			MinItems:     1,
 		},
 	}
@@ -1112,45 +1118,54 @@ func testStorDBitCRUDTpStats(t *testing.T) {
 	// READ
 	if rcv, err := storDB.GetTPStats("TEST_TPID", "", ""); err != nil {
 		t.Error(err)
-	} else {
-		if !(reflect.DeepEqual(eTPs[0].TPid, rcv[0].TPid) || reflect.DeepEqual(eTPs[0].TPid, rcv[1].TPid)) {
-			t.Errorf("Expecting: %+v, received: %+v || %+v", eTPs[0].TPid, rcv[0].TPid, rcv[1].TPid)
-		}
-		if !(reflect.DeepEqual(eTPs[0].ID, rcv[0].ID) || reflect.DeepEqual(eTPs[0].ID, rcv[1].ID)) {
-			t.Errorf("Expecting: %+v, received: %+v || %+v", eTPs[0].ID, rcv[0].ID, rcv[1].ID)
-		}
-		if !(reflect.DeepEqual(eTPs[0].ActivationInterval, rcv[0].ActivationInterval) || reflect.DeepEqual(eTPs[0].ActivationInterval, rcv[1].ActivationInterval)) {
-			t.Errorf("Expecting: %+v, received: %+v || %+v", eTPs[0].TPid, rcv[0].TPid, rcv[1].TPid)
-		}
-		if !(reflect.DeepEqual(eTPs[0].Weight, rcv[0].Weight) || reflect.DeepEqual(eTPs[0].Weight, rcv[1].Weight)) {
-			t.Errorf("Expecting: %+v, received: %+v || %+v", eTPs[0].Weight, rcv[0].Weight, rcv[1].Weight)
-		}
-
+	} else if !reflect.DeepEqual(eTPs[0], rcv[0]) {
+		t.Errorf("Expecting: %+v,\n received: %+v", utils.ToJSON(eTPs[0]), utils.ToJSON(rcv[0]))
 	}
+
 	// UPDATE
-	eTPs[0].Weight = 2.1
+	eTPs[0].Metrics = []*utils.MetricWithFilters{
+		&utils.MetricWithFilters{
+			MetricID: "*asr",
+		},
+		&utils.MetricWithFilters{
+			MetricID: "*acd",
+		},
+	}
 	if err := storDB.SetTPStats(eTPs); err != nil {
 		t.Error(err)
+	}
+	eTPsReverse := []*utils.TPStatProfile{
+		{
+			TPid:      "TEST_TPID",
+			Tenant:    "Test",
+			ID:        "Stats1",
+			FilterIDs: []string{"FLTR_1"},
+			ActivationInterval: &utils.TPActivationInterval{
+				ActivationTime: "2014-07-29T15:00:00Z",
+			},
+			QueueLength: 100,
+			TTL:         "1s",
+			Metrics: []*utils.MetricWithFilters{
+				&utils.MetricWithFilters{
+					MetricID: "*acd",
+				},
+				&utils.MetricWithFilters{
+					MetricID: "*asr",
+				},
+			},
+			ThresholdIDs: []string{"*none"},
+			Weight:       20.0,
+			Stored:       true,
+			MinItems:     1,
+		},
 	}
 	// READ
 	if rcv, err := storDB.GetTPStats("TEST_TPID", "", ""); err != nil {
 		t.Error(err)
-	} else {
-		if !(reflect.DeepEqual(eTPs[0].TPid, rcv[0].TPid) || reflect.DeepEqual(eTPs[0].TPid, rcv[1].TPid)) {
-			t.Errorf("Expecting: %+v, received: %+v || %+v", eTPs[0].TPid, rcv[0].TPid, rcv[1].TPid)
-		}
-		if !(reflect.DeepEqual(eTPs[0].ID, rcv[0].ID) || reflect.DeepEqual(eTPs[0].ID, rcv[1].ID)) {
-			t.Errorf("Expecting: %+v, received: %+v || %+v", eTPs[0].ID, rcv[0].ID, rcv[1].ID)
-		}
-		if !(reflect.DeepEqual(eTPs[0].ActivationInterval, rcv[0].ActivationInterval) ||
-			reflect.DeepEqual(eTPs[0].ActivationInterval, rcv[1].ActivationInterval)) {
-			t.Errorf("Expecting: %+v, received: %+v || %+v", eTPs[0].TPid, rcv[0].TPid, rcv[1].TPid)
-		}
-		if !(reflect.DeepEqual(eTPs[0].Weight, rcv[0].Weight) || reflect.DeepEqual(eTPs[0].Weight, rcv[1].Weight)) {
-			t.Errorf("Expecting: %+v, received: %+v || %+v", eTPs[0].Weight, rcv[0].Weight, rcv[1].Weight)
-		}
-
+	} else if !reflect.DeepEqual(eTPs[0], rcv[0]) && !reflect.DeepEqual(eTPsReverse[0], rcv[0]) {
+		t.Errorf("Expecting: %+v,\n received: %+v || reveived : %+v", utils.ToJSON(eTPs[0]), utils.ToJSON(rcv[0]), utils.ToJSON(eTPsReverse[0]))
 	}
+
 	// REMOVE
 	if err := storDB.RemTpData(utils.TBLTPStats, "TEST_TPID", nil); err != nil {
 		t.Error(err)
@@ -1348,6 +1363,71 @@ func testStorDBitCRUDSMCosts(t *testing.T) {
 		if err := storDB.RemoveSMCost(smc); err != nil {
 			t.Error(err)
 		}
+	}
+	// READ
+	if _, err := storDB.GetSMCosts("", "", "", ""); err != utils.ErrNotFound {
+		t.Error(err)
+	}
+}
+
+func testStorDBitCRUDSMCosts2(t *testing.T) {
+	// READ
+	if _, err := storDB.GetSMCosts("", "", "", ""); err != utils.ErrNotFound {
+		t.Error(err)
+	}
+	// WRITE
+	var snd = []*SMCost{
+		{
+			CGRID:       "CGRID1",
+			RunID:       "11",
+			OriginHost:  "host22",
+			OriginID:    "O1",
+			CostDetails: NewBareEventCost(),
+		},
+		{
+			CGRID:       "CGRID2",
+			RunID:       "12",
+			OriginHost:  "host22",
+			OriginID:    "O2",
+			CostDetails: NewBareEventCost(),
+		},
+		{
+			CGRID:       "CGRID3",
+			RunID:       "13",
+			OriginHost:  "host23",
+			OriginID:    "O3",
+			CostDetails: NewBareEventCost(),
+		},
+	}
+	for _, smc := range snd {
+		if err := storDB.SetSMCost(smc); err != nil {
+			t.Error(err)
+		}
+	}
+	// READ
+	if rcv, err := storDB.GetSMCosts("", "", "host22", ""); err != nil {
+		t.Fatal(err)
+	} else if len(rcv) != 2 {
+		t.Errorf("Expected 2 results received %v ", len(rcv))
+	}
+	// REMOVE
+	if err := storDB.RemoveSMCosts(&utils.SMCostFilter{
+		RunIDs:         []string{"12", "13"},
+		NotRunIDs:      []string{"11"},
+		OriginHosts:    []string{"host22", "host23"},
+		NotOriginHosts: []string{"host21"},
+	}); err != nil {
+		t.Error(err)
+	}
+	// READ
+	if rcv, err := storDB.GetSMCosts("", "", "", ""); err != nil {
+		t.Error(err)
+	} else if len(rcv) != 1 {
+		t.Errorf("Expected 1 result received %v ", len(rcv))
+	}
+	// REMOVE
+	if err := storDB.RemoveSMCosts(&utils.SMCostFilter{}); err != nil {
+		t.Error(err)
 	}
 	// READ
 	if _, err := storDB.GetSMCosts("", "", "", ""); err != utils.ErrNotFound {

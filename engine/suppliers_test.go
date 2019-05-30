@@ -130,7 +130,7 @@ var (
 	}
 	argsGetSuppliers = []*ArgsGetSuppliers{
 		{ //matching SupplierProfile1
-			CGREvent: utils.CGREvent{
+			CGREvent: &utils.CGREvent{
 				Tenant: "cgrates.org",
 				ID:     "utils.CGREvent1",
 				Event: map[string]interface{}{
@@ -143,7 +143,7 @@ var (
 			},
 		},
 		{ //matching SupplierProfile2
-			CGREvent: utils.CGREvent{
+			CGREvent: &utils.CGREvent{
 				Tenant: "cgrates.org",
 				ID:     "utils.CGREvent1",
 				Event: map[string]interface{}{
@@ -156,7 +156,7 @@ var (
 			},
 		},
 		{ //matching SupplierProfilePrefix
-			CGREvent: utils.CGREvent{
+			CGREvent: &utils.CGREvent{
 				Tenant: "cgrates.org",
 				ID:     "utils.CGREvent1",
 				Event: map[string]interface{}{
@@ -165,7 +165,7 @@ var (
 			},
 		},
 		{ //matching
-			CGREvent: utils.CGREvent{
+			CGREvent: &utils.CGREvent{
 				Tenant: "cgrates.org",
 				ID:     "CGR",
 				Event: map[string]interface{}{
@@ -386,28 +386,28 @@ func TestSuppliersCache(t *testing.T) {
 }
 
 func TestSuppliersmatchingSupplierProfilesForEvent(t *testing.T) {
-	sprf, err := splService.matchingSupplierProfilesForEvent(&argsGetSuppliers[0].CGREvent)
+	sprf, err := splService.matchingSupplierProfilesForEvent(argsGetSuppliers[0].CGREvent, true)
 	if err != nil {
 		t.Errorf("Error: %+v", err)
 	}
-	if !reflect.DeepEqual(sppTest[0], sprf) {
-		t.Errorf("Expecting: %+v, received: %+v", sppTest[0], sprf)
+	if !reflect.DeepEqual(sppTest[0], sprf[0]) {
+		t.Errorf("Expecting: %+v, received: %+v", sppTest[0], sprf[0])
 	}
 
-	sprf, err = splService.matchingSupplierProfilesForEvent(&argsGetSuppliers[1].CGREvent)
+	sprf, err = splService.matchingSupplierProfilesForEvent(argsGetSuppliers[1].CGREvent, true)
 	if err != nil {
 		t.Errorf("Error: %+v", err)
 	}
-	if !reflect.DeepEqual(sppTest[1], sprf) {
-		t.Errorf("Expecting: %+v, received: %+v", sppTest[1], sprf)
+	if !reflect.DeepEqual(sppTest[1], sprf[0]) {
+		t.Errorf("Expecting: %+v, received: %+v", sppTest[1], sprf[0])
 	}
 
-	sprf, err = splService.matchingSupplierProfilesForEvent(&argsGetSuppliers[2].CGREvent)
+	sprf, err = splService.matchingSupplierProfilesForEvent(argsGetSuppliers[2].CGREvent, true)
 	if err != nil {
 		t.Errorf("Error: %+v", err)
 	}
-	if !reflect.DeepEqual(sppTest[2], sprf) {
-		t.Errorf("Expecting: %+v, received: %+v", sppTest[2], sprf)
+	if !reflect.DeepEqual(sppTest[2], sprf[0]) {
+		t.Errorf("Expecting: %+v, received: %+v", sppTest[2], sprf[0])
 	}
 }
 
@@ -415,6 +415,7 @@ func TestSuppliersSortedForEvent(t *testing.T) {
 	eFirstSupplierProfile := &SortedSuppliers{
 		ProfileID: "SupplierProfile1",
 		Sorting:   utils.MetaWeight,
+		Count:     1,
 		SortedSuppliers: []*SortedSupplier{
 			{
 				SupplierID: "supplier1",
@@ -436,6 +437,7 @@ func TestSuppliersSortedForEvent(t *testing.T) {
 	eFirstSupplierProfile = &SortedSuppliers{
 		ProfileID: "SupplierProfile2",
 		Sorting:   utils.MetaWeight,
+		Count:     3,
 		SortedSuppliers: []*SortedSupplier{
 			{
 				SupplierID: "supplier1",
@@ -472,6 +474,7 @@ func TestSuppliersSortedForEvent(t *testing.T) {
 	eFirstSupplierProfile = &SortedSuppliers{
 		ProfileID: "SupplierProfilePrefix",
 		Sorting:   utils.MetaWeight,
+		Count:     1,
 		SortedSuppliers: []*SortedSupplier{
 			{
 				SupplierID: "supplier1",
@@ -496,6 +499,7 @@ func TestSuppliersSortedForEventWithLimit(t *testing.T) {
 	eFirstSupplierProfile := &SortedSuppliers{
 		ProfileID: "SupplierProfile2",
 		Sorting:   utils.MetaWeight,
+		Count:     2,
 		SortedSuppliers: []*SortedSupplier{
 			{
 				SupplierID: "supplier1",
@@ -529,6 +533,7 @@ func TestSuppliersSortedForEventWithOffset(t *testing.T) {
 	eFirstSupplierProfile := &SortedSuppliers{
 		ProfileID: "SupplierProfile2",
 		Sorting:   utils.MetaWeight,
+		Count:     1,
 		SortedSuppliers: []*SortedSupplier{
 			{
 				SupplierID: "supplier3",
@@ -555,6 +560,7 @@ func TestSuppliersSortedForEventWithLimitAndOffset(t *testing.T) {
 	eFirstSupplierProfile := &SortedSuppliers{
 		ProfileID: "SupplierProfile2",
 		Sorting:   utils.MetaWeight,
+		Count:     1,
 		SortedSuppliers: []*SortedSupplier{
 			{
 				SupplierID: "supplier2",
@@ -629,28 +635,28 @@ func TestSuppliersAsOptsGetSuppliersMaxCost(t *testing.T) {
 }
 
 func TestSuppliersMatchWithIndexFalse(t *testing.T) {
-	splService.filterS.cfg.FilterSCfg().IndexedSelects = false
-	sprf, err := splService.matchingSupplierProfilesForEvent(&argsGetSuppliers[0].CGREvent)
+	splService.filterS.cfg.SupplierSCfg().IndexedSelects = false
+	sprf, err := splService.matchingSupplierProfilesForEvent(argsGetSuppliers[0].CGREvent, true)
 	if err != nil {
 		t.Errorf("Error: %+v", err)
 	}
-	if !reflect.DeepEqual(sppTest[0], sprf) {
-		t.Errorf("Expecting: %+v, received: %+v", sppTest[0], sprf)
+	if !reflect.DeepEqual(sppTest[0], sprf[0]) {
+		t.Errorf("Expecting: %+v, received: %+v", sppTest[0], sprf[0])
 	}
 
-	sprf, err = splService.matchingSupplierProfilesForEvent(&argsGetSuppliers[1].CGREvent)
+	sprf, err = splService.matchingSupplierProfilesForEvent(argsGetSuppliers[1].CGREvent, true)
 	if err != nil {
 		t.Errorf("Error: %+v", err)
 	}
-	if !reflect.DeepEqual(sppTest[1], sprf) {
-		t.Errorf("Expecting: %+v, received: %+v", sppTest[1], sprf)
+	if !reflect.DeepEqual(sppTest[1], sprf[0]) {
+		t.Errorf("Expecting: %+v, received: %+v", sppTest[1], sprf[0])
 	}
 
-	sprf, err = splService.matchingSupplierProfilesForEvent(&argsGetSuppliers[2].CGREvent)
+	sprf, err = splService.matchingSupplierProfilesForEvent(argsGetSuppliers[2].CGREvent, true)
 	if err != nil {
 		t.Errorf("Error: %+v", err)
 	}
-	if !reflect.DeepEqual(sppTest[2], sprf) {
-		t.Errorf("Expecting: %+v, received: %+v", sppTest[2], sprf)
+	if !reflect.DeepEqual(sppTest[2], sprf[0]) {
+		t.Errorf("Expecting: %+v, received: %+v", sppTest[2], sprf[0])
 	}
 }

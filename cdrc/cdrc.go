@@ -57,12 +57,16 @@ Parameters specific per config instance:
 */
 func NewCdrc(cdrcCfgs []*config.CdrcCfg, httpSkipTlsCheck bool, cdrs rpcclient.RpcClientConnection,
 	closeChan chan struct{}, dfltTimezone string, roundDecimals int, filterS *engine.FilterS) (*Cdrc, error) {
-	var cdrcCfg *config.CdrcCfg
-	for _, cdrcCfg = range cdrcCfgs { // Take the first config out, does not matter which one
-		break
-	}
-	cdrc := &Cdrc{httpSkipTlsCheck: httpSkipTlsCheck, cdrcCfgs: cdrcCfgs, dfltCdrcCfg: cdrcCfg, timezone: utils.FirstNonEmpty(cdrcCfg.Timezone, dfltTimezone), cdrs: cdrs,
-		closeChan: closeChan, maxOpenFiles: make(chan struct{}, cdrcCfg.MaxOpenFiles),
+	cdrcCfg := cdrcCfgs[0]
+
+	cdrc := &Cdrc{
+		httpSkipTlsCheck: httpSkipTlsCheck,
+		cdrcCfgs:         cdrcCfgs,
+		dfltCdrcCfg:      cdrcCfg,
+		timezone:         utils.FirstNonEmpty(cdrcCfg.Timezone, dfltTimezone),
+		cdrs:             cdrs,
+		closeChan:        closeChan,
+		maxOpenFiles:     make(chan struct{}, cdrcCfg.MaxOpenFiles),
 	}
 	var processFile struct{}
 	for i := 0; i < cdrcCfg.MaxOpenFiles; i++ {
@@ -220,8 +224,8 @@ func (self *Cdrc) processFile(filePath string) error {
 				utils.Logger.Info(fmt.Sprintf("<Cdrc> DryRun CDR: %+v", storedCdr))
 				continue
 			}
-			if err := self.cdrs.Call(utils.CDRsV2ProcessCDR,
-				&engine.ArgV2ProcessCDR{CGREvent: *storedCdr.AsCGREvent()}, &reply); err != nil {
+			if err := self.cdrs.Call(utils.CDRsV1ProcessEvent,
+				&engine.ArgV1ProcessEvent{CGREvent: *storedCdr.AsCGREvent()}, &reply); err != nil {
 				utils.Logger.Err(fmt.Sprintf("<Cdrc> Failed sending CDR, %+v, error: %s", storedCdr, err.Error()))
 			} else if reply != "OK" {
 				utils.Logger.Err(fmt.Sprintf("<Cdrc> Received unexpected reply for CDR, %+v, reply: %s", storedCdr, reply))

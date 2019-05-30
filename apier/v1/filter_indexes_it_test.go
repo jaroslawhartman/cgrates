@@ -78,6 +78,7 @@ var sTestsFilterIndexesSV1 = []func(t *testing.T){
 	testV1FIdxComputeAttributeProfileIndexes,
 	testV1FIdxSetSecondAttributeProfileIndexes,
 	testV1FIdxSecondComputeAttributeProfileIndexes,
+	testV1FIdxComputeWithAnotherContext,
 	testV1FIdxRemoveAttributeProfile,
 
 	testV1FIdxdxInitDataDb,
@@ -114,7 +115,7 @@ func TestFIdxV1ITMongo(t *testing.T) {
 func testV1FIdxLoadConfig(t *testing.T) {
 	tSv1CfgPath = path.Join(*dataDir, "conf", "samples", tSv1ConfDIR)
 	var err error
-	if tSv1Cfg, err = config.NewCGRConfigFromFolder(tSv1CfgPath); err != nil {
+	if tSv1Cfg, err = config.NewCGRConfigFromPath(tSv1CfgPath); err != nil {
 		t.Error(err)
 	}
 }
@@ -149,17 +150,19 @@ func testV1FIdxRpcConn(t *testing.T) {
 //ThresholdProfile
 func testV1FIdxSetThresholdProfile(t *testing.T) {
 	var reply *engine.ThresholdProfile
-	filter = &engine.Filter{
-		Tenant: tenant,
-		ID:     "TestFilter",
-		Rules: []*engine.FilterRule{{
-			FieldName: "Account",
-			Type:      utils.MetaString,
-			Values:    []string{"1001"},
-		}},
-		ActivationInterval: &utils.ActivationInterval{
-			ActivationTime: time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
-			ExpiryTime:     time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+	filter = &FilterWithCache{
+		Filter: &engine.Filter{
+			Tenant: tenant,
+			ID:     "TestFilter",
+			Rules: []*engine.FilterRule{{
+				FieldName: "~Account",
+				Type:      utils.MetaString,
+				Values:    []string{"1001"},
+			}},
+			ActivationInterval: &utils.ActivationInterval{
+				ActivationTime: time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+				ExpiryTime:     time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+			},
 		},
 	}
 	var result string
@@ -173,20 +176,22 @@ func testV1FIdxSetThresholdProfile(t *testing.T) {
 		err.Error() != utils.ErrNotFound.Error() {
 		t.Error(err)
 	}
-	tPrfl = &engine.ThresholdProfile{
-		Tenant:    tenant,
-		ID:        "TEST_PROFILE1",
-		FilterIDs: []string{"TestFilter"},
-		ActivationInterval: &utils.ActivationInterval{
-			ActivationTime: time.Date(2014, 7, 14, 14, 35, 0, 0, time.UTC),
-			ExpiryTime:     time.Date(2014, 7, 14, 14, 35, 0, 0, time.UTC),
+	tPrfl = &ThresholdWithCache{
+		ThresholdProfile: &engine.ThresholdProfile{
+			Tenant:    tenant,
+			ID:        "TEST_PROFILE1",
+			FilterIDs: []string{"TestFilter"},
+			ActivationInterval: &utils.ActivationInterval{
+				ActivationTime: time.Date(2014, 7, 14, 14, 35, 0, 0, time.UTC),
+				ExpiryTime:     time.Date(2014, 7, 14, 14, 35, 0, 0, time.UTC),
+			},
+			MaxHits:   1,
+			MinSleep:  time.Duration(5 * time.Minute),
+			Blocker:   false,
+			Weight:    20.0,
+			ActionIDs: []string{"ACT_1", "ACT_2"},
+			Async:     true,
 		},
-		MaxHits:   1,
-		MinSleep:  time.Duration(5 * time.Minute),
-		Blocker:   false,
-		Weight:    20.0,
-		ActionIDs: []string{"ACT_1", "ACT_2"},
-		Async:     true,
 	}
 	if err := tFIdxRpc.Call("ApierV1.SetThresholdProfile", tPrfl, &result); err != nil {
 		t.Error(err)
@@ -196,8 +201,8 @@ func testV1FIdxSetThresholdProfile(t *testing.T) {
 	if err := tFIdxRpc.Call("ApierV1.GetThresholdProfile",
 		&utils.TenantID{Tenant: tenant, ID: "TEST_PROFILE1"}, &reply); err != nil {
 		t.Error(err)
-	} else if !reflect.DeepEqual(tPrfl, reply) {
-		t.Errorf("Expecting: %+v, received: %+v", tPrfl, reply)
+	} else if !reflect.DeepEqual(tPrfl.ThresholdProfile, reply) {
+		t.Errorf("Expecting: %+v, received: %+v", tPrfl.ThresholdProfile, reply)
 	}
 	if err := tFIdxRpc.Call("ApierV1.RemoveFilterIndexes", &AttrRemFilterIndexes{
 		ItemType: utils.MetaThresholds, Tenant: tenant}, &result); err != nil {
@@ -231,7 +236,7 @@ func testV1FIdxComputeThresholdsIndexes(t *testing.T) {
 	if reply2 != utils.OK {
 		t.Errorf("Error: %+v", reply2)
 	}
-	expectedIDX := []string{"*string:Account:1001:TEST_PROFILE1"}
+	expectedIDX := []string{"*string:~Account:1001:TEST_PROFILE1"}
 	var indexes []string
 	if err := tFIdxRpc.Call("ApierV1.GetFilterIndexes", &AttrGetFilterIndexes{
 		ItemType: utils.MetaThresholds, Tenant: tenant, FilterType: engine.MetaString},
@@ -245,17 +250,19 @@ func testV1FIdxComputeThresholdsIndexes(t *testing.T) {
 
 func testV1FIdxSetSecondThresholdProfile(t *testing.T) {
 	var reply *engine.ThresholdProfile
-	filter = &engine.Filter{
-		Tenant: tenant,
-		ID:     "TestFilter2",
-		Rules: []*engine.FilterRule{{
-			FieldName: "Account",
-			Type:      utils.MetaString,
-			Values:    []string{"1002"},
-		}},
-		ActivationInterval: &utils.ActivationInterval{
-			ActivationTime: time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
-			ExpiryTime:     time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+	filter = &FilterWithCache{
+		Filter: &engine.Filter{
+			Tenant: tenant,
+			ID:     "TestFilter2",
+			Rules: []*engine.FilterRule{{
+				FieldName: "~Account",
+				Type:      utils.MetaString,
+				Values:    []string{"1002"},
+			}},
+			ActivationInterval: &utils.ActivationInterval{
+				ActivationTime: time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+				ExpiryTime:     time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+			},
 		},
 	}
 
@@ -270,20 +277,22 @@ func testV1FIdxSetSecondThresholdProfile(t *testing.T) {
 		err.Error() != utils.ErrNotFound.Error() {
 		t.Error(err)
 	}
-	tPrfl = &engine.ThresholdProfile{
-		Tenant:    tenant,
-		ID:        "TEST_PROFILE2",
-		FilterIDs: []string{"TestFilter2"},
-		ActivationInterval: &utils.ActivationInterval{
-			ActivationTime: time.Date(2014, 7, 14, 14, 35, 0, 0, time.UTC),
-			ExpiryTime:     time.Date(2014, 7, 14, 14, 35, 0, 0, time.UTC),
+	tPrfl = &ThresholdWithCache{
+		ThresholdProfile: &engine.ThresholdProfile{
+			Tenant:    tenant,
+			ID:        "TEST_PROFILE2",
+			FilterIDs: []string{"TestFilter2"},
+			ActivationInterval: &utils.ActivationInterval{
+				ActivationTime: time.Date(2014, 7, 14, 14, 35, 0, 0, time.UTC),
+				ExpiryTime:     time.Date(2014, 7, 14, 14, 35, 0, 0, time.UTC),
+			},
+			MaxHits:   1,
+			MinSleep:  time.Duration(5 * time.Minute),
+			Blocker:   false,
+			Weight:    20.0,
+			ActionIDs: []string{"ACT_1", "ACT_2"},
+			Async:     true,
 		},
-		MaxHits:   1,
-		MinSleep:  time.Duration(5 * time.Minute),
-		Blocker:   false,
-		Weight:    20.0,
-		ActionIDs: []string{"ACT_1", "ACT_2"},
-		Async:     true,
 	}
 	if err := tFIdxRpc.Call("ApierV1.SetThresholdProfile", tPrfl, &result); err != nil {
 		t.Error(err)
@@ -293,8 +302,8 @@ func testV1FIdxSetSecondThresholdProfile(t *testing.T) {
 	if err := tFIdxRpc.Call("ApierV1.GetThresholdProfile",
 		&utils.TenantID{Tenant: tenant, ID: "TEST_PROFILE2"}, &reply); err != nil {
 		t.Error(err)
-	} else if !reflect.DeepEqual(tPrfl, reply) {
-		t.Errorf("Expecting: %+v, received: %+v", tPrfl, reply)
+	} else if !reflect.DeepEqual(tPrfl.ThresholdProfile, reply) {
+		t.Errorf("Expecting: %+v, received: %+v", tPrfl.ThresholdProfile, reply)
 	}
 	if err := tFIdxRpc.Call("ApierV1.RemoveFilterIndexes", &AttrRemFilterIndexes{
 		ItemType: utils.MetaThresholds, Tenant: tenant}, &result); err != nil {
@@ -329,7 +338,7 @@ func testV1FIdxSecondComputeThresholdsIndexes(t *testing.T) {
 	if result != utils.OK {
 		t.Errorf("Error: %+v", result)
 	}
-	expectedIDX := []string{"*string:Account:1002:TEST_PROFILE2"}
+	expectedIDX := []string{"*string:~Account:1002:TEST_PROFILE2"}
 	var indexes []string
 	if err := tFIdxRpc.Call("ApierV1.GetFilterIndexes", &AttrGetFilterIndexes{
 		ItemType: utils.MetaThresholds, Tenant: tenant, FilterType: engine.MetaString},
@@ -358,7 +367,7 @@ func testV1FIdxThirdComputeThresholdsIndexes(t *testing.T) {
 	if result != utils.OK {
 		t.Errorf("Error: %+v", result)
 	}
-	expectedIDX := []string{"*string:Account:1001:TEST_PROFILE1", "*string:Account:1002:TEST_PROFILE2"}
+	expectedIDX := []string{"*string:~Account:1001:TEST_PROFILE1", "*string:~Account:1002:TEST_PROFILE2"}
 	sort.Strings(expectedIDX)
 	var indexes []string
 	if err := tFIdxRpc.Call("ApierV1.GetFilterIndexes", &AttrGetFilterIndexes{
@@ -424,17 +433,19 @@ func testV1FIdxRemoveThresholdProfile(t *testing.T) {
 //StatQueueProfile
 func testV1FIdxSetStatQueueProfileIndexes(t *testing.T) {
 	var reply *engine.StatQueueProfile
-	filter = &engine.Filter{
-		Tenant: tenant,
-		ID:     "FLTR_1",
-		Rules: []*engine.FilterRule{{
-			FieldName: "Account",
-			Type:      utils.MetaString,
-			Values:    []string{"1001"},
-		}},
-		ActivationInterval: &utils.ActivationInterval{
-			ActivationTime: time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
-			ExpiryTime:     time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+	filter = &FilterWithCache{
+		Filter: &engine.Filter{
+			Tenant: tenant,
+			ID:     "FLTR_1",
+			Rules: []*engine.FilterRule{{
+				FieldName: "~Account",
+				Type:      utils.MetaString,
+				Values:    []string{"1001"},
+			}},
+			ActivationInterval: &utils.ActivationInterval{
+				ActivationTime: time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+				ExpiryTime:     time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+			},
 		},
 	}
 	var result string
@@ -448,24 +459,31 @@ func testV1FIdxSetStatQueueProfileIndexes(t *testing.T) {
 		err.Error() != utils.ErrNotFound.Error() {
 		t.Error(err)
 	}
-	statConfig = &engine.StatQueueProfile{
-		Tenant:    tenant,
-		ID:        "TEST_PROFILE1",
-		FilterIDs: []string{"FLTR_1"},
-		ActivationInterval: &utils.ActivationInterval{
-			ActivationTime: time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
-			ExpiryTime:     time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+	statConfig = &StatQueueWithCache{
+		StatQueueProfile: &engine.StatQueueProfile{
+			Tenant:    tenant,
+			ID:        "TEST_PROFILE1",
+			FilterIDs: []string{"FLTR_1"},
+			ActivationInterval: &utils.ActivationInterval{
+				ActivationTime: time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+				ExpiryTime:     time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+			},
+			QueueLength: 10,
+			TTL:         time.Duration(10) * time.Second,
+			Metrics: []*engine.MetricWithFilters{
+				&engine.MetricWithFilters{
+					MetricID: "*sum",
+				},
+				&engine.MetricWithFilters{
+					MetricID: "*acd",
+				},
+			},
+			ThresholdIDs: []string{"Val1", "Val2"},
+			Blocker:      true,
+			Stored:       true,
+			Weight:       20,
+			MinItems:     1,
 		},
-		QueueLength: 10,
-		TTL:         time.Duration(10) * time.Second,
-		Metrics: []string{"*sum",
-			"*acd",
-		},
-		ThresholdIDs: []string{"Val1", "Val2"},
-		Blocker:      true,
-		Stored:       true,
-		Weight:       20,
-		MinItems:     1,
 	}
 	if err := tFIdxRpc.Call("ApierV1.SetStatQueueProfile", statConfig, &result); err != nil {
 		t.Error(err)
@@ -475,8 +493,8 @@ func testV1FIdxSetStatQueueProfileIndexes(t *testing.T) {
 	if err := tFIdxRpc.Call("ApierV1.GetStatQueueProfile",
 		&utils.TenantID{Tenant: tenant, ID: "TEST_PROFILE1"}, &reply); err != nil {
 		t.Error(err)
-	} else if !reflect.DeepEqual(statConfig, reply) {
-		t.Errorf("Expecting: %+v, received: %+v", statConfig, reply)
+	} else if !reflect.DeepEqual(statConfig.StatQueueProfile, reply) {
+		t.Errorf("Expecting: %+v, received: %+v", statConfig.StatQueueProfile, reply)
 	}
 	if err := tFIdxRpc.Call("ApierV1.RemoveFilterIndexes", &AttrRemFilterIndexes{
 		ItemType: utils.MetaStats, Tenant: tenant}, &result); err != nil {
@@ -509,7 +527,7 @@ func testV1FIdxComputeStatQueueProfileIndexes(t *testing.T) {
 	if result != utils.OK {
 		t.Errorf("Error: %+v", result)
 	}
-	expectedIDX := []string{"*string:Account:1001:TEST_PROFILE1"}
+	expectedIDX := []string{"*string:~Account:1001:TEST_PROFILE1"}
 	var indexes []string
 	if err := tFIdxRpc.Call("ApierV1.GetFilterIndexes", &AttrGetFilterIndexes{
 		ItemType: utils.MetaStats, Tenant: tenant, FilterType: engine.MetaString},
@@ -524,17 +542,19 @@ func testV1FIdxComputeStatQueueProfileIndexes(t *testing.T) {
 
 func testV1FIdxSetSecondStatQueueProfileIndexes(t *testing.T) {
 	var reply *engine.StatQueueProfile
-	filter = &engine.Filter{
-		Tenant: tenant,
-		ID:     "FLTR_2",
-		Rules: []*engine.FilterRule{{
-			FieldName: "Account",
-			Type:      utils.MetaString,
-			Values:    []string{"1001"},
-		}},
-		ActivationInterval: &utils.ActivationInterval{
-			ActivationTime: time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
-			ExpiryTime:     time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+	filter = &FilterWithCache{
+		Filter: &engine.Filter{
+			Tenant: tenant,
+			ID:     "FLTR_2",
+			Rules: []*engine.FilterRule{{
+				FieldName: "~Account",
+				Type:      utils.MetaString,
+				Values:    []string{"1001"},
+			}},
+			ActivationInterval: &utils.ActivationInterval{
+				ActivationTime: time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+				ExpiryTime:     time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+			},
 		},
 	}
 	var result string
@@ -548,24 +568,31 @@ func testV1FIdxSetSecondStatQueueProfileIndexes(t *testing.T) {
 		err.Error() != utils.ErrNotFound.Error() {
 		t.Error(err)
 	}
-	statConfig = &engine.StatQueueProfile{
-		Tenant:    tenant,
-		ID:        "TEST_PROFILE2",
-		FilterIDs: []string{"FLTR_2"},
-		ActivationInterval: &utils.ActivationInterval{
-			ActivationTime: time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
-			ExpiryTime:     time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+	statConfig = &StatQueueWithCache{
+		StatQueueProfile: &engine.StatQueueProfile{
+			Tenant:    tenant,
+			ID:        "TEST_PROFILE2",
+			FilterIDs: []string{"FLTR_2"},
+			ActivationInterval: &utils.ActivationInterval{
+				ActivationTime: time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+				ExpiryTime:     time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+			},
+			QueueLength: 10,
+			TTL:         time.Duration(10) * time.Second,
+			Metrics: []*engine.MetricWithFilters{
+				&engine.MetricWithFilters{
+					MetricID: "*sum",
+				},
+				&engine.MetricWithFilters{
+					MetricID: "*acd",
+				},
+			},
+			ThresholdIDs: []string{"Val1", "Val2"},
+			Blocker:      true,
+			Stored:       true,
+			Weight:       20,
+			MinItems:     1,
 		},
-		QueueLength: 10,
-		TTL:         time.Duration(10) * time.Second,
-		Metrics: []string{"*sum",
-			"*acd",
-		},
-		ThresholdIDs: []string{"Val1", "Val2"},
-		Blocker:      true,
-		Stored:       true,
-		Weight:       20,
-		MinItems:     1,
 	}
 	if err := tFIdxRpc.Call("ApierV1.SetStatQueueProfile", statConfig, &result); err != nil {
 		t.Error(err)
@@ -575,8 +602,8 @@ func testV1FIdxSetSecondStatQueueProfileIndexes(t *testing.T) {
 	if err := tFIdxRpc.Call("ApierV1.GetStatQueueProfile",
 		&utils.TenantID{Tenant: tenant, ID: "TEST_PROFILE2"}, &reply); err != nil {
 		t.Error(err)
-	} else if !reflect.DeepEqual(statConfig, reply) {
-		t.Errorf("Expecting: %+v, received: %+v", statConfig, reply)
+	} else if !reflect.DeepEqual(statConfig.StatQueueProfile, reply) {
+		t.Errorf("Expecting: %+v, received: %+v", statConfig.StatQueueProfile, reply)
 	}
 	if err := tFIdxRpc.Call("ApierV1.RemoveFilterIndexes", &AttrRemFilterIndexes{
 		ItemType: utils.MetaStats, Tenant: tenant}, &result); err != nil {
@@ -610,7 +637,7 @@ func testV1FIdxSecondComputeStatQueueProfileIndexes(t *testing.T) {
 	if result != utils.OK {
 		t.Errorf("Error: %+v", result)
 	}
-	expectedIDX := []string{"*string:Account:1001:TEST_PROFILE2"}
+	expectedIDX := []string{"*string:~Account:1001:TEST_PROFILE2"}
 	var indexes []string
 	if err := tFIdxRpc.Call("ApierV1.GetFilterIndexes", &AttrGetFilterIndexes{
 		ItemType: utils.MetaStats, Tenant: tenant, FilterType: engine.MetaString},
@@ -640,13 +667,13 @@ func testV1FIdxRemoveStatQueueProfile(t *testing.T) {
 	if result != utils.OK {
 		t.Errorf("Error: %+v", result)
 	}
-	if err := tFIdxRpc.Call("ApierV1.RemStatQueueProfile",
+	if err := tFIdxRpc.Call("ApierV1.RemoveStatQueueProfile",
 		&utils.TenantID{Tenant: tenant, ID: "TEST_PROFILE1"}, &result); err != nil {
 		t.Error(err)
 	} else if result != utils.OK {
 		t.Error("Unexpected reply returned", result)
 	}
-	if err := tFIdxRpc.Call("ApierV1.RemStatQueueProfile",
+	if err := tFIdxRpc.Call("ApierV1.RemoveStatQueueProfile",
 		&utils.TenantID{Tenant: tenant, ID: "TEST_PROFILE2"}, &result); err != nil {
 		t.Error(err)
 	} else if result != utils.OK {
@@ -673,17 +700,19 @@ func testV1FIdxRemoveStatQueueProfile(t *testing.T) {
 //ResourceProfile
 func testV1FIdxSetResourceProfileIndexes(t *testing.T) {
 	var reply *engine.ResourceProfile
-	filter = &engine.Filter{
-		Tenant: tenant,
-		ID:     "FLTR_RES_RCFG1",
-		Rules: []*engine.FilterRule{{
-			FieldName: "Account",
-			Type:      utils.MetaString,
-			Values:    []string{"1001"},
-		}},
-		ActivationInterval: &utils.ActivationInterval{
-			ActivationTime: time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
-			ExpiryTime:     time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+	filter = &FilterWithCache{
+		Filter: &engine.Filter{
+			Tenant: tenant,
+			ID:     "FLTR_RES_RCFG1",
+			Rules: []*engine.FilterRule{{
+				FieldName: "~Account",
+				Type:      utils.MetaString,
+				Values:    []string{"1001"},
+			}},
+			ActivationInterval: &utils.ActivationInterval{
+				ActivationTime: time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+				ExpiryTime:     time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+			},
 		},
 	}
 	var result string
@@ -696,21 +725,23 @@ func testV1FIdxSetResourceProfileIndexes(t *testing.T) {
 		&reply); err == nil || err.Error() != utils.ErrNotFound.Error() {
 		t.Error(err)
 	}
-	rlsConfig = &engine.ResourceProfile{
-		Tenant:    tenant,
-		ID:        "RCFG1",
-		FilterIDs: []string{"FLTR_RES_RCFG1"},
-		ActivationInterval: &utils.ActivationInterval{
-			ActivationTime: time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
-			ExpiryTime:     time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+	rlsConfig = &ResourceWithCache{
+		ResourceProfile: &engine.ResourceProfile{
+			Tenant:    tenant,
+			ID:        "RCFG1",
+			FilterIDs: []string{"FLTR_RES_RCFG1"},
+			ActivationInterval: &utils.ActivationInterval{
+				ActivationTime: time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+				ExpiryTime:     time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+			},
+			UsageTTL:          time.Duration(10) * time.Microsecond,
+			Limit:             10,
+			AllocationMessage: "MessageAllocation",
+			Blocker:           true,
+			Stored:            true,
+			Weight:            20,
+			ThresholdIDs:      []string{"Val1", "Val2"},
 		},
-		UsageTTL:          time.Duration(10) * time.Microsecond,
-		Limit:             10,
-		AllocationMessage: "MessageAllocation",
-		Blocker:           true,
-		Stored:            true,
-		Weight:            20,
-		ThresholdIDs:      []string{"Val1", "Val2"},
 	}
 	if err := tFIdxRpc.Call("ApierV1.SetFilter", filter, &result); err != nil {
 		t.Error(err)
@@ -753,7 +784,7 @@ func testV1FIdxComputeResourceProfileIndexes(t *testing.T) {
 	if reply2 != utils.OK {
 		t.Errorf("Error: %+v", reply2)
 	}
-	expectedIDX := []string{"*string:Account:1001:RCFG1"}
+	expectedIDX := []string{"*string:~Account:1001:RCFG1"}
 	var indexes []string
 	if err := tFIdxRpc.Call("ApierV1.GetFilterIndexes", &AttrGetFilterIndexes{
 		ItemType: utils.MetaResources, Tenant: tenant, FilterType: engine.MetaString},
@@ -768,17 +799,19 @@ func testV1FIdxComputeResourceProfileIndexes(t *testing.T) {
 
 func testV1FIdxSetSecondResourceProfileIndexes(t *testing.T) {
 	var reply *engine.StatQueueProfile
-	filter = &engine.Filter{
-		Tenant: tenant,
-		ID:     "FLTR_2",
-		Rules: []*engine.FilterRule{{
-			FieldName: "Account",
-			Type:      utils.MetaString,
-			Values:    []string{"1001"},
-		}},
-		ActivationInterval: &utils.ActivationInterval{
-			ActivationTime: time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
-			ExpiryTime:     time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+	filter = &FilterWithCache{
+		Filter: &engine.Filter{
+			Tenant: tenant,
+			ID:     "FLTR_2",
+			Rules: []*engine.FilterRule{{
+				FieldName: "~Account",
+				Type:      utils.MetaString,
+				Values:    []string{"1001"},
+			}},
+			ActivationInterval: &utils.ActivationInterval{
+				ActivationTime: time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+				ExpiryTime:     time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+			},
 		},
 	}
 	var result string
@@ -791,21 +824,23 @@ func testV1FIdxSetSecondResourceProfileIndexes(t *testing.T) {
 		&reply); err == nil || err.Error() != utils.ErrNotFound.Error() {
 		t.Error(err)
 	}
-	rlsConfig = &engine.ResourceProfile{
-		Tenant:    tenant,
-		ID:        "RCFG2",
-		FilterIDs: []string{"FLTR_2"},
-		ActivationInterval: &utils.ActivationInterval{
-			ActivationTime: time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
-			ExpiryTime:     time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+	rlsConfig = &ResourceWithCache{
+		ResourceProfile: &engine.ResourceProfile{
+			Tenant:    tenant,
+			ID:        "RCFG2",
+			FilterIDs: []string{"FLTR_2"},
+			ActivationInterval: &utils.ActivationInterval{
+				ActivationTime: time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+				ExpiryTime:     time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+			},
+			UsageTTL:          time.Duration(10) * time.Microsecond,
+			Limit:             10,
+			AllocationMessage: "MessageAllocation",
+			Blocker:           true,
+			Stored:            true,
+			Weight:            20,
+			ThresholdIDs:      []string{"Val1", "Val2"},
 		},
-		UsageTTL:          time.Duration(10) * time.Microsecond,
-		Limit:             10,
-		AllocationMessage: "MessageAllocation",
-		Blocker:           true,
-		Stored:            true,
-		Weight:            20,
-		ThresholdIDs:      []string{"Val1", "Val2"},
 	}
 	if err := tFIdxRpc.Call("ApierV1.SetFilter", filter, &result); err != nil {
 		t.Error(err)
@@ -850,7 +885,7 @@ func testV1FIdxSecondComputeResourceProfileIndexes(t *testing.T) {
 	if reply2 != utils.OK {
 		t.Errorf("Error: %+v", reply2)
 	}
-	expectedIDX := []string{"*string:Account:1001:RCFG2"}
+	expectedIDX := []string{"*string:~Account:1001:RCFG2"}
 	var indexes []string
 	if err := tFIdxRpc.Call("ApierV1.GetFilterIndexes", &AttrGetFilterIndexes{
 		ItemType: utils.MetaResources, Tenant: tenant, FilterType: engine.MetaString},
@@ -911,19 +946,21 @@ func testV1FIdxRemoveResourceProfile(t *testing.T) {
 //SupplierProfile
 func testV1FIdxSetSupplierProfileIndexes(t *testing.T) {
 	var reply *engine.SupplierProfile
-	filter = &engine.Filter{
-		Tenant: tenant,
-		ID:     "FLTR_1",
-		Rules: []*engine.FilterRule{
-			{
-				FieldName: "Account",
-				Type:      utils.MetaString,
-				Values:    []string{"1001"},
+	filter = &FilterWithCache{
+		Filter: &engine.Filter{
+			Tenant: tenant,
+			ID:     "FLTR_1",
+			Rules: []*engine.FilterRule{
+				{
+					FieldName: "~Account",
+					Type:      utils.MetaString,
+					Values:    []string{"1001"},
+				},
 			},
-		},
-		ActivationInterval: &utils.ActivationInterval{
-			ActivationTime: time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
-			ExpiryTime:     time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+			ActivationInterval: &utils.ActivationInterval{
+				ActivationTime: time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+				ExpiryTime:     time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+			},
 		},
 	}
 	var result string
@@ -937,24 +974,27 @@ func testV1FIdxSetSupplierProfileIndexes(t *testing.T) {
 		err.Error() != utils.ErrNotFound.Error() {
 		t.Error(err)
 	}
-	splPrf = &engine.SupplierProfile{
-		Tenant:            tenant,
-		ID:                "TEST_PROFILE1",
-		FilterIDs:         []string{"FLTR_1"},
-		Sorting:           "Sort1",
-		SortingParameters: []string{"Param1", "Param2"},
-		Suppliers: []*engine.Supplier{{
-			ID:            "SPL1",
-			RatingPlanIDs: []string{"RP1"},
-			FilterIDs:     []string{"FLTR_1"},
-			AccountIDs:    []string{"Acc"},
-			ResourceIDs:   []string{"Res1", "ResGroup2"},
-			StatIDs:       []string{"Stat1"},
-			Weight:        20,
-			Blocker:       false,
-		}},
-		Weight: 10,
+	splPrf = &SupplierWithCache{
+		SupplierProfile: &engine.SupplierProfile{
+			Tenant:            tenant,
+			ID:                "TEST_PROFILE1",
+			FilterIDs:         []string{"FLTR_1"},
+			Sorting:           "Sort1",
+			SortingParameters: []string{"Param1", "Param2"},
+			Suppliers: []*engine.Supplier{{
+				ID:            "SPL1",
+				RatingPlanIDs: []string{"RP1"},
+				FilterIDs:     []string{"FLTR_1"},
+				AccountIDs:    []string{"Acc"},
+				ResourceIDs:   []string{"Res1", "ResGroup2"},
+				StatIDs:       []string{"Stat1"},
+				Weight:        20,
+				Blocker:       false,
+			}},
+			Weight: 10,
+		},
 	}
+
 	if err := tFIdxRpc.Call("ApierV1.SetSupplierProfile", splPrf, &result); err != nil {
 		t.Error(err)
 	} else if result != utils.OK {
@@ -963,8 +1003,8 @@ func testV1FIdxSetSupplierProfileIndexes(t *testing.T) {
 	if err := tFIdxRpc.Call("ApierV1.GetSupplierProfile",
 		&utils.TenantID{Tenant: tenant, ID: "TEST_PROFILE1"}, &reply); err != nil {
 		t.Error(err)
-	} else if !reflect.DeepEqual(splPrf, reply) {
-		t.Errorf("Expecting: %+v, received: %+v", splPrf, reply)
+	} else if !reflect.DeepEqual(splPrf.SupplierProfile, reply) {
+		t.Errorf("Expecting: %+v, received: %+v", splPrf.SupplierProfile, reply)
 	}
 	if err := tFIdxRpc.Call("ApierV1.RemoveFilterIndexes", &AttrRemFilterIndexes{
 		ItemType: utils.MetaSuppliers, Tenant: tenant}, &result); err != nil {
@@ -997,7 +1037,7 @@ func testV1FIdxComputeSupplierProfileIndexes(t *testing.T) {
 	if reply2 != utils.OK {
 		t.Errorf("Error: %+v", reply2)
 	}
-	expectedIDX := []string{"*string:Account:1001:TEST_PROFILE1"}
+	expectedIDX := []string{"*string:~Account:1001:TEST_PROFILE1"}
 	var indexes []string
 	if err := tFIdxRpc.Call("ApierV1.GetFilterIndexes", &AttrGetFilterIndexes{
 		ItemType: utils.MetaSuppliers, Tenant: tenant, FilterType: engine.MetaString},
@@ -1012,17 +1052,19 @@ func testV1FIdxComputeSupplierProfileIndexes(t *testing.T) {
 
 func testV1FIdxSetSecondSupplierProfileIndexes(t *testing.T) {
 	var reply *engine.SupplierProfile
-	filter = &engine.Filter{
-		Tenant: tenant,
-		ID:     "FLTR_2",
-		Rules: []*engine.FilterRule{{
-			FieldName: "Account",
-			Type:      utils.MetaString,
-			Values:    []string{"1001"},
-		}},
-		ActivationInterval: &utils.ActivationInterval{
-			ActivationTime: time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
-			ExpiryTime:     time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+	filter = &FilterWithCache{
+		Filter: &engine.Filter{
+			Tenant: tenant,
+			ID:     "FLTR_2",
+			Rules: []*engine.FilterRule{{
+				FieldName: "~Account",
+				Type:      utils.MetaString,
+				Values:    []string{"1001"},
+			}},
+			ActivationInterval: &utils.ActivationInterval{
+				ActivationTime: time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+				ExpiryTime:     time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+			},
 		},
 	}
 	var result string
@@ -1036,23 +1078,25 @@ func testV1FIdxSetSecondSupplierProfileIndexes(t *testing.T) {
 		err.Error() != utils.ErrNotFound.Error() {
 		t.Error(err)
 	}
-	splPrf = &engine.SupplierProfile{
-		Tenant:            tenant,
-		ID:                "TEST_PROFILE2",
-		FilterIDs:         []string{"FLTR_2"},
-		Sorting:           "Sort1",
-		SortingParameters: []string{"Param1", "Param2"},
-		Suppliers: []*engine.Supplier{{
-			ID:            "SPL1",
-			RatingPlanIDs: []string{"RP1"},
-			FilterIDs:     []string{"FLTR_2"},
-			AccountIDs:    []string{"Acc"},
-			ResourceIDs:   []string{"Res1", "ResGroup2"},
-			StatIDs:       []string{"Stat1"},
-			Weight:        20,
-			Blocker:       false,
-		}},
-		Weight: 10,
+	splPrf = &SupplierWithCache{
+		SupplierProfile: &engine.SupplierProfile{
+			Tenant:            tenant,
+			ID:                "TEST_PROFILE2",
+			FilterIDs:         []string{"FLTR_2"},
+			Sorting:           "Sort1",
+			SortingParameters: []string{"Param1", "Param2"},
+			Suppliers: []*engine.Supplier{{
+				ID:            "SPL1",
+				RatingPlanIDs: []string{"RP1"},
+				FilterIDs:     []string{"FLTR_2"},
+				AccountIDs:    []string{"Acc"},
+				ResourceIDs:   []string{"Res1", "ResGroup2"},
+				StatIDs:       []string{"Stat1"},
+				Weight:        20,
+				Blocker:       false,
+			}},
+			Weight: 10,
+		},
 	}
 	if err := tFIdxRpc.Call("ApierV1.SetSupplierProfile", splPrf, &result); err != nil {
 		t.Error(err)
@@ -1062,8 +1106,8 @@ func testV1FIdxSetSecondSupplierProfileIndexes(t *testing.T) {
 	if err := tFIdxRpc.Call("ApierV1.GetSupplierProfile",
 		&utils.TenantID{Tenant: tenant, ID: "TEST_PROFILE2"}, &reply); err != nil {
 		t.Error(err)
-	} else if !reflect.DeepEqual(splPrf, reply) {
-		t.Errorf("Expecting: %+v, received: %+v", splPrf, reply)
+	} else if !reflect.DeepEqual(splPrf.SupplierProfile, reply) {
+		t.Errorf("Expecting: %+v, received: %+v", splPrf.SupplierProfile, reply)
 	}
 	if err := tFIdxRpc.Call("ApierV1.RemoveFilterIndexes", &AttrRemFilterIndexes{
 		ItemType: utils.MetaSuppliers, Tenant: tenant}, &result); err != nil {
@@ -1098,7 +1142,7 @@ func testV1FIdxSecondComputeSupplierProfileIndexes(t *testing.T) {
 	if reply2 != utils.OK {
 		t.Errorf("Error: %+v", reply2)
 	}
-	expectedIDX := []string{"*string:Account:1001:TEST_PROFILE2"}
+	expectedIDX := []string{"*string:~Account:1001:TEST_PROFILE2"}
 	var indexes []string
 	if err := tFIdxRpc.Call("ApierV1.GetFilterIndexes", &AttrGetFilterIndexes{
 		ItemType: utils.MetaSuppliers, Tenant: tenant, FilterType: engine.MetaString},
@@ -1163,17 +1207,19 @@ func testV1FIdxRemoveSupplierProfile(t *testing.T) {
 //AttributeProfile
 func testV1FIdxSetAttributeProfileIndexes(t *testing.T) {
 	var reply *engine.AttributeProfile
-	filter = &engine.Filter{
-		Tenant: tenant,
-		ID:     "FLTR_1",
-		Rules: []*engine.FilterRule{{
-			FieldName: "Account",
-			Type:      utils.MetaString,
-			Values:    []string{"1001"},
-		}},
-		ActivationInterval: &utils.ActivationInterval{
-			ActivationTime: time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
-			ExpiryTime:     time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+	filter = &FilterWithCache{
+		Filter: &engine.Filter{
+			Tenant: tenant,
+			ID:     "FLTR_1",
+			Rules: []*engine.FilterRule{{
+				FieldName: "~Account",
+				Type:      utils.MetaString,
+				Values:    []string{"1001"},
+			}},
+			ActivationInterval: &utils.ActivationInterval{
+				ActivationTime: time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+				ExpiryTime:     time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+			},
 		},
 	}
 	var result string
@@ -1187,23 +1233,25 @@ func testV1FIdxSetAttributeProfileIndexes(t *testing.T) {
 		err.Error() != utils.ErrNotFound.Error() {
 		t.Error(err)
 	}
-	alsPrf = &engine.AttributeProfile{
-		Tenant:    tenant,
-		ID:        "ApierTest",
-		Contexts:  []string{utils.MetaSessionS},
-		FilterIDs: []string{"FLTR_1"},
-		ActivationInterval: &utils.ActivationInterval{
-			ActivationTime: time.Date(2014, 7, 14, 14, 35, 0, 0, time.UTC),
-			ExpiryTime:     time.Date(2014, 7, 14, 14, 35, 0, 0, time.UTC),
-		},
-		Attributes: []*engine.Attribute{
-			{
-				FilterIDs:  []string{"*string:FL1:In1"},
-				FieldName:  "FL1",
-				Substitute: config.NewRSRParsersMustCompile("Al1", true, utils.INFIELD_SEP),
+	alsPrf = &AttributeWithCache{
+		AttributeProfile: &engine.AttributeProfile{
+			Tenant:    tenant,
+			ID:        "ApierTest",
+			Contexts:  []string{utils.MetaSessionS},
+			FilterIDs: []string{"FLTR_1"},
+			ActivationInterval: &utils.ActivationInterval{
+				ActivationTime: time.Date(2014, 7, 14, 14, 35, 0, 0, time.UTC),
+				ExpiryTime:     time.Date(2014, 7, 14, 14, 35, 0, 0, time.UTC),
 			},
+			Attributes: []*engine.Attribute{
+				{
+					FilterIDs: []string{"*string:FL1:In1"},
+					FieldName: "FL1",
+					Value:     config.NewRSRParsersMustCompile("Al1", true, utils.INFIELD_SEP),
+				},
+			},
+			Weight: 20,
 		},
-		Weight: 20,
 	}
 	if err := tFIdxRpc.Call("ApierV1.SetAttributeProfile", alsPrf, &result); err != nil {
 		t.Error(err)
@@ -1257,7 +1305,7 @@ func testV1FIdxComputeAttributeProfileIndexes(t *testing.T) {
 	} else if result != utils.OK {
 		t.Errorf("Error: %+v", result)
 	}
-	expectedIDX := []string{"*string:Account:1001:ApierTest"}
+	expectedIDX := []string{"*string:~Account:1001:ApierTest"}
 	var indexes []string
 	if err := tFIdxRpc.Call("ApierV1.GetFilterIndexes", &AttrGetFilterIndexes{
 		ItemType:   utils.MetaAttributes,
@@ -1273,17 +1321,19 @@ func testV1FIdxComputeAttributeProfileIndexes(t *testing.T) {
 
 func testV1FIdxSetSecondAttributeProfileIndexes(t *testing.T) {
 	var reply *engine.AttributeProfile
-	filter = &engine.Filter{
-		Tenant: tenant,
-		ID:     "FLTR_2",
-		Rules: []*engine.FilterRule{{
-			FieldName: "Account",
-			Type:      utils.MetaString,
-			Values:    []string{"1001"},
-		}},
-		ActivationInterval: &utils.ActivationInterval{
-			ActivationTime: time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
-			ExpiryTime:     time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+	filter = &FilterWithCache{
+		Filter: &engine.Filter{
+			Tenant: tenant,
+			ID:     "FLTR_2",
+			Rules: []*engine.FilterRule{{
+				FieldName: "~Account",
+				Type:      utils.MetaString,
+				Values:    []string{"1001"},
+			}},
+			ActivationInterval: &utils.ActivationInterval{
+				ActivationTime: time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+				ExpiryTime:     time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
+			},
 		},
 	}
 	var result string
@@ -1297,21 +1347,23 @@ func testV1FIdxSetSecondAttributeProfileIndexes(t *testing.T) {
 		err.Error() != utils.ErrNotFound.Error() {
 		t.Error(err)
 	}
-	alsPrf = &engine.AttributeProfile{
-		Tenant:    tenant,
-		ID:        "ApierTest2",
-		Contexts:  []string{utils.MetaSessionS},
-		FilterIDs: []string{"FLTR_2"},
-		ActivationInterval: &utils.ActivationInterval{
-			ActivationTime: time.Date(2014, 7, 14, 14, 35, 0, 0, time.UTC),
-			ExpiryTime:     time.Date(2014, 7, 14, 14, 35, 0, 0, time.UTC),
+	alsPrf = &AttributeWithCache{
+		AttributeProfile: &engine.AttributeProfile{
+			Tenant:    tenant,
+			ID:        "ApierTest2",
+			Contexts:  []string{utils.MetaSessionS},
+			FilterIDs: []string{"FLTR_2"},
+			ActivationInterval: &utils.ActivationInterval{
+				ActivationTime: time.Date(2014, 7, 14, 14, 35, 0, 0, time.UTC),
+				ExpiryTime:     time.Date(2014, 7, 14, 14, 35, 0, 0, time.UTC),
+			},
+			Attributes: []*engine.Attribute{{
+				FilterIDs: []string{"*string:FL1:In1"},
+				FieldName: "FL1",
+				Value:     config.NewRSRParsersMustCompile("Al1", true, utils.INFIELD_SEP),
+			}},
+			Weight: 20,
 		},
-		Attributes: []*engine.Attribute{{
-			FilterIDs:  []string{"*string:FL1:In1"},
-			FieldName:  "FL1",
-			Substitute: config.NewRSRParsersMustCompile("Al1", true, utils.INFIELD_SEP),
-		}},
-		Weight: 20,
 	}
 	if err := tFIdxRpc.Call("ApierV1.SetAttributeProfile", alsPrf, &result); err != nil {
 		t.Error(err)
@@ -1366,7 +1418,7 @@ func testV1FIdxSecondComputeAttributeProfileIndexes(t *testing.T) {
 	} else if result != utils.OK {
 		t.Errorf("Error: %+v", result)
 	}
-	expectedIDX := []string{"*string:Account:1001:ApierTest2"}
+	expectedIDX := []string{"*string:~Account:1001:ApierTest2"}
 	var indexes []string
 	if err := tFIdxRpc.Call("ApierV1.GetFilterIndexes", &AttrGetFilterIndexes{
 		ItemType:   utils.MetaAttributes,
@@ -1379,6 +1431,41 @@ func testV1FIdxSecondComputeAttributeProfileIndexes(t *testing.T) {
 		t.Errorf("Expecting: %+v, received: %+v",
 			expectedIDX, utils.ToJSON(indexes))
 	}
+}
+
+func testV1FIdxComputeWithAnotherContext(t *testing.T) {
+	var result string
+	if err := tFIdxRpc.Call(utils.ApierV1ComputeFilterIndexes,
+		utils.ArgsComputeFilterIndexes{
+			Tenant:        tenant,
+			Context:       utils.META_ANY,
+			ThresholdIDs:  &emptySlice,
+			AttributeIDs:  nil,
+			ResourceIDs:   &emptySlice,
+			StatIDs:       &emptySlice,
+			SupplierIDs:   &emptySlice,
+			ChargerIDs:    &emptySlice,
+			DispatcherIDs: &emptySlice,
+		}, &result); err != nil {
+		t.Error(err)
+	} else if result != utils.OK {
+		t.Errorf("Error: %+v", result)
+	}
+	expectedIDX := []string{"*string:~Account:1001:ApierTest", "*string:~Account:1001:ApierTest2"}
+	revExpectedIDX := []string{"*string:~Account:1001:ApierTest2", "*string:~Account:1001:ApierTest"}
+	var indexes []string
+	if err := tFIdxRpc.Call("ApierV1.GetFilterIndexes", &AttrGetFilterIndexes{
+		ItemType:   utils.MetaAttributes,
+		Tenant:     tenant,
+		FilterType: engine.MetaString,
+		Context:    utils.META_ANY}, &indexes); err != nil {
+		t.Error(err)
+	}
+	if !reflect.DeepEqual(expectedIDX, indexes) && !reflect.DeepEqual(revExpectedIDX, indexes) {
+		t.Errorf("Expecting: %+v or %+v, received: %+v",
+			expectedIDX, revExpectedIDX, utils.ToJSON(indexes))
+	}
+
 }
 
 func testV1FIdxRemoveAttributeProfile(t *testing.T) {
@@ -1399,14 +1486,14 @@ func testV1FIdxRemoveAttributeProfile(t *testing.T) {
 	} else if result != utils.OK {
 		t.Error("Unexpected reply returned", result)
 	}
-	if err := tFIdxRpc.Call("ApierV1.RemoveAttributeProfile", &ArgRemoveAttrProfile{
+	if err := tFIdxRpc.Call("ApierV1.RemoveAttributeProfile", &utils.TenantIDWithCache{
 		Tenant: tenant,
 		ID:     "ApierTest"}, &result); err != nil {
 		t.Error(err)
 	} else if result != utils.OK {
 		t.Error("Unexpected reply returned", result)
 	}
-	if err := tFIdxRpc.Call("ApierV1.RemoveAttributeProfile", &ArgRemoveAttrProfile{
+	if err := tFIdxRpc.Call("ApierV1.RemoveAttributeProfile", &utils.TenantIDWithCache{
 		Tenant: tenant,
 		ID:     "ApierTest2"}, &result); err != nil {
 		t.Error(err)
@@ -1440,14 +1527,14 @@ func testV1FIdxPopulateDatabase(t *testing.T) {
 	resPrf := &engine.ResourceProfile{
 		Tenant: tenant,
 		ID:     "ResProfile1",
-		FilterIDs: []string{"*string:Account:1001",
-			"*string:Destination:1001",
-			"*string:Destination:2001",
-			"*string:Account:1002",
-			"*prefix:Account:10",
-			"*string:Destination:1001",
-			"*prefix:Destination:20",
-			"*string:Account:1002"},
+		FilterIDs: []string{"*string:~Account:1001",
+			"*string:~Destination:1001",
+			"*string:~Destination:2001",
+			"*string:~Account:1002",
+			"*prefix:~Account:10",
+			"*string:~Destination:1001",
+			"*prefix:~Destination:20",
+			"*string:~Account:1002"},
 	}
 	if err := tFIdxRpc.Call("ApierV1.SetResourceProfile", resPrf, &result); err != nil {
 		t.Error(err)
@@ -1457,14 +1544,14 @@ func testV1FIdxPopulateDatabase(t *testing.T) {
 	resPrf = &engine.ResourceProfile{
 		Tenant: tenant,
 		ID:     "ResProfile2",
-		FilterIDs: []string{"*string:Account:1001",
-			"*string:Destination:1001",
-			"*string:Destination:2001",
-			"*string:Account:2002",
-			"*prefix:Account:10",
-			"*string:Destination:2001",
-			"*prefix:Destination:20",
-			"*string:Account:1002"},
+		FilterIDs: []string{"*string:~Account:1001",
+			"*string:~Destination:1001",
+			"*string:~Destination:2001",
+			"*string:~Account:2002",
+			"*prefix:~Account:10",
+			"*string:~Destination:2001",
+			"*prefix:~Destination:20",
+			"*string:~Account:1002"},
 	}
 	if err := tFIdxRpc.Call("ApierV1.SetResourceProfile", resPrf, &result); err != nil {
 		t.Error(err)
@@ -1474,14 +1561,14 @@ func testV1FIdxPopulateDatabase(t *testing.T) {
 	resPrf = &engine.ResourceProfile{
 		Tenant: tenant,
 		ID:     "ResProfile3",
-		FilterIDs: []string{"*string:Account:3001",
-			"*string:Destination:1001",
-			"*string:Destination:2001",
-			"*string:Account:1002",
-			"*prefix:Account:10",
-			"*prefix:Destination:1001",
-			"*prefix:Destination:200",
-			"*string:Account:1003"},
+		FilterIDs: []string{"*string:~Account:3001",
+			"*string:~Destination:1001",
+			"*string:~Destination:2001",
+			"*string:~Account:1002",
+			"*prefix:~Account:10",
+			"*prefix:~Destination:1001",
+			"*prefix:~Destination:200",
+			"*string:~Account:1003"},
 	}
 	if err := tFIdxRpc.Call("ApierV1.SetResourceProfile", resPrf, &result); err != nil {
 		t.Error(err)
@@ -1496,33 +1583,33 @@ func testV1FIdxGetFilterIndexes1(t *testing.T) {
 		ItemType: utils.MetaResources,
 	}
 	expectedIndexes := []string{
-		"*string:Account:3001:ResProfile3",
-		"*string:Destination:1001:ResProfile1",
-		"*string:Destination:1001:ResProfile2",
-		"*string:Destination:1001:ResProfile3",
-		"*string:Account:1002:ResProfile1",
-		"*string:Account:1002:ResProfile2",
-		"*string:Account:1002:ResProfile3",
-		"*string:Account:1003:ResProfile3",
-		"*prefix:Destination:20:ResProfile1",
-		"*prefix:Destination:20:ResProfile2",
-		"*string:Account:1001:ResProfile1",
-		"*string:Account:1001:ResProfile2",
-		"*string:Account:2002:ResProfile2",
-		"*prefix:Destination:1001:ResProfile3",
-		"*prefix:Destination:200:ResProfile3",
-		"*string:Destination:2001:ResProfile1",
-		"*string:Destination:2001:ResProfile2",
-		"*string:Destination:2001:ResProfile3",
-		"*prefix:Account:10:ResProfile1",
-		"*prefix:Account:10:ResProfile2",
-		"*prefix:Account:10:ResProfile3"}
+		"*string:~Account:3001:ResProfile3",
+		"*string:~Destination:1001:ResProfile1",
+		"*string:~Destination:1001:ResProfile2",
+		"*string:~Destination:1001:ResProfile3",
+		"*string:~Account:1002:ResProfile1",
+		"*string:~Account:1002:ResProfile2",
+		"*string:~Account:1002:ResProfile3",
+		"*string:~Account:1003:ResProfile3",
+		"*prefix:~Destination:20:ResProfile1",
+		"*prefix:~Destination:20:ResProfile2",
+		"*string:~Account:1001:ResProfile1",
+		"*string:~Account:1001:ResProfile2",
+		"*string:~Account:2002:ResProfile2",
+		"*prefix:~Destination:1001:ResProfile3",
+		"*prefix:~Destination:200:ResProfile3",
+		"*string:~Destination:2001:ResProfile1",
+		"*string:~Destination:2001:ResProfile2",
+		"*string:~Destination:2001:ResProfile3",
+		"*prefix:~Account:10:ResProfile1",
+		"*prefix:~Account:10:ResProfile2",
+		"*prefix:~Account:10:ResProfile3"}
 	sort.Strings(expectedIndexes)
 	var reply []string
 	if err := tFIdxRpc.Call("ApierV1.GetFilterIndexes", arg, &reply); err != nil {
 		t.Error(err)
-	} else if sort.Strings(reply); !reflect.DeepEqual(len(expectedIndexes), len(reply)) {
-		t.Errorf("Expecting: %+v, received: %+v", len(expectedIndexes), len(reply))
+	} else if sort.Strings(reply); !reflect.DeepEqual(expectedIndexes, reply) {
+		t.Errorf("Expecting: %+v, received: %+v", expectedIndexes, reply)
 	}
 }
 
@@ -1533,26 +1620,26 @@ func testV1FIdxGetFilterIndexes2(t *testing.T) {
 		FilterType: utils.MetaString,
 	}
 	expectedIndexes := []string{
-		"*string:Account:1003:ResProfile3",
-		"*string:Account:3001:ResProfile3",
-		"*string:Destination:1001:ResProfile1",
-		"*string:Destination:1001:ResProfile2",
-		"*string:Destination:1001:ResProfile3",
-		"*string:Account:1002:ResProfile1",
-		"*string:Account:1002:ResProfile2",
-		"*string:Account:1002:ResProfile3",
-		"*string:Account:1001:ResProfile1",
-		"*string:Account:1001:ResProfile2",
-		"*string:Destination:2001:ResProfile3",
-		"*string:Destination:2001:ResProfile1",
-		"*string:Destination:2001:ResProfile2",
-		"*string:Account:2002:ResProfile2"}
+		"*string:~Account:1003:ResProfile3",
+		"*string:~Account:3001:ResProfile3",
+		"*string:~Destination:1001:ResProfile1",
+		"*string:~Destination:1001:ResProfile2",
+		"*string:~Destination:1001:ResProfile3",
+		"*string:~Account:1002:ResProfile1",
+		"*string:~Account:1002:ResProfile2",
+		"*string:~Account:1002:ResProfile3",
+		"*string:~Account:1001:ResProfile1",
+		"*string:~Account:1001:ResProfile2",
+		"*string:~Destination:2001:ResProfile3",
+		"*string:~Destination:2001:ResProfile1",
+		"*string:~Destination:2001:ResProfile2",
+		"*string:~Account:2002:ResProfile2"}
 	sort.Strings(expectedIndexes)
 	var reply []string
 	if err := tFIdxRpc.Call("ApierV1.GetFilterIndexes", arg, &reply); err != nil {
 		t.Error(err)
-	} else if sort.Strings(reply); !reflect.DeepEqual(len(expectedIndexes), len(reply)) {
-		t.Errorf("Expecting: %+v, received: %+v", len(expectedIndexes), len(reply))
+	} else if sort.Strings(reply); !reflect.DeepEqual(expectedIndexes, reply) {
+		t.Errorf("Expecting: %+v, received: %+v", expectedIndexes, reply)
 	}
 }
 
@@ -1563,19 +1650,19 @@ func testV1FIdxGetFilterIndexes3(t *testing.T) {
 		FilterType: engine.MetaPrefix,
 	}
 	expectedIndexes := []string{
-		"*prefix:Destination:20:ResProfile1",
-		"*prefix:Destination:20:ResProfile2",
-		"*prefix:Account:10:ResProfile1",
-		"*prefix:Account:10:ResProfile2",
-		"*prefix:Account:10:ResProfile3",
-		"*prefix:Destination:200:ResProfile3",
-		"*prefix:Destination:1001:ResProfile3"}
+		"*prefix:~Destination:20:ResProfile1",
+		"*prefix:~Destination:20:ResProfile2",
+		"*prefix:~Account:10:ResProfile1",
+		"*prefix:~Account:10:ResProfile2",
+		"*prefix:~Account:10:ResProfile3",
+		"*prefix:~Destination:200:ResProfile3",
+		"*prefix:~Destination:1001:ResProfile3"}
 	sort.Strings(expectedIndexes)
 	var reply []string
 	if err := tFIdxRpc.Call("ApierV1.GetFilterIndexes", arg, &reply); err != nil {
 		t.Error(err)
-	} else if sort.Strings(reply); !reflect.DeepEqual(len(expectedIndexes), len(reply)) {
-		t.Errorf("Expecting: %+v, received: %+v", len(expectedIndexes), len(reply))
+	} else if sort.Strings(reply); !reflect.DeepEqual(expectedIndexes, reply) {
+		t.Errorf("Expecting: %+v, received: %+v", expectedIndexes, reply)
 	}
 }
 
@@ -1587,33 +1674,35 @@ func testV1FIdxGetFilterIndexes4(t *testing.T) {
 		FilterField: "Account",
 	}
 	expectedIndexes := []string{
-		"*string:Account:1003:ResProfile3",
-		"*string:Account:3001:ResProfile3",
-		"*string:Account:1002:ResProfile1",
-		"*string:Account:1002:ResProfile2",
-		"*string:Account:1002:ResProfile3",
-		"*string:Account:1001:ResProfile1",
-		"*string:Account:1001:ResProfile2",
-		"*string:Account:2002:ResProfile2"}
+		"*string:~Account:1003:ResProfile3",
+		"*string:~Account:3001:ResProfile3",
+		"*string:~Account:1002:ResProfile1",
+		"*string:~Account:1002:ResProfile2",
+		"*string:~Account:1002:ResProfile3",
+		"*string:~Account:1001:ResProfile1",
+		"*string:~Account:1001:ResProfile2",
+		"*string:~Account:2002:ResProfile2"}
 	sort.Strings(expectedIndexes)
 	var reply []string
 	if err := tFIdxRpc.Call("ApierV1.GetFilterIndexes", arg, &reply); err != nil {
 		t.Error(err)
-	} else if sort.Strings(reply); !reflect.DeepEqual(len(expectedIndexes), len(reply)) {
-		t.Errorf("Expecting: %+v, received: %+v", len(expectedIndexes), len(reply))
+	} else if sort.Strings(reply); !reflect.DeepEqual(expectedIndexes, reply) {
+		t.Errorf("Expecting: %+v, received: %+v", expectedIndexes, reply)
 	}
 }
 
 func testV1FIdxSetDispatcherProfile(t *testing.T) {
 	var reply string
 	//add a dispatcherProfile for 2 subsystems and verify if the index was created for both
-	dispatcherProfile = &engine.DispatcherProfile{
-		Tenant:     "cgrates.org",
-		ID:         "DSP_Test1",
-		FilterIDs:  []string{"*string:~Account:1001", "*string:~Subject:2012", "*prefix:~RandomField:RandomValue"},
-		Strategy:   utils.MetaFirst,
-		Subsystems: []string{utils.MetaAttributes, utils.MetaSessionS},
-		Weight:     20,
+	dispatcherProfile = &DispatcherWithCache{
+		DispatcherProfile: &engine.DispatcherProfile{
+			Tenant:     "cgrates.org",
+			ID:         "DSP_Test1",
+			FilterIDs:  []string{"*string:~Account:1001", "*string:~Subject:2012", "*prefix:~RandomField:RandomValue"},
+			Strategy:   utils.MetaFirst,
+			Subsystems: []string{utils.MetaAttributes, utils.MetaSessionS},
+			Weight:     20,
+		},
 	}
 
 	if err := tFIdxRpc.Call(utils.ApierV1SetDispatcherProfile,
@@ -1754,11 +1843,13 @@ func testV1FIdxSetDispatcherProfile2(t *testing.T) {
 	var reply string
 	//add a new dispatcherProfile with empty filterIDs
 	//should create an index of type *none:*any:*any for *attributes subsystem
-	dispatcherProfile = &engine.DispatcherProfile{
-		Tenant:     "cgrates.org",
-		ID:         "DSP_Test2",
-		Subsystems: []string{utils.MetaAttributes},
-		Weight:     20,
+	dispatcherProfile = &DispatcherWithCache{
+		DispatcherProfile: &engine.DispatcherProfile{
+			Tenant:     "cgrates.org",
+			ID:         "DSP_Test2",
+			Subsystems: []string{utils.MetaAttributes},
+			Weight:     20,
+		},
 	}
 
 	if err := tFIdxRpc.Call(utils.ApierV1SetDispatcherProfile,
@@ -1932,6 +2023,7 @@ func testV1FIdxComputeDispatcherProfileIndexes2(t *testing.T) {
 		t.Errorf("Expecting: %+v, received: %+v", expectedIndexes, utils.ToJSON(indexes))
 	}
 }
+
 func testV1FIdxStopEngine(t *testing.T) {
 	if err := engine.KillEngine(100); err != nil {
 		t.Error(err)

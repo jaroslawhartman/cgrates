@@ -46,6 +46,10 @@ func (m *Migrator) migrateCurrentCharger() (err error) {
 		if err := m.dmOut.DataManager().SetChargerProfile(cpp, true); err != nil {
 			return err
 		}
+		if err := m.dmIN.DataManager().RemoveChargerProfile(tenant,
+			idg, utils.NonTransactional, false); err != nil {
+			return err
+		}
 		m.stats[utils.Chargers] += 1
 	}
 	return
@@ -69,9 +73,11 @@ func (m *Migrator) migrateChargers() (err error) {
 	switch vrs[utils.Chargers] {
 	case current[utils.Chargers]:
 		if m.sameDataDB {
-			return
+			break
 		}
-		return m.migrateCurrentCharger()
+		if err = m.migrateCurrentCharger(); err != nil {
+			return err
+		}
 	}
-	return
+	return m.ensureIndexesDataDB(engine.ColCpp)
 }

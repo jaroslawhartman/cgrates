@@ -1,4 +1,4 @@
-// +build offline_tp
+// +build integration
 
 /*
 Real-time Online/Offline Charging System (OCS) for Telecom & ISP environments
@@ -25,6 +25,7 @@ import (
 	"net/rpc/jsonrpc"
 	"path"
 	"reflect"
+	"sort"
 	"testing"
 
 	"github.com/cgrates/cgrates/config"
@@ -37,7 +38,7 @@ var (
 	tpResCfg       *config.CGRConfig
 	tpResRPC       *rpc.Client
 	tpResDataDir   = "/usr/share/cgrates"
-	tpRes          *utils.TPResource
+	tpRes          *utils.TPResourceProfile
 	tpResDelay     int
 	tpResConfigDIR string //run tests for specific configuration
 )
@@ -52,7 +53,7 @@ var sTestsTPResources = []func(t *testing.T){
 	testTPResGetTPResourceAfterSet,
 	testTPResUpdateTPResource,
 	testTPResGetTPResourceAfterUpdate,
-	testTPResRemTPResource,
+	testTPResRemoveTPResource,
 	testTPResGetTPResourceAfterRemove,
 	testTPResKillEngine,
 }
@@ -82,7 +83,7 @@ func TestTPResITPG(t *testing.T) {
 func testTPResInitCfg(t *testing.T) {
 	var err error
 	tpResCfgPath = path.Join(tpResDataDir, "conf", "samples", tpResConfigDIR)
-	tpResCfg, err = config.NewCGRConfigFromFolder(tpResCfgPath)
+	tpResCfg, err = config.NewCGRConfigFromPath(tpResCfgPath)
 	if err != nil {
 		t.Error(err)
 	}
@@ -115,7 +116,7 @@ func testTPResRpcConn(t *testing.T) {
 }
 
 func testTPResGetTPResourceBeforeSet(t *testing.T) {
-	var reply *utils.TPResource
+	var reply *utils.TPResourceProfile
 	if err := tpResRPC.Call("ApierV1.GetTPResource",
 		&utils.TPTntID{TPid: "TPR1", Tenant: "cgrates.org", ID: "ResGroup1"}, &reply); err == nil ||
 		err.Error() != utils.ErrNotFound.Error() {
@@ -124,7 +125,7 @@ func testTPResGetTPResourceBeforeSet(t *testing.T) {
 }
 
 func testTPResSetTPResource(t *testing.T) {
-	tpRes = &utils.TPResource{
+	tpRes = &utils.TPResourceProfile{
 		Tenant:    "cgrates.org",
 		TPid:      "TPR1",
 		ID:        "ResGroup1",
@@ -141,6 +142,7 @@ func testTPResSetTPResource(t *testing.T) {
 		Weight:            20,
 		ThresholdIDs:      []string{"ValOne", "ValTwo"},
 	}
+	sort.Strings(tpRes.ThresholdIDs)
 	var result string
 	if err := tpResRPC.Call("ApierV1.SetTPResource", tpRes, &result); err != nil {
 		t.Error(err)
@@ -150,11 +152,13 @@ func testTPResSetTPResource(t *testing.T) {
 }
 
 func testTPResGetTPResourceAfterSet(t *testing.T) {
-	var respond *utils.TPResource
+	var respond *utils.TPResourceProfile
 	if err := tpResRPC.Call("ApierV1.GetTPResource", &utils.TPTntID{TPid: "TPR1", Tenant: "cgrates.org", ID: "ResGroup1"},
 		&respond); err != nil {
-		t.Error(err)
-	} else if !reflect.DeepEqual(tpRes, respond) {
+		t.Fatal(err)
+	}
+	sort.Strings(respond.ThresholdIDs)
+	if !reflect.DeepEqual(tpRes, respond) {
 		t.Errorf("Expecting : %+v, received: %+v", tpRes, respond)
 	}
 }
@@ -162,6 +166,7 @@ func testTPResGetTPResourceAfterSet(t *testing.T) {
 func testTPResUpdateTPResource(t *testing.T) {
 	var result string
 	tpRes.FilterIDs = []string{"FLTR_1", "FLTR_STS1"}
+	sort.Strings(tpRes.FilterIDs)
 	if err := tpResRPC.Call("ApierV1.SetTPResource", tpRes, &result); err != nil {
 		t.Error(err)
 	} else if result != utils.OK {
@@ -170,18 +175,21 @@ func testTPResUpdateTPResource(t *testing.T) {
 }
 
 func testTPResGetTPResourceAfterUpdate(t *testing.T) {
-	var expectedTPR *utils.TPResource
+	var expectedTPR *utils.TPResourceProfile
 	if err := tpResRPC.Call("ApierV1.GetTPResource", &utils.TPTntID{TPid: "TPR1", Tenant: "cgrates.org", ID: "ResGroup1"},
 		&expectedTPR); err != nil {
-		t.Error(err)
-	} else if !reflect.DeepEqual(tpRes, expectedTPR) {
+		t.Fatal(err)
+	}
+	sort.Strings(expectedTPR.FilterIDs)
+	sort.Strings(expectedTPR.ThresholdIDs)
+	if !reflect.DeepEqual(tpRes, expectedTPR) {
 		t.Errorf("Expecting: %+v, received: %+v", tpRes, expectedTPR)
 	}
 }
 
-func testTPResRemTPResource(t *testing.T) {
+func testTPResRemoveTPResource(t *testing.T) {
 	var resp string
-	if err := tpResRPC.Call("ApierV1.RemTPResource", &utils.TPTntID{TPid: "TPR1", Tenant: "cgrates.org", ID: "ResGroup1"},
+	if err := tpResRPC.Call("ApierV1.RemoveTPResource", &utils.TPTntID{TPid: "TPR1", Tenant: "cgrates.org", ID: "ResGroup1"},
 		&resp); err != nil {
 		t.Error(err)
 	} else if resp != utils.OK {
@@ -190,7 +198,7 @@ func testTPResRemTPResource(t *testing.T) {
 }
 
 func testTPResGetTPResourceAfterRemove(t *testing.T) {
-	var respond *utils.TPResource
+	var respond *utils.TPResourceProfile
 	if err := tpResRPC.Call("ApierV1.GetTPResource", &utils.TPTntID{TPid: "TPR1", Tenant: "cgrates.org", ID: "ResGroup1"},
 		&respond); err == nil || err.Error() != utils.ErrNotFound.Error() {
 		t.Error(err)

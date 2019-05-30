@@ -63,10 +63,10 @@ func TestDerivedChargersVITMigrateMongo2Redis(t *testing.T) {
 
 func testStartDC(testName, inPath, outPath string, t *testing.T) {
 	var err error
-	if dcCfgIn, err = config.NewCGRConfigFromFolder(inPath); err != nil {
+	if dcCfgIn, err = config.NewCGRConfigFromPath(inPath); err != nil {
 		t.Fatal(err)
 	}
-	if dcCfgOut, err = config.NewCGRConfigFromFolder(outPath); err != nil {
+	if dcCfgOut, err = config.NewCGRConfigFromPath(outPath); err != nil {
 		t.Fatal(err)
 	}
 	for _, stest := range sTestsDCIT {
@@ -148,12 +148,14 @@ func testDCITMigrateAndMove(t *testing.T) {
 		ActivationInterval: nil,
 		Attributes: []*engine.Attribute{
 			{
-				FieldName:  utils.Account,
-				Substitute: config.NewRSRParsersMustCompile("1004", true, utils.INFIELD_SEP),
+				FieldName: utils.Account,
+				Type:      utils.MetaVariable,
+				Value:     config.NewRSRParsersMustCompile("1004", true, utils.INFIELD_SEP),
 			},
 			{
-				FieldName:  utils.Subject,
-				Substitute: config.NewRSRParsersMustCompile("call_1003", true, utils.INFIELD_SEP),
+				FieldName: utils.Subject,
+				Type:      utils.MetaVariable,
+				Value:     config.NewRSRParsersMustCompile("call_1003", true, utils.INFIELD_SEP),
 			},
 		},
 		Blocker: false,

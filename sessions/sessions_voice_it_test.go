@@ -43,7 +43,7 @@ func TestSessionsVoiceInitCfg(t *testing.T) {
 	voiceCfgPath = path.Join(*dataDir, "conf", "samples", "smg")
 	// Init config first
 	var err error
-	voiceCfg, err = config.NewCGRConfigFromFolder(voiceCfgPath)
+	voiceCfg, err = config.NewCGRConfigFromPath(voiceCfgPath)
 	if err != nil {
 		t.Error(err)
 	}
@@ -89,28 +89,13 @@ func TestSessionsVoiceTPFromFolder(t *testing.T) {
 		t.Error(err)
 	}
 	time.Sleep(time.Duration(*waitRater) * time.Millisecond) // Give time for scheduler to execute topups
-
-	//add a default charger
-	chargerProfile := &engine.ChargerProfile{
-		Tenant:       "cgrates.org",
-		ID:           "Default",
-		RunID:        "*default",
-		AttributeIDs: []string{"*none"},
-		Weight:       20,
-	}
-	var result string
-	if err := sessionsRPC.Call("ApierV1.SetChargerProfile", chargerProfile, &result); err != nil {
-		t.Error(err)
-	} else if result != utils.OK {
-		t.Error("Unexpected reply returned", result)
-	}
 }
 
 func TestSessionsVoiceMonetaryRefund(t *testing.T) {
 	usage := time.Duration(1*time.Minute + 30*time.Second)
 	initArgs := &V1InitSessionArgs{
 		InitSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsVoiceMonetaryRefund",
 			Event: map[string]interface{}{
@@ -150,7 +135,7 @@ func TestSessionsVoiceMonetaryRefund(t *testing.T) {
 	usage = time.Duration(time.Minute)
 	termArgs := &V1TerminateSessionArgs{
 		TerminateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsVoiceMonetaryRefund",
 			Event: map[string]interface{}{
@@ -187,7 +172,7 @@ func TestSessionsVoiceVoiceRefund(t *testing.T) {
 	usage := time.Duration(1*time.Minute + 30*time.Second)
 	initArgs := &V1InitSessionArgs{
 		InitSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsVoiceVoiceRefund",
 			Event: map[string]interface{}{
@@ -229,7 +214,7 @@ func TestSessionsVoiceVoiceRefund(t *testing.T) {
 	usage = time.Duration(time.Minute)
 	termArgs := &V1TerminateSessionArgs{
 		TerminateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsVoiceVoiceRefund",
 			Event: map[string]interface{}{
@@ -272,7 +257,7 @@ func TestSessionsVoiceMixedRefund(t *testing.T) {
 	usage := time.Duration(1*time.Minute + 30*time.Second)
 	initArgs := &V1InitSessionArgs{
 		InitSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsVoiceMixedRefund",
 			Event: map[string]interface{}{
@@ -317,7 +302,7 @@ func TestSessionsVoiceMixedRefund(t *testing.T) {
 	usage = time.Duration(time.Minute)
 	termArgs := &V1TerminateSessionArgs{
 		TerminateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsVoiceMixedRefund",
 			Event: map[string]interface{}{
@@ -369,7 +354,7 @@ func TestSessionsVoiceLastUsed(t *testing.T) {
 	usage := time.Duration(2 * time.Minute)
 	initArgs := &V1InitSessionArgs{
 		InitSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsVoiceLastUsed",
 			Event: map[string]interface{}{
@@ -408,7 +393,7 @@ func TestSessionsVoiceLastUsed(t *testing.T) {
 	lastUsage := time.Duration(1*time.Minute + 30*time.Second)
 	updateArgs := &V1UpdateSessionArgs{
 		UpdateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsVoiceLastUsed",
 			Event: map[string]interface{}{
@@ -445,7 +430,7 @@ func TestSessionsVoiceLastUsed(t *testing.T) {
 	lastUsage = time.Duration(2*time.Minute + 30*time.Second)
 	updateArgs = &V1UpdateSessionArgs{
 		UpdateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsVoiceLastUsed",
 			Event: map[string]interface{}{
@@ -483,7 +468,7 @@ func TestSessionsVoiceLastUsed(t *testing.T) {
 	usage = time.Duration(1 * time.Minute)
 	termArgs := &V1TerminateSessionArgs{
 		TerminateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsVoiceLastUsed",
 			Event: map[string]interface{}{
@@ -530,7 +515,7 @@ func TestSessionsVoiceLastUsedEnd(t *testing.T) {
 	usage := time.Duration(2 * time.Minute)
 	initArgs := &V1InitSessionArgs{
 		InitSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsVoiceLastUsedEnd",
 			Event: map[string]interface{}{
@@ -569,7 +554,7 @@ func TestSessionsVoiceLastUsedEnd(t *testing.T) {
 	lastUsage := time.Duration(30 * time.Second)
 	updateArgs := &V1UpdateSessionArgs{
 		UpdateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsVoiceLastUsedEnd",
 			Event: map[string]interface{}{
@@ -607,7 +592,7 @@ func TestSessionsVoiceLastUsedEnd(t *testing.T) {
 
 	termArgs := &V1TerminateSessionArgs{
 		TerminateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsVoiceLastUsedEnd",
 			Event: map[string]interface{}{
@@ -652,7 +637,7 @@ func TestSessionsVoiceLastUsedNotFixed(t *testing.T) {
 	usage := time.Duration(2 * time.Minute)
 	initArgs := &V1InitSessionArgs{
 		InitSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsVoiceLastUsedNotFixed",
 			Event: map[string]interface{}{
@@ -692,7 +677,7 @@ func TestSessionsVoiceLastUsedNotFixed(t *testing.T) {
 	lastUsage := time.Duration(12 * time.Second)
 	updateArgs := &V1UpdateSessionArgs{
 		UpdateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsVoiceLastUsedNotFixed",
 			Event: map[string]interface{}{
@@ -729,7 +714,7 @@ func TestSessionsVoiceLastUsedNotFixed(t *testing.T) {
 
 	termArgs := &V1TerminateSessionArgs{
 		TerminateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsVoiceLastUsedNotFixed",
 			Event: map[string]interface{}{
@@ -775,7 +760,7 @@ func TestSessionsVoiceSessionTTL(t *testing.T) {
 	usage := time.Duration(2 * time.Minute)
 	initArgs := &V1InitSessionArgs{
 		InitSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsVoiceSessionTTL",
 			Event: map[string]interface{}{
@@ -828,7 +813,7 @@ func TestSessionsVoiceSessionTTL(t *testing.T) {
 	lastUsage := time.Duration(30 * time.Second)
 	updateArgs := &V1UpdateSessionArgs{
 		UpdateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsVoiceSessionTTL",
 			Event: map[string]interface{}{
@@ -872,8 +857,8 @@ func TestSessionsVoiceSessionTTL(t *testing.T) {
 	} else if acnt.BalanceMap[utils.MONETARY].GetTotalValue() != eAcntVal {
 		t.Errorf("Expected: %f, received: %f", eAcntVal, acnt.BalanceMap[utils.MONETARY].GetTotalValue())
 	}
-	time.Sleep(100 * time.Millisecond)
-	eAcntVal = 4.0566
+	time.Sleep(200 * time.Millisecond)
+	eAcntVal = 4.0567 // rounding issue; old values : 4.0565 , 4.0566
 	if err := sessionsRPC.Call("ApierV2.GetAccount", attrs, &acnt); err != nil {
 		t.Error(err)
 	} else if acnt.BalanceMap[utils.MONETARY].GetTotalValue() != eAcntVal {
@@ -926,7 +911,7 @@ func TestSessionsVoiceSessionTTLWithRelocate(t *testing.T) {
 	usage := time.Duration(2 * time.Minute)
 	initArgs := &V1InitSessionArgs{
 		InitSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsVoiceSessionTTLWithRelocate",
 			Event: map[string]interface{}{
@@ -979,7 +964,7 @@ func TestSessionsVoiceSessionTTLWithRelocate(t *testing.T) {
 	lastUsage := time.Duration(30 * time.Second)
 	updateArgs := &V1UpdateSessionArgs{
 		UpdateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsVoiceSessionTTLWithRelocate",
 			Event: map[string]interface{}{
@@ -1087,7 +1072,7 @@ func TestSessionsVoiceRelocateWithOriginIDPrefix(t *testing.T) {
 	usage := time.Duration(2 * time.Minute)
 	initArgs := &V1InitSessionArgs{
 		InitSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsVoiceRelocateWithOriginIDPrefix",
 			Event: map[string]interface{}{
@@ -1140,7 +1125,7 @@ func TestSessionsVoiceRelocateWithOriginIDPrefix(t *testing.T) {
 	lastUsage := time.Duration(30 * time.Second)
 	updateArgs := &V1UpdateSessionArgs{
 		UpdateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsVoiceSessionTTLWithRelocate",
 			Event: map[string]interface{}{
@@ -1191,7 +1176,7 @@ func TestSessionsVoiceRelocateWithOriginIDPrefix(t *testing.T) {
 
 	termArgs := &V1TerminateSessionArgs{
 		TerminateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsVoiceLastUsedNotFixed",
 			Event: map[string]interface{}{

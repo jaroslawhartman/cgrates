@@ -50,13 +50,14 @@ func (self *CmdActiveSessions) RpcMethod() string {
 
 func (self *CmdActiveSessions) RpcParams(reset bool) interface{} {
 	if reset || self.rpcParams == nil {
-		self.rpcParams = &map[string]string{}
+		self.rpcParams = &utils.SessionFilter{ArgDispatcher: new(utils.ArgDispatcher)}
+
 	}
 	return self.rpcParams
 }
 
 func (self *CmdActiveSessions) PostprocessRpcParams() error {
-	param := self.rpcParams.(*map[string]string)
+	param := self.rpcParams.(*utils.SessionFilter)
 	self.rpcParams = param
 	return nil
 }

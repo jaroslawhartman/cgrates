@@ -101,7 +101,7 @@ func TestOnStorITRedis(t *testing.T) {
 func TestOnStorITMongo(t *testing.T) {
 	sleepDelay = 500 * time.Millisecond
 	cdrsMongoCfgPath := path.Join(*dataDir, "conf", "samples", "cdrsv2mongo")
-	mgoITCfg, err := config.NewCGRConfigFromFolder(cdrsMongoCfgPath)
+	mgoITCfg, err := config.NewCGRConfigFromPath(cdrsMongoCfgPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1151,20 +1151,12 @@ func testOnStorITResourceProfile(t *testing.T) {
 	if err := onStor.SetResourceProfile(rL, false); err != nil {
 		t.Error(err)
 	}
-	//get from cache
-	if rcv, err := onStor.GetResourceProfile(rL.Tenant, rL.ID,
-		true, false, utils.NonTransactional); err != nil {
-		t.Error(err)
-	} else if !reflect.DeepEqual(rL, rcv) {
-		t.Errorf("Expecting: %v, received: %v", utils.ToJSON(rL), utils.ToJSON(rcv))
-	}
 	//get from database
 	if rcv, err := onStor.GetResourceProfile(rL.Tenant, rL.ID,
 		false, true, utils.NonTransactional); err != nil {
 		t.Error(err)
 	} else if !reflect.DeepEqual(rL, rcv) {
 		t.Errorf("Expecting: %v, received: %v", utils.ToJSON(rL), utils.ToJSON(rcv))
-
 	}
 	expectedR := []string{"rsp_cgrates.org:RL_TEST2"}
 	if itm, err := onStor.DataDB().GetKeysForPrefix(utils.ResourceProfilesPrefix); err != nil {
@@ -1178,13 +1170,6 @@ func testOnStorITResourceProfile(t *testing.T) {
 		t.Error(err)
 	}
 	time.Sleep(sleepDelay)
-	//get from cache
-	if rcv, err := onStor.GetResourceProfile(rL.Tenant, rL.ID,
-		true, false, utils.NonTransactional); err != nil {
-		t.Error(err)
-	} else if !reflect.DeepEqual(rL, rcv) {
-		t.Errorf("Expecting: %v, received: %v", utils.ToJSON(rL), utils.ToJSON(rcv))
-	}
 	//get from database
 	if rcv, err := onStor.GetResourceProfile(rL.Tenant, rL.ID,
 		false, false, utils.NonTransactional); err != nil {
@@ -1196,11 +1181,6 @@ func testOnStorITResourceProfile(t *testing.T) {
 	if err := onStor.RemoveResourceProfile(rL.Tenant, rL.ID,
 		utils.NonTransactional, false); err != nil {
 		t.Error(err)
-	}
-	//check cache if removed
-	if _, rcvErr := onStor.GetResourceProfile(rL.Tenant, rL.ID,
-		true, false, utils.NonTransactional); rcvErr != utils.ErrNotFound {
-		t.Error(rcvErr)
 	}
 	//check database if removed
 	if _, rcvErr := onStor.GetResourceProfile(rL.Tenant, rL.ID,
@@ -1229,14 +1209,6 @@ func testOnStorITResource(t *testing.T) {
 	if err := onStor.SetResource(res); err != nil {
 		t.Error(err)
 	}
-	//get from cache
-	if rcv, err := onStor.GetResource("cgrates.org", "RL1",
-		true, false, utils.NonTransactional); err != nil {
-		t.Error(err)
-	} else if !(reflect.DeepEqual(res, rcv)) {
-		t.Errorf("Expecting: %v, received: %v", utils.ToJSON(res), utils.ToJSON(rcv))
-	}
-
 	//get from database
 	if rcv, err := onStor.GetResource("cgrates.org", "RL1",
 		false, false, utils.NonTransactional); err != nil {
@@ -1256,13 +1228,6 @@ func testOnStorITResource(t *testing.T) {
 		t.Error(err)
 	}
 	time.Sleep(sleepDelay)
-	//get from cache
-	if rcv, err := onStor.GetResource("cgrates.org", "RL1",
-		true, false, utils.NonTransactional); err != nil {
-		t.Error(err)
-	} else if !(reflect.DeepEqual(res, rcv)) {
-		t.Errorf("Expecting: %v, received: %v", utils.ToJSON(res), utils.ToJSON(rcv))
-	}
 	//get from database
 	if rcv, err := onStor.GetResource("cgrates.org", "RL1",
 		false, false, utils.NonTransactional); err != nil {
@@ -1273,11 +1238,6 @@ func testOnStorITResource(t *testing.T) {
 
 	if err := onStor.RemoveResource(res.Tenant, res.ID, utils.NonTransactional); err != nil {
 		t.Error(err)
-	}
-	//check cache if removed
-	if _, rcvErr := onStor.GetResource(res.Tenant, res.ID,
-		true, false, utils.NonTransactional); rcvErr != utils.ErrNotFound {
-		t.Error(rcvErr)
 	}
 	//check database if removed
 	if _, rcvErr := onStor.GetResource(res.Tenant, res.ID,
@@ -1440,7 +1400,6 @@ func testOnStorITStatQueueProfile(t *testing.T) {
 		FilterIDs:          []string{"FLTR_1"},
 		QueueLength:        2,
 		TTL:                time.Duration(0 * time.Second),
-		Metrics:            []string{},
 		Stored:             true,
 		ThresholdIDs:       []string{"Thresh1"},
 	}
@@ -1450,13 +1409,6 @@ func testOnStorITStatQueueProfile(t *testing.T) {
 	}
 	if err := onStor.SetStatQueueProfile(sq, false); err != nil {
 		t.Error(err)
-	}
-	//get from cache
-	if rcv, err := onStor.GetStatQueueProfile(sq.Tenant,
-		sq.ID, true, false, utils.NonTransactional); err != nil {
-		t.Error(err)
-	} else if !reflect.DeepEqual(sq, rcv) {
-		t.Errorf("Expecting: %v, received: %v", utils.ToJSON(sq), utils.ToJSON(rcv))
 	}
 	//get from database
 	if rcv, err := onStor.GetStatQueueProfile(sq.Tenant,
@@ -1477,13 +1429,6 @@ func testOnStorITStatQueueProfile(t *testing.T) {
 		t.Error(err)
 	}
 	time.Sleep(sleepDelay)
-	//get from cache
-	if rcv, err := onStor.GetStatQueueProfile(sq.Tenant,
-		sq.ID, true, false, utils.NonTransactional); err != nil {
-		t.Error(err)
-	} else if !reflect.DeepEqual(sq, rcv) {
-		t.Errorf("Expecting: %v, received: %v", utils.ToJSON(sq), utils.ToJSON(rcv))
-	}
 	//get from database
 	if rcv, err := onStor.GetStatQueueProfile(sq.Tenant,
 		sq.ID, false, false, utils.NonTransactional); err != nil {
@@ -1494,11 +1439,6 @@ func testOnStorITStatQueueProfile(t *testing.T) {
 	if err := onStor.RemoveStatQueueProfile(sq.Tenant, sq.ID,
 		utils.NonTransactional, false); err != nil {
 		t.Error(err)
-	}
-	//check cache if removed
-	if _, rcvErr := onStor.GetStatQueueProfile(sq.Tenant,
-		sq.ID, false, false, utils.NonTransactional); rcvErr != utils.ErrNotFound {
-		t.Error(rcvErr)
 	}
 	//check database if removed
 	if _, rcvErr := onStor.GetStatQueueProfile(sq.Tenant,
@@ -1512,20 +1452,19 @@ func testOnStorITStatQueue(t *testing.T) {
 	sq := &StatQueue{
 		Tenant: "cgrates.org",
 		ID:     "Test_StatQueue",
-		SQItems: []struct {
-			EventID    string     // Bounded to the original StatEvent
-			ExpiryTime *time.Time // Used to auto-expire events
-		}{{EventID: "cgrates.org:ev1", ExpiryTime: eTime},
+		SQItems: []SQItem{
+			{EventID: "cgrates.org:ev1", ExpiryTime: eTime},
 			{EventID: "cgrates.org:ev2", ExpiryTime: eTime},
-			{EventID: "cgrates.org:ev3", ExpiryTime: eTime}},
+			{EventID: "cgrates.org:ev3", ExpiryTime: eTime},
+		},
 		SQMetrics: map[string]StatMetric{
 			utils.MetaASR: &StatASR{
 				Answered: 2,
 				Count:    3,
-				Events: map[string]bool{
-					"cgrates.org:ev1": true,
-					"cgrates.org:ev2": true,
-					"cgrates.org:ev3": false,
+				Events: map[string]*StatWithCompress{
+					"cgrates.org:ev1": &StatWithCompress{Stat: 1},
+					"cgrates.org:ev2": &StatWithCompress{Stat: 1},
+					"cgrates.org:ev3": &StatWithCompress{Stat: 0},
 				},
 			},
 		},
@@ -1536,13 +1475,6 @@ func testOnStorITStatQueue(t *testing.T) {
 	}
 	if err := onStor.SetStatQueue(sq); err != nil {
 		t.Error(err)
-	}
-	//get from cache
-	if rcv, err := onStor.GetStatQueue(sq.Tenant,
-		sq.ID, true, false, utils.NonTransactional); err != nil {
-		t.Error(err)
-	} else if !reflect.DeepEqual(sq, rcv) {
-		t.Errorf("Expecting: %v, received: %v", utils.ToJSON(sq), utils.ToJSON(rcv))
 	}
 	//get from database
 	if rcv, err := onStor.GetStatQueue(sq.Tenant,
@@ -1562,10 +1494,10 @@ func testOnStorITStatQueue(t *testing.T) {
 		utils.MetaASR: &StatASR{
 			Answered: 3,
 			Count:    3,
-			Events: map[string]bool{
-				"cgrates.org:ev1": true,
-				"cgrates.org:ev2": true,
-				"cgrates.org:ev3": true,
+			Events: map[string]*StatWithCompress{
+				"cgrates.org:ev1": &StatWithCompress{Stat: 1},
+				"cgrates.org:ev2": &StatWithCompress{Stat: 1},
+				"cgrates.org:ev3": &StatWithCompress{Stat: 1},
 			},
 		},
 	}
@@ -1573,13 +1505,6 @@ func testOnStorITStatQueue(t *testing.T) {
 		t.Error(err)
 	}
 	time.Sleep(sleepDelay)
-	//get from cache
-	if rcv, err := onStor.GetStatQueue(sq.Tenant,
-		sq.ID, true, false, utils.NonTransactional); err != nil {
-		t.Error(err)
-	} else if !reflect.DeepEqual(sq, rcv) {
-		t.Errorf("Expecting: %v, received: %v", utils.ToJSON(sq), utils.ToJSON(rcv))
-	}
 	//get from database
 	if rcv, err := onStor.GetStatQueue(sq.Tenant,
 		sq.ID, false, false, utils.NonTransactional); err != nil {
@@ -1590,11 +1515,6 @@ func testOnStorITStatQueue(t *testing.T) {
 	if err := onStor.RemoveStatQueue(sq.Tenant, sq.ID,
 		utils.NonTransactional); err != nil {
 		t.Error(err)
-	}
-	//check cache if removed
-	if _, rcvErr := onStor.GetStatQueue(sq.Tenant,
-		sq.ID, true, false, utils.NonTransactional); rcvErr != utils.ErrNotFound {
-		t.Error(rcvErr)
 	}
 	//check database if removed
 	if _, rcvErr := onStor.GetStatQueue(sq.Tenant,
@@ -1640,13 +1560,6 @@ func testOnStorITThresholdProfile(t *testing.T) {
 	if err := onStor.SetThresholdProfile(th, true); err != nil {
 		t.Error(err)
 	}
-	//get from cache
-	if rcv, err := onStor.GetThresholdProfile(th.Tenant, th.ID,
-		true, false, utils.NonTransactional); err != nil {
-		t.Error(err)
-	} else if !reflect.DeepEqual(th, rcv) {
-		t.Errorf("Expecting: %v, received: %v", utils.ToJSON(th), utils.ToJSON(rcv))
-	}
 	//get from database
 	if rcv, err := onStor.GetThresholdProfile(th.Tenant, th.ID,
 		false, false, utils.NonTransactional); err != nil {
@@ -1666,13 +1579,6 @@ func testOnStorITThresholdProfile(t *testing.T) {
 		t.Error(err)
 	}
 	time.Sleep(sleepDelay)
-	//get from cache
-	if rcv, err := onStor.GetThresholdProfile(th.Tenant, th.ID,
-		true, false, utils.NonTransactional); err != nil {
-		t.Error(err)
-	} else if !reflect.DeepEqual(th, rcv) {
-		t.Errorf("Expecting: %v, received: %v", utils.ToJSON(th), utils.ToJSON(rcv))
-	}
 	//get from database
 	if rcv, err := onStor.GetThresholdProfile(th.Tenant, th.ID,
 		false, false, utils.NonTransactional); err != nil {
@@ -1683,11 +1589,6 @@ func testOnStorITThresholdProfile(t *testing.T) {
 	if err := onStor.RemoveThresholdProfile(th.Tenant,
 		th.ID, utils.NonTransactional, false); err != nil {
 		t.Error(err)
-	}
-	//check cache if removed
-	if _, rcvErr := onStor.GetThresholdProfile(th.Tenant,
-		th.ID, true, false, utils.NonTransactional); rcvErr != utils.ErrNotFound {
-		t.Error(rcvErr)
 	}
 	//check database if removed
 	if _, rcvErr := onStor.GetThresholdProfile(th.Tenant,
@@ -1710,13 +1611,6 @@ func testOnStorITThreshold(t *testing.T) {
 	if err := onStor.SetThreshold(th); err != nil {
 		t.Error(err)
 	}
-	//get from cache
-	if rcv, err := onStor.GetThreshold("cgrates.org", "TH1",
-		true, false, utils.NonTransactional); err != nil {
-		t.Error(err)
-	} else if !(reflect.DeepEqual(th, rcv)) {
-		t.Errorf("Expecting: %v, received: %v", utils.ToJSON(th), utils.ToJSON(rcv))
-	}
 	//get from database
 	if rcv, err := onStor.GetThreshold("cgrates.org", "TH1",
 		false, false, utils.NonTransactional); err != nil {
@@ -1736,13 +1630,6 @@ func testOnStorITThreshold(t *testing.T) {
 		t.Error(err)
 	}
 	time.Sleep(sleepDelay)
-	//get from cache
-	if rcv, err := onStor.GetThreshold("cgrates.org", "TH1",
-		true, false, utils.NonTransactional); err != nil {
-		t.Error(err)
-	} else if !(reflect.DeepEqual(th, rcv)) {
-		t.Errorf("Expecting: %v, received: %v", utils.ToJSON(th), utils.ToJSON(rcv))
-	}
 	//get from database
 	if rcv, err := onStor.GetThreshold("cgrates.org", "TH1",
 		false, false, utils.NonTransactional); err != nil {
@@ -1752,11 +1639,6 @@ func testOnStorITThreshold(t *testing.T) {
 	}
 	if err := onStor.RemoveThreshold(th.Tenant, th.ID, utils.NonTransactional); err != nil {
 		t.Error(err)
-	}
-	//check cache if removed
-	if _, rcvErr := onStor.GetThreshold(th.Tenant, th.ID,
-		true, false, utils.NonTransactional); rcvErr != utils.ErrNotFound {
-		t.Error(rcvErr)
 	}
 	//check database if removed
 	if _, rcvErr := onStor.GetThreshold(th.Tenant, th.ID,
@@ -1973,8 +1855,8 @@ func testOnStorITAttributeProfile(t *testing.T) {
 		Contexts: []string{"con1"},
 		Attributes: []*Attribute{
 			{
-				FieldName:  "FN1",
-				Substitute: config.NewRSRParsersMustCompile("Al1", true, utils.INFIELD_SEP),
+				FieldName: "FN1",
+				Value:     config.NewRSRParsersMustCompile("Al1", true, utils.INFIELD_SEP),
 			},
 		},
 		Weight: 20,
@@ -2053,8 +1935,8 @@ func testOnStorITTestAttributeSubstituteIface(t *testing.T) {
 		Contexts: []string{"con1"},
 		Attributes: []*Attribute{
 			{
-				FieldName:  "FN1",
-				Substitute: config.NewRSRParsersMustCompile("Val1", true, utils.INFIELD_SEP),
+				FieldName: "FN1",
+				Value:     config.NewRSRParsersMustCompile("Val1", true, utils.INFIELD_SEP),
 			},
 		},
 		Weight: 20,
@@ -2066,58 +1948,37 @@ func testOnStorITTestAttributeSubstituteIface(t *testing.T) {
 	if err := onStor.SetAttributeProfile(attrProfile, false); err != nil {
 		t.Error(err)
 	}
-	//check cache
-	if rcv, err := onStor.GetAttributeProfile("cgrates.org", "AttrPrf1",
-		true, false, utils.NonTransactional); err != nil {
-		t.Error(err)
-	} else if !(reflect.DeepEqual(attrProfile, rcv)) {
-		t.Errorf("Expecting: %v, received: %v", attrProfile, rcv)
-	}
 	//check database
 	if rcv, err := onStor.GetAttributeProfile("cgrates.org", "AttrPrf1",
-		false, true, utils.NonTransactional); err != nil {
+		false, false, utils.NonTransactional); err != nil {
 		t.Error(err)
 	} else if !(reflect.DeepEqual(attrProfile, rcv)) {
 		t.Errorf("Expecting: %v, received: %v", attrProfile, rcv)
 	}
 	attrProfile.Attributes = []*Attribute{
 		{
-			FieldName:  "FN1",
-			Substitute: config.NewRSRParsersMustCompile("123.123", true, utils.INFIELD_SEP),
+			FieldName: "FN1",
+			Value:     config.NewRSRParsersMustCompile("123.123", true, utils.INFIELD_SEP),
 		},
 	}
 	if err := onStor.SetAttributeProfile(attrProfile, false); err != nil {
 		t.Error(err)
 	}
-	//check cache
-	if rcv, err := onStor.GetAttributeProfile("cgrates.org", "AttrPrf1",
-		true, false, utils.NonTransactional); err != nil {
-		t.Error(err)
-	} else if !(reflect.DeepEqual(attrProfile, rcv)) {
-		t.Errorf("Expecting: %v, received: %v", utils.ToJSON(attrProfile), utils.ToJSON(rcv))
-	}
 	//check database
 	if rcv, err := onStor.GetAttributeProfile("cgrates.org", "AttrPrf1",
-		false, true, utils.NonTransactional); err != nil {
+		false, false, utils.NonTransactional); err != nil {
 		t.Error(err)
 	} else if !(reflect.DeepEqual(attrProfile, rcv)) {
 		t.Errorf("Expecting: %v, received: %v", utils.ToJSON(attrProfile), utils.ToJSON(rcv))
 	}
 	attrProfile.Attributes = []*Attribute{
 		{
-			FieldName:  "FN1",
-			Substitute: config.NewRSRParsersMustCompile("true", true, utils.INFIELD_SEP),
+			FieldName: "FN1",
+			Value:     config.NewRSRParsersMustCompile("true", true, utils.INFIELD_SEP),
 		},
 	}
 	if err := onStor.SetAttributeProfile(attrProfile, false); err != nil {
 		t.Error(err)
-	}
-	//check cache
-	if rcv, err := onStor.GetAttributeProfile("cgrates.org", "AttrPrf1",
-		true, false, utils.NonTransactional); err != nil {
-		t.Error(err)
-	} else if !(reflect.DeepEqual(attrProfile, rcv)) {
-		t.Errorf("Expecting: %v, received: %v", utils.ToJSON(attrProfile), utils.ToJSON(rcv))
 	}
 	//check database
 	if rcv, err := onStor.GetAttributeProfile("cgrates.org", "AttrPrf1",
@@ -2147,13 +2008,6 @@ func testOnStorITChargerProfile(t *testing.T) {
 	if err := onStor.SetChargerProfile(cpp, false); err != nil {
 		t.Error(err)
 	}
-	//get from cache
-	if rcv, err := onStor.GetChargerProfile("cgrates.org", "CPP_1",
-		true, false, utils.NonTransactional); err != nil {
-		t.Error(err)
-	} else if !(reflect.DeepEqual(cpp, rcv)) {
-		t.Errorf("Expecting: %v, received: %v", cpp, rcv)
-	}
 	//get from database
 	if rcv, err := onStor.GetChargerProfile("cgrates.org", "CPP_1",
 		false, false, utils.NonTransactional); err != nil {
@@ -2173,13 +2027,6 @@ func testOnStorITChargerProfile(t *testing.T) {
 		t.Error(err)
 	}
 	time.Sleep(sleepDelay)
-	//get from cache
-	if rcv, err := onStor.GetChargerProfile("cgrates.org", "CPP_1",
-		true, false, utils.NonTransactional); err != nil {
-		t.Error(err)
-	} else if !(reflect.DeepEqual(cpp, rcv)) {
-		t.Errorf("Expecting: %v, received: %v", cpp, rcv)
-	}
 	//get from database
 	if rcv, err := onStor.GetChargerProfile("cgrates.org", "CPP_1",
 		false, false, utils.NonTransactional); err != nil {
@@ -2190,11 +2037,6 @@ func testOnStorITChargerProfile(t *testing.T) {
 	if err := onStor.RemoveChargerProfile(cpp.Tenant, cpp.ID,
 		utils.NonTransactional, false); err != nil {
 		t.Error(err)
-	}
-	//check cache if removed
-	if _, rcvErr := onStor.GetChargerProfile("cgrates.org", "CPP_1",
-		true, false, utils.NonTransactional); rcvErr != nil && rcvErr != utils.ErrNotFound {
-		t.Error(rcvErr)
 	}
 	//check database if removed
 	if _, rcvErr := onStor.GetChargerProfile("cgrates.org", "CPP_1",
@@ -2222,13 +2064,6 @@ func testOnStorITDispatcherProfile(t *testing.T) {
 	if err := onStor.SetDispatcherProfile(dpp, false); err != nil {
 		t.Error(err)
 	}
-	//get from cache
-	if rcv, err := onStor.GetDispatcherProfile("cgrates.org", "Dsp1",
-		true, false, utils.NonTransactional); err != nil {
-		t.Error(err)
-	} else if !(reflect.DeepEqual(dpp, rcv)) {
-		t.Errorf("Expecting: %v, received: %v", dpp, rcv)
-	}
 	//get from database
 	if rcv, err := onStor.GetDispatcherProfile("cgrates.org", "Dsp1",
 		false, false, utils.NonTransactional); err != nil {
@@ -2248,13 +2083,6 @@ func testOnStorITDispatcherProfile(t *testing.T) {
 		t.Error(err)
 	}
 	time.Sleep(sleepDelay)
-	//get from cache
-	if rcv, err := onStor.GetDispatcherProfile("cgrates.org", "Dsp1",
-		true, false, utils.NonTransactional); err != nil {
-		t.Error(err)
-	} else if !(reflect.DeepEqual(dpp, rcv)) {
-		t.Errorf("Expecting: %v, received: %v", dpp, rcv)
-	}
 	//get from database
 	if rcv, err := onStor.GetDispatcherProfile("cgrates.org", "Dsp1",
 		false, false, utils.NonTransactional); err != nil {
@@ -2265,11 +2093,6 @@ func testOnStorITDispatcherProfile(t *testing.T) {
 	if err := onStor.RemoveDispatcherProfile(dpp.Tenant, dpp.ID,
 		utils.NonTransactional, false); err != nil {
 		t.Error(err)
-	}
-	//check cache if removed
-	if _, rcvErr := onStor.GetDispatcherProfile("cgrates.org", "Dsp1",
-		true, false, utils.NonTransactional); rcvErr != nil && rcvErr != utils.ErrNotFound {
-		t.Error(rcvErr)
 	}
 	//check database if removed
 	if _, rcvErr := onStor.GetDispatcherProfile("cgrates.org", "Dsp1",

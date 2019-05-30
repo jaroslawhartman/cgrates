@@ -176,7 +176,7 @@ CREATE TABLE tp_action_plans (
   timing_tag VARCHAR(64) NOT NULL,
   weight NUMERIC(8,2) NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE,
-  UNIQUE  (tpid, tag, actions_tag)
+  UNIQUE  (tpid, tag, actions_tag, timing_tag)
 );
 CREATE INDEX tpactionplans_tpid_idx ON tp_action_plans (tpid);
 CREATE INDEX tpactionplans_idx ON tp_action_plans (tpid,tag);
@@ -277,16 +277,17 @@ CREATE TABLE tp_stats (
   "activation_interval" varchar(64) NOT NULL,
   "queue_length" INTEGER NOT NULL,
   "ttl" varchar(32) NOT NULL,
-  "metrics" VARCHAR(128) NOT NULL,
-  "blocker" BOOLEAN NOT NULL,
-  "stored" BOOLEAN NOT NULL,
-  "weight" decimal(8,2) NOT NULL,
   "min_items" INTEGER NOT NULL,
+  "metric_ids" VARCHAR(128) NOT NULL,
+  "metric_filter_ids" VARCHAR(128) NOT NULL,
+  "stored" BOOLEAN NOT NULL,
+  "blocker" BOOLEAN NOT NULL,
+  "weight" decimal(8,2) NOT NULL,
   "threshold_ids" varchar(64) NOT NULL,
   "created_at" TIMESTAMP WITH TIME ZONE
 );
 CREATE INDEX tp_stats_idx ON tp_stats (tpid);
-CREATE INDEX tp_stats_unique ON tp_stats  ("tpid","tenant", "id", "filter_ids");
+CREATE INDEX tp_stats_unique ON tp_stats  ("tpid","tenant", "id", "filter_ids","metric_ids");
 
 --
 -- Table structure for table `tp_threshold_cfgs`
@@ -377,14 +378,15 @@ CREATE INDEX tp_suppliers_unique ON tp_suppliers  ("tpid",  "tenant", "id",
     "activation_interval" varchar(64) NOT NULL,
     "attribute_filter_ids" varchar(64) NOT NULL,
     "field_name" varchar(64) NOT NULL,
-    "substitute" varchar(64) NOT NULL,
+    "type" varchar(64) NOT NULL,
+    "value" varchar(64) NOT NULL,
     "blocker" BOOLEAN NOT NULL,
     "weight" decimal(8,2) NOT NULL,
     "created_at" TIMESTAMP WITH TIME ZONE
   );
   CREATE INDEX tp_attributes_ids ON tp_attributes (tpid);
   CREATE INDEX tp_attributes_unique ON tp_attributes  ("tpid",  "tenant", "id",
-    "filter_ids","field_name","substitute");
+    "filter_ids","field_name","value");
 
   --
   -- Table structure for table `tp_chargers`
@@ -407,12 +409,12 @@ CREATE INDEX tp_suppliers_unique ON tp_suppliers  ("tpid",  "tenant", "id",
   CREATE INDEX tp_chargers_unique ON tp_chargers  ("tpid",  "tenant", "id",
     "filter_ids","run_id","attribute_ids");
 
-    --
-  -- Table structure for table `tp_chargers`
+  --
+  -- Table structure for table `tp_dispatchers`
   --
 
-  DROP TABLE IF EXISTS tp_dispatchers;
-  CREATE TABLE tp_dispatchers (
+  DROP TABLE IF EXISTS tp_dispatcher_profiles;
+  CREATE TABLE tp_dispatcher_profiles (
   "pk" SERIAL PRIMARY KEY,
   "tpid" varchar(64) NOT NULL,
   "tenant" varchar(64) NOT NULL,
@@ -430,9 +432,27 @@ CREATE INDEX tp_suppliers_unique ON tp_suppliers  ("tpid",  "tenant", "id",
   "weight" decimal(8,2) NOT NULL,
   "created_at" TIMESTAMP WITH TIME ZONE
   );
-  CREATE INDEX tp_dispatchers_ids ON tp_dispatchers (tpid);
-  CREATE INDEX tp_dispatchers_unique ON tp_dispatchers  ("tpid",  "tenant", "id",
+  CREATE INDEX tp_dispatcher_profiles_ids ON tp_dispatcher_profiles (tpid);
+  CREATE INDEX tp_dispatcher_profiles_unique ON tp_dispatcher_profiles  ("tpid",  "tenant", "id",
     "filter_ids","strategy","conn_id","conn_filter_ids");
+
+--
+-- Table structure for table `tp_dispatchers`
+--
+
+  DROP TABLE IF EXISTS tp_dispatcher_hosts;
+  CREATE TABLE tp_dispatcher_hosts (
+  "pk" SERIAL PRIMARY KEY,
+  "tpid" varchar(64) NOT NULL,
+  "tenant" varchar(64) NOT NULL,
+  "id" varchar(64) NOT NULL,
+  "address" varchar(64) NOT NULL,
+  "transport" varchar(64) NOT NULL,
+  "created_at" TIMESTAMP WITH TIME ZONE
+  );
+  CREATE INDEX tp_dispatchers_hosts_ids ON tp_dispatcher_hosts (tpid);
+  CREATE INDEX tp_dispatcher_hosts_unique ON tp_dispatcher_hosts  ("tpid",  "tenant", "id",
+    "address");
 
 --
 -- Table structure for table `versions`

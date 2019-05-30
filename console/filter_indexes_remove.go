@@ -19,13 +19,14 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>
 package console
 
 import (
-	"github.com/cgrates/cgrates/apier/v1"
+	v1 "github.com/cgrates/cgrates/apier/v1"
+	"github.com/cgrates/cgrates/utils"
 )
 
 func init() {
 	c := &CmdRemoveFilterIndexes{
 		name:      "filter_indexes_remove",
-		rpcMethod: "ApierV1.RemoveFilterIndexes",
+		rpcMethod: utils.ApierV1RemoveFilterIndexes,
 		rpcParams: &v1.AttrRemFilterIndexes{},
 	}
 	commands[c.Name()] = c

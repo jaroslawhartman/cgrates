@@ -26,9 +26,10 @@ import (
 )
 
 type Attribute struct {
-	FilterIDs  []string
-	FieldName  string
-	Substitute config.RSRParsers
+	FilterIDs []string
+	FieldName string
+	Type      string
+	Value     config.RSRParsers
 }
 
 type AttributeProfile struct {
@@ -44,7 +45,7 @@ type AttributeProfile struct {
 
 func (ap *AttributeProfile) compileSubstitutes() (err error) {
 	for _, attr := range ap.Attributes {
-		if err = attr.Substitute.Compile(); err != nil {
+		if err = attr.Value.Compile(); err != nil {
 			return
 		}
 	}
@@ -66,4 +67,50 @@ type AttributeProfiles []*AttributeProfile
 // Sort is part of sort interface, sort based on Weight
 func (aps AttributeProfiles) Sort() {
 	sort.Slice(aps, func(i, j int) bool { return aps[i].Weight > aps[j].Weight })
+}
+
+type ExternalAttribute struct {
+	FilterIDs []string
+	FieldName string
+	Type      string
+	Value     string
+}
+
+type ExternalAttributeProfile struct {
+	Tenant             string
+	ID                 string
+	Contexts           []string // bind this AttributeProfile to multiple contexts
+	FilterIDs          []string
+	ActivationInterval *utils.ActivationInterval // Activation interval
+	Attributes         []*ExternalAttribute
+	Blocker            bool // blocker flag to stop processing on multiple runs
+	Weight             float64
+}
+
+func (ext *ExternalAttributeProfile) AsAttributeProfile() (attr *AttributeProfile, err error) {
+	attr = new(AttributeProfile)
+	if len(ext.Attributes) == 0 {
+		return nil, utils.NewErrMandatoryIeMissing("Attributes")
+	}
+	attr.Attributes = make([]*Attribute, len(ext.Attributes))
+	for i, extAttr := range ext.Attributes {
+		if len(extAttr.Value) == 0 {
+			return nil, utils.NewErrMandatoryIeMissing("Value")
+		}
+		attr.Attributes[i] = new(Attribute)
+		if attr.Attributes[i].Value, err = config.NewRSRParsers(extAttr.Value, true, utils.INFIELD_SEP); err != nil {
+			return nil, err
+		}
+		attr.Attributes[i].Type = extAttr.Type
+		attr.Attributes[i].FilterIDs = extAttr.FilterIDs
+		attr.Attributes[i].FieldName = extAttr.FieldName
+	}
+	attr.Tenant = ext.Tenant
+	attr.ID = ext.ID
+	attr.Contexts = ext.Contexts
+	attr.FilterIDs = ext.FilterIDs
+	attr.ActivationInterval = ext.ActivationInterval
+	attr.Blocker = ext.Blocker
+	attr.Weight = ext.Weight
+	return
 }

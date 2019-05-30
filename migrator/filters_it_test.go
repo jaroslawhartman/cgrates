@@ -81,10 +81,10 @@ func TestFiltersITMoveEncoding2(t *testing.T) {
 func testFltrStart(testName, inPath, outPath, action string, t *testing.T) {
 	var err error
 	fltrAction = action
-	if fltrCfgIn, err = config.NewCGRConfigFromFolder(inPath); err != nil {
+	if fltrCfgIn, err = config.NewCGRConfigFromPath(inPath); err != nil {
 		t.Fatal(err)
 	}
-	if fltrCfgOut, err = config.NewCGRConfigFromFolder(outPath); err != nil {
+	if fltrCfgOut, err = config.NewCGRConfigFromPath(outPath); err != nil {
 		t.Fatal(err)
 	}
 	for _, stest := range sTestsFltrIT {
@@ -159,9 +159,9 @@ func testFltrITMigrateAndMove(t *testing.T) {
 		ActivationInterval: nil,
 		Attributes: []*engine.Attribute{
 			{
-				FilterIDs:  []string{"*string:Account:1001"},
-				FieldName:  "Account",
-				Substitute: config.NewRSRParsersMustCompile("1002", true, utils.INFIELD_SEP),
+				FilterIDs: []string{"*string:Account:1001"},
+				FieldName: "Account",
+				Value:     config.NewRSRParsersMustCompile("1002", true, utils.INFIELD_SEP),
 			},
 		},
 		Weight: 10,
@@ -174,9 +174,9 @@ func testFltrITMigrateAndMove(t *testing.T) {
 		ActivationInterval: nil,
 		Attributes: []*engine.Attribute{
 			{
-				FilterIDs:  []string{"*string:~Account:1001"},
-				FieldName:  "Account",
-				Substitute: config.NewRSRParsersMustCompile("1002", true, utils.INFIELD_SEP),
+				FilterIDs: []string{"*string:~Account:1001"},
+				FieldName: "Account",
+				Value:     config.NewRSRParsersMustCompile("1002", true, utils.INFIELD_SEP),
 			},
 		},
 		Weight: 10,

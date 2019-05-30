@@ -26,6 +26,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"time"
 
 	v1 "github.com/cgrates/cgrates/apier/v1"
 	"github.com/cgrates/cgrates/config"
@@ -36,6 +37,12 @@ import (
 
 type ApierV2 struct {
 	v1.ApierV1
+}
+
+// Call implements rpcclient.RpcClientConnection interface for internal RPC
+func (self *ApierV2) Call(serviceMethod string,
+	args interface{}, reply interface{}) error {
+	return utils.APIerRPCCall(self, serviceMethod, args, reply)
 }
 
 type AttrLoadRatingProfile struct {
@@ -50,7 +57,8 @@ func (self *ApierV2) LoadRatingProfile(attrs AttrLoadRatingProfile, reply *strin
 	}
 	tpRpf := &utils.TPRatingProfile{TPid: attrs.TPid}
 	dbReader := engine.NewTpReader(self.DataManager.DataDB(), self.StorDb,
-		attrs.TPid, self.Config.GeneralCfg().DefaultTimezone)
+		attrs.TPid, self.Config.GeneralCfg().DefaultTimezone,
+		self.CacheS, self.SchedulerS)
 	if err := dbReader.LoadRatingProfilesFiltered(tpRpf); err != nil {
 		return utils.NewErrServerError(err)
 	}
@@ -69,7 +77,8 @@ func (self *ApierV2) LoadAccountActions(attrs AttrLoadAccountActions, reply *str
 		return utils.NewErrMandatoryIeMissing("TPid")
 	}
 	dbReader := engine.NewTpReader(self.DataManager.DataDB(), self.StorDb,
-		attrs.TPid, self.Config.GeneralCfg().DefaultTimezone)
+		attrs.TPid, self.Config.GeneralCfg().DefaultTimezone,
+		self.CacheS, self.SchedulerS)
 	tpAa := &utils.TPAccountActions{TPid: attrs.TPid}
 	tpAa.SetAccountActionsId(attrs.AccountActionsId)
 	if _, err := guardian.Guardian.Guard(func() (interface{}, error) {
@@ -117,8 +126,10 @@ func (self *ApierV2) LoadTariffPlanFromFolder(attrs utils.AttrLoadTpFromFolder, 
 			path.Join(attrs.FolderPath, utils.SuppliersCsv),
 			path.Join(attrs.FolderPath, utils.AttributesCsv),
 			path.Join(attrs.FolderPath, utils.ChargersCsv),
-			path.Join(attrs.FolderPath, utils.DispatchersCsv),
-		), "", self.Config.GeneralCfg().DefaultTimezone)
+			path.Join(attrs.FolderPath, utils.DispatcherProfilesCsv),
+			path.Join(attrs.FolderPath, utils.DispatcherHostsCsv),
+		), "", self.Config.GeneralCfg().DefaultTimezone,
+		self.CacheS, self.SchedulerS)
 	if err := loader.LoadAll(); err != nil {
 		return utils.NewErrServerError(err)
 	}
@@ -138,28 +149,8 @@ func (self *ApierV2) LoadTariffPlanFromFolder(attrs utils.AttrLoadTpFromFolder, 
 	}
 
 	utils.Logger.Info("ApierV2.LoadTariffPlanFromFolder, reloading cache.")
-	for _, prfx := range []string{
-		utils.DESTINATION_PREFIX,
-		utils.REVERSE_DESTINATION_PREFIX,
-		utils.ACTION_PLAN_PREFIX,
-		utils.AccountActionPlansPrefix,
-	} {
-		loadedIDs, _ := loader.GetLoadedIds(prfx)
-		if err := self.DataManager.CacheDataFromDB(prfx, loadedIDs, true); err != nil {
-			return utils.NewErrServerError(err)
-		}
-	}
-	aps, _ := loader.GetLoadedIds(utils.ACTION_PLAN_PREFIX)
-
-	// relase tp data
-	loader.Init()
-
-	if len(aps) != 0 {
-		sched := self.ServManager.GetScheduler()
-		if sched != nil {
-			utils.Logger.Info("ApierV2.LoadTariffPlanFromFolder, reloading scheduler.")
-			sched.Reload()
-		}
+	if err := loader.ReloadCache(attrs.FlushDb, true, attrs.ArgDispatcher); err != nil {
+		return utils.NewErrServerError(err)
 	}
 	loadHistList, err := self.DataManager.DataDB().GetLoadHistory(1, true, utils.NonTransactional)
 	if err != nil {
@@ -297,6 +288,24 @@ func (self *ApierV2) SetActions(attrs utils.AttrSetActions, reply *string) error
 			}
 		}
 
+		var blocker *bool
+		if apiAct.BalanceBlocker != "" {
+			if x, err := strconv.ParseBool(apiAct.BalanceBlocker); err == nil {
+				blocker = &x
+			} else {
+				return err
+			}
+		}
+
+		var disabled *bool
+		if apiAct.BalanceDisabled != "" {
+			if x, err := strconv.ParseBool(apiAct.BalanceDisabled); err == nil {
+				disabled = &x
+			} else {
+				return err
+			}
+		}
+
 		a := &engine.Action{
 			Id:               attrs.ActionsId,
 			ActionType:       apiAct.Identifier,
@@ -313,12 +322,20 @@ func (self *ApierV2) SetActions(attrs utils.AttrSetActions, reply *string) error
 				DestinationIDs: utils.StringMapPointer(utils.ParseStringMap(apiAct.DestinationIds)),
 				RatingSubject:  utils.StringPointer(apiAct.RatingSubject),
 				SharedGroups:   utils.StringMapPointer(utils.ParseStringMap(apiAct.SharedGroups)),
+				Categories:     utils.StringMapPointer(utils.ParseStringMap(apiAct.Categories)),
+				TimingIDs:      utils.StringMapPointer(utils.ParseStringMap(apiAct.TimingTags)),
+				Blocker:        blocker,
+				Disabled:       disabled,
 			},
 		}
 		storeActions[idx] = a
 	}
 	if err := self.DataManager.SetActions(attrs.ActionsId, storeActions, utils.NonTransactional); err != nil {
 		return utils.NewErrServerError(err)
+	}
+	//generate a loadID for CacheActions and store it in database
+	if err := self.DataManager.SetLoadIDs(map[string]int64{utils.CacheActions: time.Now().UnixNano()}); err != nil {
+		return utils.APIErrorHandler(err)
 	}
 	*reply = utils.OK
 	return nil

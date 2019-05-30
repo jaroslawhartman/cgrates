@@ -1,4 +1,4 @@
-// +build offline_tp
+// +build integration
 
 /*
 Real-time Online/Offline Charging System (OCS) for Telecom & ISP environments
@@ -84,7 +84,7 @@ func TestTPActionsITPG(t *testing.T) {
 func testTPActionsInitCfg(t *testing.T) {
 	var err error
 	tpActionCfgPath = path.Join(tpActionDataDir, "conf", "samples", tpActionConfigDIR)
-	tpActionCfg, err = config.NewCGRConfigFromFolder(tpActionCfgPath)
+	tpActionCfg, err = config.NewCGRConfigFromPath(tpActionCfgPath)
 	if err != nil {
 		t.Error(err)
 	}
@@ -139,7 +139,6 @@ func testTPActionsSetTPAction(t *testing.T) {
 				BalanceId:       "BalID",
 				BalanceUuid:     "BalUuid",
 				BalanceType:     "*data",
-				Directions:      "*out",
 				Units:           "10",
 				ExpiryTime:      "*unlimited",
 				Filter:          "",
@@ -159,7 +158,6 @@ func testTPActionsSetTPAction(t *testing.T) {
 				BalanceId:       "BalID",
 				BalanceUuid:     "BalUuid",
 				BalanceType:     "*monetary",
-				Directions:      "*out",
 				Units:           "120",
 				ExpiryTime:      "*unlimited",
 				Filter:          "",
@@ -216,7 +214,6 @@ func testTPActionsUpdateTPAction(t *testing.T) {
 			BalanceId:       "BalID",
 			BalanceUuid:     "BalUuid",
 			BalanceType:     "*data",
-			Directions:      "*out",
 			Units:           "10",
 			ExpiryTime:      "*unlimited",
 			Filter:          "",
@@ -236,7 +233,6 @@ func testTPActionsUpdateTPAction(t *testing.T) {
 			BalanceId:       "BalID",
 			BalanceUuid:     "BalUuid",
 			BalanceType:     "*monetary",
-			Directions:      "*out",
 			Units:           "120",
 			ExpiryTime:      "*unlimited",
 			Filter:          "",
@@ -256,7 +252,6 @@ func testTPActionsUpdateTPAction(t *testing.T) {
 			BalanceId:       "BalID",
 			BalanceUuid:     "BalUuid",
 			BalanceType:     "*voice",
-			Directions:      "*out",
 			Units:           "102400",
 			ExpiryTime:      "*unlimited",
 			Filter:          "",
@@ -298,7 +293,7 @@ func testTPActionsGetTPActionAfterUpdate(t *testing.T) {
 
 func testTPActionsRemTPAction(t *testing.T) {
 	var resp string
-	if err := tpActionRPC.Call("ApierV1.RemTPActions",
+	if err := tpActionRPC.Call("ApierV1.RemoveTPActions",
 		&AttrGetTPActions{TPid: "TPAcc", ID: "ID"}, &resp); err != nil {
 		t.Error(err)
 	} else if resp != utils.OK {

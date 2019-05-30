@@ -36,10 +36,12 @@ import (
 	"time"
 
 	"github.com/cgrates/cgrates/config"
+	"github.com/cgrates/cgrates/dispatchers"
 	"github.com/cgrates/cgrates/engine"
 	"github.com/cgrates/cgrates/scheduler"
 	"github.com/cgrates/cgrates/servmanager"
 	"github.com/cgrates/cgrates/utils"
+	"github.com/cgrates/ltcache"
 	"github.com/streadway/amqp"
 )
 
@@ -70,7 +72,7 @@ var waitRater = flag.Int("wait_rater", 500, "Number of miliseconds to wait for r
 func TestApierLoadConfig(t *testing.T) {
 	var err error
 	cfgPath = path.Join(*dataDir, "conf", "samples", "apier")
-	if cfg, err = config.NewCGRConfigFromFolder(cfgPath); err != nil {
+	if cfg, err = config.NewCGRConfigFromPath(cfgPath); err != nil {
 		t.Error(err)
 	}
 }
@@ -165,15 +167,15 @@ func TestApierTPTiming(t *testing.T) {
 		t.Errorf("Calling ApierV1.GetTPTiming expected: %v, received: %v", tmAlways, rplyTmAlways2)
 	}
 	// Test remove
-	if err := rater.Call("ApierV1.RemTPTiming", AttrGetTPTiming{tmAlways2.TPid, tmAlways2.ID}, &reply); err != nil {
-		t.Error("Calling ApierV1.RemTPTiming, got error: ", err.Error())
+	if err := rater.Call("ApierV1.RemoveTPTiming", AttrGetTPTiming{tmAlways2.TPid, tmAlways2.ID}, &reply); err != nil {
+		t.Error("Calling ApierV1.RemoveTPTiming, got error: ", err.Error())
 	} else if reply != "OK" {
-		t.Error("Calling ApierV1.RemTPTiming received: ", reply)
+		t.Error("Calling ApierV1.RemoveTPTiming received: ", reply)
 	}
 	// Test getIds
 	var rplyTmIds []string
 	expectedTmIds := []string{"ALWAYS", "ASAP"}
-	if err := rater.Call("ApierV1.GetTPTimingIds", AttrGetTPTimingIds{tmAlways.TPid, utils.Paginator{}}, &rplyTmIds); err != nil {
+	if err := rater.Call("ApierV1.GetTPTimingIds", AttrGetTPTimingIds{tmAlways.TPid, utils.PaginatorWithSearch{}}, &rplyTmIds); err != nil {
 		t.Error("Calling ApierV1.GetTPTimingIds, got error: ", err.Error())
 	} else if !reflect.DeepEqual(expectedTmIds, rplyTmIds) {
 		t.Errorf("Calling ApierV1.GetTPTimingIds expected: %v, received: %v", expectedTmIds, rplyTmIds)
@@ -216,10 +218,10 @@ func TestApierTPDestination(t *testing.T) {
 		t.Errorf("Calling ApierV1.GetTPDestination expected: %v, received: %v", dstDe2, rplyDstDe2)
 	}
 	// Test remove
-	if err := rater.Call("ApierV1.RemTPDestination", AttrGetTPDestination{dstDe2.TPid, dstDe2.ID}, &reply); err != nil {
-		t.Error("Calling ApierV1.RemTPTiming, got error: ", err.Error())
+	if err := rater.Call("ApierV1.RemoveTPDestination", AttrGetTPDestination{dstDe2.TPid, dstDe2.ID}, &reply); err != nil {
+		t.Error("Calling ApierV1.RemoveTPTiming, got error: ", err.Error())
 	} else if reply != "OK" {
-		t.Error("Calling ApierV1.RemTPTiming received: ", reply)
+		t.Error("Calling ApierV1.RemoveTPTiming received: ", reply)
 	}
 	// Test getIds
 	var rplyDstIds []string
@@ -267,15 +269,15 @@ func TestApierTPRate(t *testing.T) {
 		t.Errorf("Calling ApierV1.GetTPRate expected: %+v, received: %+v", rt2, rplyRt2)
 	}
 	// Test remove
-	if err := rater.Call("ApierV1.RemTPRate", AttrGetTPRate{rt2.TPid, rt2.ID}, &reply); err != nil {
-		t.Error("Calling ApierV1.RemTPRate, got error: ", err.Error())
+	if err := rater.Call("ApierV1.RemoveTPRate", AttrGetTPRate{rt2.TPid, rt2.ID}, &reply); err != nil {
+		t.Error("Calling ApierV1.RemoveTPRate, got error: ", err.Error())
 	} else if reply != "OK" {
-		t.Error("Calling ApierV1.RemTPRate received: ", reply)
+		t.Error("Calling ApierV1.RemoveTPRate received: ", reply)
 	}
 	// Test getIds
 	var rplyRtIds []string
 	expectedRtIds := []string{"RT_FS_USERS"}
-	if err := rater.Call("ApierV1.GetTPRateIds", AttrGetTPRateIds{rt.TPid, utils.Paginator{}}, &rplyRtIds); err != nil {
+	if err := rater.Call("ApierV1.GetTPRateIds", AttrGetTPRateIds{rt.TPid, utils.PaginatorWithSearch{}}, &rplyRtIds); err != nil {
 		t.Error("Calling ApierV1.GetTPRateIds, got error: ", err.Error())
 	} else if !reflect.DeepEqual(expectedRtIds, rplyRtIds) {
 		t.Errorf("Calling ApierV1.GetTPDestinationIDs expected: %v, received: %v", expectedRtIds, rplyRtIds)
@@ -321,15 +323,15 @@ func TestApierTPDestinationRate(t *testing.T) {
 		t.Errorf("Calling ApierV1.GetTPDestinationRate expected: %v, received: %v", dr2, rplyDr2)
 	}
 	// Test remove
-	if err := rater.Call("ApierV1.RemTPDestinationRate", AttrGetTPDestinationRate{dr2.TPid, dr2.ID, utils.Paginator{}}, &reply); err != nil {
-		t.Error("Calling ApierV1.RemTPRate, got error: ", err.Error())
+	if err := rater.Call("ApierV1.RemoveTPDestinationRate", AttrGetTPDestinationRate{dr2.TPid, dr2.ID, utils.Paginator{}}, &reply); err != nil {
+		t.Error("Calling ApierV1.RemoveTPRate, got error: ", err.Error())
 	} else if reply != "OK" {
-		t.Error("Calling ApierV1.RemTPRate received: ", reply)
+		t.Error("Calling ApierV1.RemoveTPRate received: ", reply)
 	}
 	// Test getIds
 	var rplyDrIds []string
 	expectedDrIds := []string{"DR_FREESWITCH_USERS"}
-	if err := rater.Call("ApierV1.GetTPDestinationRateIds", AttrTPDestinationRateIds{dr.TPid, utils.Paginator{}}, &rplyDrIds); err != nil {
+	if err := rater.Call("ApierV1.GetTPDestinationRateIds", AttrTPDestinationRateIds{dr.TPid, utils.PaginatorWithSearch{}}, &rplyDrIds); err != nil {
 		t.Error("Calling ApierV1.GetTPDestinationRateIds, got error: ", err.Error())
 	} else if !reflect.DeepEqual(expectedDrIds, rplyDrIds) {
 		t.Errorf("Calling ApierV1.GetTPDestinationRateIds expected: %v, received: %v", expectedDrIds, rplyDrIds)
@@ -372,15 +374,15 @@ func TestApierTPRatingPlan(t *testing.T) {
 		t.Errorf("Calling ApierV1.GetTPRatingPlan expected: %v, received: %v", rpTst, rplyRpTst)
 	}
 	// Test remove
-	if err := rater.Call("ApierV1.RemTPRatingPlan", AttrGetTPRatingPlan{TPid: rpTst.TPid, ID: rpTst.ID}, &reply); err != nil {
-		t.Error("Calling ApierV1.RemTPRatingPlan, got error: ", err.Error())
+	if err := rater.Call("ApierV1.RemoveTPRatingPlan", AttrGetTPRatingPlan{TPid: rpTst.TPid, ID: rpTst.ID}, &reply); err != nil {
+		t.Error("Calling ApierV1.RemoveTPRatingPlan, got error: ", err.Error())
 	} else if reply != "OK" {
-		t.Error("Calling ApierV1.RemTPRatingPlan received: ", reply)
+		t.Error("Calling ApierV1.RemoveTPRatingPlan received: ", reply)
 	}
 	// Test getIds
 	var rplyRpIds []string
 	expectedRpIds := []string{"RETAIL1"}
-	if err := rater.Call("ApierV1.GetTPRatingPlanIds", AttrGetTPRatingPlanIds{rp.TPid, utils.Paginator{}}, &rplyRpIds); err != nil {
+	if err := rater.Call("ApierV1.GetTPRatingPlanIds", AttrGetTPRatingPlanIds{rp.TPid, utils.PaginatorWithSearch{}}, &rplyRpIds); err != nil {
 		t.Error("Calling ApierV1.GetTPRatingPlanIds, got error: ", err.Error())
 	} else if !reflect.DeepEqual(expectedRpIds, rplyRpIds) {
 		t.Errorf("Calling ApierV1.GetTPRatingPlanIds expected: %v, received: %v", expectedRpIds, rplyRpIds)
@@ -425,10 +427,10 @@ func TestApierTPRatingProfile(t *testing.T) {
 		t.Errorf("Calling ApierV1.GetTPRatingProfiles expected: %v, received: %v", rpfTst, rplyRpf)
 	}
 	// Test remove
-	if err := rater.Call("ApierV1.RemTPRatingProfile", AttrGetTPRatingProfile{TPid: rpfTst.TPid, RatingProfileId: rpfTst.GetRatingProfilesId()}, &reply); err != nil {
-		t.Error("Calling ApierV1.RemTPRatingProfile, got error: ", err.Error())
+	if err := rater.Call("ApierV1.RemoveTPRatingProfile", AttrGetTPRatingProfile{TPid: rpfTst.TPid, RatingProfileId: rpfTst.GetRatingProfilesId()}, &reply); err != nil {
+		t.Error("Calling ApierV1.RemoveTPRatingProfile, got error: ", err.Error())
 	} else if reply != "OK" {
-		t.Error("Calling ApierV1.RemTPRatingProfile received: ", reply)
+		t.Error("Calling ApierV1.RemoveTPRatingProfile received: ", reply)
 	}
 	// Test getLoadIds
 	var rplyRpIds []string
@@ -484,10 +486,10 @@ func TestApierTPActions(t *testing.T) {
 		t.Errorf("Calling ApierV1.GetTPActions expected: %v, received: %v", actTst, rplyActs)
 	}
 	// Test remove
-	if err := rater.Call("ApierV1.RemTPActions", AttrGetTPActions{TPid: actTst.TPid, ID: actTst.ID}, &reply); err != nil {
-		t.Error("Calling ApierV1.RemTPActions, got error: ", err.Error())
+	if err := rater.Call("ApierV1.RemoveTPActions", AttrGetTPActions{TPid: actTst.TPid, ID: actTst.ID}, &reply); err != nil {
+		t.Error("Calling ApierV1.RemoveTPActions, got error: ", err.Error())
 	} else if reply != "OK" {
-		t.Error("Calling ApierV1.RemTPActions received: ", reply)
+		t.Error("Calling ApierV1.RemoveTPActions received: ", reply)
 	}
 	// Test getIds
 	var rplyIds []string
@@ -534,10 +536,10 @@ func TestApierTPActionPlan(t *testing.T) {
 		t.Errorf("Calling ApierV1.GetTPActionPlan expected: %v, received: %v", atTst, rplyActs)
 	}
 	// Test remove
-	if err := rater.Call("ApierV1.RemTPActionPlan", AttrGetTPActionPlan{TPid: atTst.TPid, ID: atTst.ID}, &reply); err != nil {
-		t.Error("Calling ApierV1.RemTPActionPlan, got error: ", err.Error())
+	if err := rater.Call("ApierV1.RemoveTPActionPlan", AttrGetTPActionPlan{TPid: atTst.TPid, ID: atTst.ID}, &reply); err != nil {
+		t.Error("Calling ApierV1.RemoveTPActionPlan, got error: ", err.Error())
 	} else if reply != "OK" {
-		t.Error("Calling ApierV1.RemTPActionPlan received: ", reply)
+		t.Error("Calling ApierV1.RemoveTPActionPlan received: ", reply)
 	}
 	// Test getIds
 	var rplyIds []string
@@ -590,10 +592,10 @@ func TestApierTPActionTriggers(t *testing.T) {
 		t.Errorf("Calling ApierV1.GetTPActionTriggers expected: %+v, received: %+v", atTst.ActionTriggers[0], rplyActs.ActionTriggers[0])
 	}
 	// Test remove
-	if err := rater.Call("ApierV1.RemTPActionTriggers", AttrGetTPActionTriggers{TPid: atTst.TPid, ID: atTst.ID}, &reply); err != nil {
-		t.Error("Calling ApierV1.RemTPActionTriggers, got error: ", err.Error())
+	if err := rater.Call("ApierV1.RemoveTPActionTriggers", AttrGetTPActionTriggers{TPid: atTst.TPid, ID: atTst.ID}, &reply); err != nil {
+		t.Error("Calling ApierV1.RemoveTPActionTriggers, got error: ", err.Error())
 	} else if reply != "OK" {
-		t.Error("Calling ApierV1.RemTPActionTriggers received: ", reply)
+		t.Error("Calling ApierV1.RemoveTPActionTriggers received: ", reply)
 	}
 	// Test getIds
 	var rplyIds []string
@@ -648,10 +650,10 @@ func TestApierTPAccountActions(t *testing.T) {
 		t.Errorf("Calling ApierV1.GetTPAccountActions expected: %v, received: %v", aaTst, rplyaa)
 	}
 	// Test remove
-	if err := rater.Call("ApierV1.RemTPAccountActions", AttrGetTPAccountActions{TPid: aaTst.TPid, AccountActionsId: aaTst.GetId()}, &reply); err != nil {
-		t.Error("Calling ApierV1.RemTPAccountActions, got error: ", err.Error())
+	if err := rater.Call("ApierV1.RemoveTPAccountActions", AttrGetTPAccountActions{TPid: aaTst.TPid, AccountActionsId: aaTst.GetId()}, &reply); err != nil {
+		t.Error("Calling ApierV1.RemoveTPAccountActions, got error: ", err.Error())
 	} else if reply != "OK" {
-		t.Error("Calling ApierV1.RemTPAccountActions received: ", reply)
+		t.Error("Calling ApierV1.RemoveTPAccountActions received: ", reply)
 	}
 	// Test getLoadIds
 	var rplyRpIds []string
@@ -688,13 +690,12 @@ func TestApierLoadRatingProfile(t *testing.T) {
 
 // Test here LoadAccountActions
 func TestApierLoadAccountActions(t *testing.T) {
-	var rcvStats *utils.CacheStats
-	var args utils.AttrCacheStats
-	expectedStats := new(utils.CacheStats) // Make sure nothing in cache so far
-	if err := rater.Call("ApierV1.GetCacheStats", args, &rcvStats); err != nil {
-		t.Error("Got error on ApierV1.GetCacheStats: ", err.Error())
+	var rcvStats map[string]*ltcache.CacheStats
+	expectedStats := engine.GetDefaultEmptyCacheStats() // Make sure nothing in cache so far
+	if err := rater.Call("CacheSv1.GetCacheStats", nil, &rcvStats); err != nil {
+		t.Error("Got error on CacheSv1.GetCacheStats: ", err.Error())
 	} else if !reflect.DeepEqual(expectedStats, rcvStats) {
-		t.Errorf("Calling ApierV1.GetCacheStats expected: %+v, received: %+v", expectedStats, rcvStats)
+		t.Errorf("Calling CacheSv1.GetCacheStats expected: %+v, received: %+v", utils.ToJSON(expectedStats), utils.ToJSON(rcvStats))
 	}
 	reply := ""
 	aa1 := &utils.TPAccountActions{TPid: utils.TEST_SQL, LoadId: utils.TEST_SQL, Tenant: "cgrates.org", Account: "1001"}
@@ -704,11 +705,13 @@ func TestApierLoadAccountActions(t *testing.T) {
 		t.Error("Calling ApierV1.LoadAccountActions got reply: ", reply)
 	}
 	time.Sleep(10 * time.Millisecond)
-	expectedStats = &utils.CacheStats{Actions: 1, ActionPlans: 1, AccountActionPlans: 1}
-	if err := rater.Call("ApierV1.GetCacheStats", args, &rcvStats); err != nil {
-		t.Error("Got error on ApierV1.GetCacheStats: ", err.Error())
+	expectedStats[utils.CacheAccountActionPlans].Items = 1
+	expectedStats[utils.CacheActionPlans].Items = 1
+	expectedStats[utils.CacheActions].Items = 1
+	if err := rater.Call("CacheSv1.GetCacheStats", nil, &rcvStats); err != nil {
+		t.Error("Got error on CacheSv1.GetCacheStats: ", err.Error())
 	} else if !reflect.DeepEqual(expectedStats, rcvStats) {
-		t.Errorf("Calling ApierV1.GetCacheStats expected: %+v, received: %+v", utils.ToJSON(expectedStats), utils.ToJSON(rcvStats))
+		t.Errorf("Calling CacheSv1.GetCacheStats expected: %+v, received: %+v", utils.ToJSON(expectedStats), utils.ToJSON(rcvStats))
 	}
 }
 
@@ -716,10 +719,10 @@ func TestApierLoadAccountActions(t *testing.T) {
 func TestApierReloadScheduler(t *testing.T) {
 	reply := ""
 	// Simple test that command is executed without errors
-	if err := rater.Call("ApierV1.ReloadScheduler", reply, &reply); err != nil {
-		t.Error("Got error on ApierV1.ReloadScheduler: ", err.Error())
+	if err := rater.Call(utils.SchedulerSv1Reload, dispatchers.StringWithApiKey{}, &reply); err != nil {
+		t.Error("Got error on SchedulerSv1.Reload: ", err.Error())
 	} else if reply != "OK" {
-		t.Error("Calling ApierV1.ReloadScheduler got reply: ", reply)
+		t.Error("Calling SchedulerSv1.Reload got reply: ", reply)
 	}
 }
 
@@ -734,13 +737,16 @@ func TestApierSetRatingProfile(t *testing.T) {
 	} else if reply != "OK" {
 		t.Error("Calling ApierV1.SetRatingProfile got reply: ", reply)
 	}
-	var rcvStats *utils.CacheStats
-	var args utils.AttrCacheStats
-	expectedStats := &utils.CacheStats{RatingProfiles: 1, Actions: 1, ActionPlans: 1, AccountActionPlans: 1}
-	if err := rater.Call("ApierV1.GetCacheStats", args, &rcvStats); err != nil {
-		t.Error("Got error on ApierV1.GetCacheStats: ", err.Error())
+	var rcvStats map[string]*ltcache.CacheStats
+	expectedStats := engine.GetDefaultEmptyCacheStats()
+	expectedStats[utils.CacheAccountActionPlans].Items = 1
+	expectedStats[utils.CacheActionPlans].Items = 1
+	expectedStats[utils.CacheActions].Items = 1
+	expectedStats[utils.CacheRatingProfiles].Items = 1
+	if err := rater.Call("CacheSv1.GetCacheStats", nil, &rcvStats); err != nil {
+		t.Error("Got error on CacheSv1.GetCacheStats: ", err.Error())
 	} else if !reflect.DeepEqual(expectedStats, rcvStats) {
-		t.Errorf("Calling ApierV1.GetCacheStats expected: %+v, received: %+v", expectedStats, rcvStats)
+		t.Errorf("Calling CacheSv1.GetCacheStats expected: %+v, received: %+v", expectedStats, rcvStats)
 	}
 	// Calling the second time should not raise EXISTS
 	if err := rater.Call("ApierV1.SetRatingProfile", rpf, &reply); err != nil {
@@ -767,18 +773,12 @@ func TestApierSetRatingProfile(t *testing.T) {
 	} else if cc.Cost != 0 {
 		t.Errorf("Calling Responder.GetCost got callcost: %v", cc.Cost)
 	}
-	expectedStats = &utils.CacheStats{
-		ReverseDestinations: 10,
-		RatingPlans:         1,
-		RatingProfiles:      1,
-		Actions:             1,
-		ActionPlans:         1,
-		AccountActionPlans:  1,
-	}
-	if err := rater.Call("ApierV1.GetCacheStats", args, &rcvStats); err != nil {
-		t.Error("Got error on ApierV1.GetCacheStats: ", err.Error())
+	expectedStats[utils.CacheRatingPlans].Items = 1
+	expectedStats[utils.CacheReverseDestinations].Items = 10
+	if err := rater.Call("CacheSv1.GetCacheStats", nil, &rcvStats); err != nil {
+		t.Error("Got error on CacheSv1.GetCacheStats: ", err.Error())
 	} else if !reflect.DeepEqual(expectedStats, rcvStats) {
-		t.Errorf("Calling ApierV1.GetCacheStats expected: %+v, received: %+v", utils.ToJSON(expectedStats), utils.ToJSON(rcvStats))
+		t.Errorf("Calling CacheSv1.GetCacheStats expected: %+v, received: %+v", utils.ToJSON(expectedStats), utils.ToJSON(rcvStats))
 	}
 }
 
@@ -819,6 +819,14 @@ func TestApierV1GetRatingProfile(t *testing.T) {
 	if err := rater.Call("ApierV1.GetRatingProfile", attrGetRatingPlan, &rpl); err.Error() != utils.ErrNotFound.Error() {
 		t.Errorf("Expected error on ApierV1.GetRatingProfile, recived : %+v", err)
 	}
+
+	expectedIds := []string{"call:dan", "call:*any"}
+	var result []string
+	if err := rater.Call(utils.ApierV1GetRatingProfileIDs, utils.TenantArgWithPaginator{TenantArg: utils.TenantArg{Tenant: "cgrates.org"}}, &result); err != nil {
+		t.Error(err)
+	} else if len(expectedIds) != len(result) {
+		t.Errorf("Expecting : %+v, received: %+v", expected, result)
+	}
 }
 
 // Test here ReloadCache
@@ -826,25 +834,24 @@ func TestApierReloadCache(t *testing.T) {
 	reply := ""
 	arc := new(utils.AttrReloadCache)
 	// Simple test that command is executed without errors
-	if err := rater.Call("ApierV1.ReloadCache", arc, &reply); err != nil {
-		t.Error("Got error on ApierV1.ReloadCache: ", err.Error())
+	if err := rater.Call("CacheSv1.ReloadCache", arc, &reply); err != nil {
+		t.Error("Got error on CacheSv1.ReloadCache: ", err.Error())
 	} else if reply != "OK" {
-		t.Error("Calling ApierV1.ReloadCache got reply: ", reply)
+		t.Error("Calling CacheSv1.ReloadCache got reply: ", reply)
 	}
-	var rcvStats *utils.CacheStats
-	var args utils.AttrCacheStats
-	expectedStats := &utils.CacheStats{
-		ReverseDestinations: 10,
-		RatingPlans:         1,
-		RatingProfiles:      2,
-		Actions:             1,
-		ActionPlans:         1,
-		AccountActionPlans:  1,
-	}
-	if err := rater.Call("ApierV1.GetCacheStats", args, &rcvStats); err != nil {
-		t.Error("Got error on ApierV1.GetCacheStats: ", err.Error())
+	var rcvStats map[string]*ltcache.CacheStats
+	expectedStats := engine.GetDefaultEmptyCacheStats()
+	expectedStats[utils.CacheAccountActionPlans].Items = 1
+	expectedStats[utils.CacheActionPlans].Items = 1
+	expectedStats[utils.CacheActions].Items = 1
+	expectedStats[utils.CacheRatingProfiles].Items = 2
+	expectedStats[utils.CacheRatingPlans].Items = 1
+	expectedStats[utils.CacheReverseDestinations].Items = 10
+	expectedStats[utils.CacheLoadIDs].Items = 20
+	if err := rater.Call("CacheSv1.GetCacheStats", nil, &rcvStats); err != nil {
+		t.Error("Got error on CacheSv1.GetCacheStats: ", err.Error())
 	} else if !reflect.DeepEqual(expectedStats, rcvStats) {
-		t.Errorf("Calling ApierV1.GetCacheStats expected: %+v, received: %+v", utils.ToJSON(expectedStats), utils.ToJSON(rcvStats))
+		t.Errorf("Calling CacheSv1.GetCacheStats expected: %+v, received: %+v", utils.ToJSON(expectedStats), utils.ToJSON(rcvStats))
 	}
 }
 
@@ -1178,9 +1185,9 @@ func TestApierITGetScheduledActionsForAccount(t *testing.T) {
 // Test here RemoveActionTiming
 func TestApierRemUniqueIDActionTiming(t *testing.T) {
 	var rmReply string
-	rmReq := AttrRemActionTiming{ActionPlanId: "ATMS_1", Tenant: "cgrates.org", Account: "dan4"}
-	if err := rater.Call("ApierV1.RemActionTiming", rmReq, &rmReply); err != nil {
-		t.Error("Got error on ApierV1.RemActionTiming: ", err.Error())
+	rmReq := AttrRemoveActionTiming{ActionPlanId: "ATMS_1", Tenant: "cgrates.org", Account: "dan4"}
+	if err := rater.Call("ApierV1.RemoveActionTiming", rmReq, &rmReply); err != nil {
+		t.Error("Got error on ApierV1.RemoveActionTiming: ", err.Error())
 	} else if rmReply != OK {
 		t.Error("Unexpected answer received", rmReply)
 	}
@@ -1251,19 +1258,18 @@ func TestApierResetDataBeforeLoadFromFolder(t *testing.T) {
 	TestApierInitDataDb(t)
 	var reply string
 	// Simple test that command is executed without errors
-	if err := rater.Call("ApierV1.FlushCache", utils.AttrReloadCache{FlushAll: true}, &reply); err != nil {
+	if err := rater.Call("CacheSv1.FlushCache", utils.AttrReloadCache{FlushAll: true}, &reply); err != nil {
 		t.Error(err)
 	} else if reply != "OK" {
 		t.Error("Reply: ", reply)
 	}
-	var rcvStats *utils.CacheStats
-	var args utils.AttrCacheStats
-	err := rater.Call("ApierV1.GetCacheStats", args, &rcvStats)
-	expectedStats := new(utils.CacheStats)
+	var rcvStats map[string]*ltcache.CacheStats
+	expectedStats := engine.GetDefaultEmptyCacheStats()
+	err := rater.Call("CacheSv1.GetCacheStats", nil, &rcvStats)
 	if err != nil {
-		t.Error("Got error on ApierV1.GetCacheStats: ", err.Error())
+		t.Error("Got error on CacheSv1.GetCacheStats: ", err.Error())
 	} else if !reflect.DeepEqual(rcvStats, expectedStats) {
-		t.Errorf("Calling ApierV1.GetCacheStats received: %v, expected: %v", rcvStats, expectedStats)
+		t.Errorf("Calling CacheSv1.GetCacheStats expected: %v,  received: %v", utils.ToJSON(expectedStats), utils.ToJSON(rcvStats))
 	}
 }
 
@@ -1305,41 +1311,45 @@ func TestApierComputeReverse(t *testing.T) {
 
 func TestApierResetDataAfterLoadFromFolder(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
-	expStats := &utils.CacheStats{
-		Destinations:       3,
-		Actions:            6,
-		ActionPlans:        7,
-		AccountActionPlans: 13,
-		AttributeProfiles:  0} // Did not cache because it wasn't previously cached
-	var rcvStats *utils.CacheStats
-	if err := rater.Call("ApierV1.GetCacheStats", utils.AttrCacheStats{}, &rcvStats); err != nil {
-		t.Error("Got error on ApierV1.GetCacheStats: ", err.Error())
+	var rcvStats map[string]*ltcache.CacheStats
+	expStats := engine.GetDefaultEmptyCacheStats()
+	expStats[utils.CacheAccountActionPlans].Items = 13
+	expStats[utils.CacheActionPlans].Items = 7
+	expStats[utils.CacheActions].Items = 6
+	expStats[utils.CacheDestinations].Items = 3
+	expStats[utils.CacheLoadIDs].Items = 14
+	if err := rater.Call("CacheSv1.GetCacheStats", nil, &rcvStats); err != nil {
+		t.Error("Got error on CacheSv1.GetCacheStats: ", err.Error())
 	} else if !reflect.DeepEqual(expStats, rcvStats) {
-		t.Errorf("Expecting: %+v, received: %+v", utils.ToJSON(expStats), utils.ToJSON(rcvStats))
+		t.Errorf("Expecting: %+v,\n received: %+v", utils.ToJSON(expStats), utils.ToJSON(rcvStats))
 	}
 	reply := ""
 	// Simple test that command is executed without errors
-	if err := rater.Call("ApierV1.LoadCache", utils.AttrReloadCache{}, &reply); err != nil {
+	if err := rater.Call("CacheSv1.LoadCache", utils.AttrReloadCache{}, &reply); err != nil {
 		t.Error(err)
 	} else if reply != "OK" {
 		t.Error(reply)
 	}
-	//expStats = &utils.CacheStats{Destinations: 3, ReverseDestinations: 5}
-	if err := rater.Call("ApierV1.GetCacheStats", utils.AttrCacheStats{}, &rcvStats); err != nil {
+	expStats[utils.CacheActionTriggers].Items = 1
+	expStats[utils.CacheActions].Items = 13
+	expStats[utils.CacheAttributeProfiles].Items = 1
+	expStats[utils.CacheFilters].Items = 15
+	expStats[utils.CacheRatingPlans].Items = 5
+	expStats[utils.CacheRatingProfiles].Items = 5
+	expStats[utils.CacheResourceProfiles].Items = 3
+	expStats[utils.CacheResources].Items = 3
+	expStats[utils.CacheReverseDestinations].Items = 5
+	expStats[utils.CacheStatQueueProfiles].Items = 1
+	expStats[utils.CacheStatQueues].Items = 1
+	expStats[utils.CacheSupplierProfiles].Items = 2
+	expStats[utils.CacheThresholdProfiles].Items = 1
+	expStats[utils.CacheThresholds].Items = 1
+	expStats[utils.CacheLoadIDs].Items = 20
+
+	if err := rater.Call("CacheSv1.GetCacheStats", nil, &rcvStats); err != nil {
 		t.Error(err)
-		//} else if !reflect.DeepEqual(expStats, rcvStats) {
-	} else {
-		if rcvStats.Destinations != 3 ||
-			rcvStats.ReverseDestinations != 5 ||
-			rcvStats.RatingPlans != 5 ||
-			rcvStats.RatingProfiles != 5 ||
-			rcvStats.Actions != 13 ||
-			rcvStats.ActionPlans != 7 ||
-			rcvStats.SharedGroups != 0 ||
-			rcvStats.ResourceProfiles != 3 ||
-			rcvStats.Resources != 3 {
-			t.Errorf("Expecting: %+v, received: %+v", expStats, rcvStats)
-		}
+	} else if !reflect.DeepEqual(expStats, rcvStats) {
+		t.Errorf("Expecting: %+v, received: %+v", utils.ToJSON(expStats), utils.ToJSON(rcvStats))
 	}
 }
 
@@ -1433,7 +1443,7 @@ func TestApierITProcessCdr(t *testing.T) {
 	chargerProfile := &engine.ChargerProfile{
 		Tenant:       "cgrates.org",
 		ID:           "Default",
-		RunID:        "*default",
+		RunID:        utils.MetaDefault,
 		AttributeIDs: []string{"*none"},
 		Weight:       20,
 	}
@@ -1507,7 +1517,7 @@ func TestApierGetCallCostLog(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	expected := engine.EventCost{
 		CGRID:     "Cdr1",
-		RunID:     "*default",
+		RunID:     utils.MetaDefault,
 		StartTime: tm,
 		Usage:     utils.DurationPointer(0),
 		Cost:      utils.Float64Pointer(0),
@@ -1610,20 +1620,20 @@ func TestApierInitStorDb2(t *testing.T) {
 func TestApierReloadCache2(t *testing.T) {
 	reply := ""
 	// Simple test that command is executed without errors
-	if err := rater.Call("ApierV1.FlushCache", utils.AttrReloadCache{FlushAll: true}, &reply); err != nil {
-		t.Error("Got error on ApierV1.ReloadCache: ", err.Error())
+	if err := rater.Call("CacheSv1.FlushCache", utils.AttrReloadCache{FlushAll: true}, &reply); err != nil {
+		t.Error("Got error on CacheSv1.ReloadCache: ", err.Error())
 	} else if reply != utils.OK {
-		t.Error("Calling ApierV1.ReloadCache got reply: ", reply)
+		t.Error("Calling CacheSv1.ReloadCache got reply: ", reply)
 	}
 }
 
 func TestApierReloadScheduler2(t *testing.T) {
 	reply := ""
 	// Simple test that command is executed without errors
-	if err := rater.Call("ApierV1.ReloadScheduler", reply, &reply); err != nil {
-		t.Error("Got error on ApierV1.ReloadScheduler: ", err.Error())
+	if err := rater.Call(utils.SchedulerSv1Reload, dispatchers.StringWithApiKey{}, &reply); err != nil {
+		t.Error("Got error on SchedulerSv1.Reload: ", err.Error())
 	} else if reply != utils.OK {
-		t.Error("Calling ApierV1.ReloadScheduler got reply: ", reply)
+		t.Error("Calling SchedulerSv1.Reload got reply: ", reply)
 	}
 }
 
@@ -1650,14 +1660,13 @@ func TestApierLoadTariffPlanFromStorDbDryRun(t *testing.T) {
 }
 
 func TestApierGetCacheStats2(t *testing.T) {
-	var rcvStats *utils.CacheStats
-	var args utils.AttrCacheStats
-	err := rater.Call("ApierV1.GetCacheStats", args, &rcvStats)
-	expectedStats := new(utils.CacheStats)
+	var rcvStats map[string]*ltcache.CacheStats
+	expectedStats := engine.GetDefaultEmptyCacheStats()
+	err := rater.Call("CacheSv1.GetCacheStats", nil, &rcvStats)
 	if err != nil {
-		t.Error("Got error on ApierV1.GetCacheStats: ", err.Error())
+		t.Error("Got error on CacheSv1.GetCacheStats: ", err.Error())
 	} else if !reflect.DeepEqual(expectedStats, rcvStats) {
-		t.Errorf("Calling ApierV1.GetCacheStats expected: %v, received: %v", expectedStats, rcvStats)
+		t.Errorf("Calling CacheSv1.GetCacheStats expected: %v, received: %v", expectedStats, rcvStats)
 	}
 }
 
@@ -1673,44 +1682,44 @@ func TestApierLoadTariffPlanFromStorDb(t *testing.T) {
 
 func TestApierStartStopServiceStatus(t *testing.T) {
 	var reply string
-	if err := rater.Call("ApierV1.ServiceStatus", servmanager.ArgStartService{ServiceID: utils.MetaScheduler},
+	if err := rater.Call(utils.ServiceManagerV1ServiceStatus, dispatchers.ArgStartServiceWithApiKey{ArgStartService: servmanager.ArgStartService{ServiceID: utils.MetaScheduler}},
 		&reply); err != nil {
 		t.Error(err)
 	} else if reply != utils.RunningCaps {
 		t.Errorf("Received: <%s>", reply)
 	}
-	if err := rater.Call("ApierV1.StopService", servmanager.ArgStartService{ServiceID: "INVALID"},
+	if err := rater.Call(utils.ServiceManagerV1StopService, dispatchers.ArgStartServiceWithApiKey{ArgStartService: servmanager.ArgStartService{ServiceID: "INVALID"}},
 		&reply); err == nil || err.Error() != utils.UnsupportedServiceIDCaps {
 		t.Error(err)
 	}
-	if err := rater.Call("ApierV1.StopService", servmanager.ArgStartService{ServiceID: utils.MetaScheduler},
+	if err := rater.Call(utils.ServiceManagerV1StopService, dispatchers.ArgStartServiceWithApiKey{ArgStartService: servmanager.ArgStartService{ServiceID: utils.MetaScheduler}},
 		&reply); err != nil {
 		t.Error(err)
 	} else if reply != utils.OK {
 		t.Errorf("Received: <%s>", reply)
 	}
-	if err := rater.Call("ApierV1.ServiceStatus", servmanager.ArgStartService{ServiceID: utils.MetaScheduler},
+	if err := rater.Call(utils.ServiceManagerV1ServiceStatus, dispatchers.ArgStartServiceWithApiKey{ArgStartService: servmanager.ArgStartService{ServiceID: utils.MetaScheduler}},
 		&reply); err != nil {
 		t.Error(err)
 	} else if reply != utils.StoppedCaps {
 		t.Errorf("Received: <%s>", reply)
 	}
-	if err := rater.Call("ApierV1.StartService", servmanager.ArgStartService{ServiceID: utils.MetaScheduler},
+	if err := rater.Call(utils.ServiceManagerV1StartService, dispatchers.ArgStartServiceWithApiKey{ArgStartService: servmanager.ArgStartService{ServiceID: utils.MetaScheduler}},
 		&reply); err != nil {
 		t.Error(err)
 	} else if reply != utils.OK {
 		t.Errorf("Received: <%s>", reply)
 	}
-	if err := rater.Call("ApierV1.ServiceStatus", servmanager.ArgStartService{ServiceID: utils.MetaScheduler},
+	if err := rater.Call(utils.ServiceManagerV1ServiceStatus, dispatchers.ArgStartServiceWithApiKey{ArgStartService: servmanager.ArgStartService{ServiceID: utils.MetaScheduler}},
 		&reply); err != nil {
 		t.Error(err)
 	} else if reply != utils.RunningCaps {
 		t.Errorf("Received: <%s>", reply)
 	}
-	if err := rater.Call("ApierV1.ReloadScheduler", reply, &reply); err != nil {
-		t.Error("Got error on ApierV1.ReloadScheduler: ", err.Error())
+	if err := rater.Call(utils.SchedulerSv1Reload, dispatchers.StringWithApiKey{}, &reply); err != nil {
+		t.Error("Got error on SchedulerSv1.Reload: ", err.Error())
 	} else if reply != utils.OK {
-		t.Error("Calling ApierV1.ReloadScheduler got reply: ", reply)
+		t.Error("Calling SchedulerSv1.Reload got reply: ", reply)
 	}
 }
 

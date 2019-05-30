@@ -23,8 +23,8 @@ import "github.com/cgrates/cgrates/utils"
 func init() {
 	c := &CmdRemoveSupplier{
 		name:      "supplier_remove",
-		rpcMethod: "ApierV1.RemoveSupplierProfile",
-		rpcParams: &utils.TenantID{},
+		rpcMethod: utils.ApierV1RemoveSupplierProfile,
+		rpcParams: &utils.TenantIDWithCache{},
 	}
 	commands[c.Name()] = c
 	c.CommandExecuter = &CommandExecuter{c}
@@ -33,7 +33,7 @@ func init() {
 type CmdRemoveSupplier struct {
 	name      string
 	rpcMethod string
-	rpcParams *utils.TenantID
+	rpcParams *utils.TenantIDWithCache
 	*CommandExecuter
 }
 
@@ -47,7 +47,7 @@ func (self *CmdRemoveSupplier) RpcMethod() string {
 
 func (self *CmdRemoveSupplier) RpcParams(reset bool) interface{} {
 	if reset || self.rpcParams == nil {
-		self.rpcParams = &utils.TenantID{}
+		self.rpcParams = &utils.TenantIDWithCache{}
 	}
 	return self.rpcParams
 }

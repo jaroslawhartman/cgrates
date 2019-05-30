@@ -37,7 +37,7 @@ var (
 	chargerCfgPath   string
 	chargerCfg       *config.CGRConfig
 	chargerRPC       *rpc.Client
-	chargerProfile   *engine.ChargerProfile
+	chargerProfile   *ChargerWithCache
 	chargerConfigDIR string //run tests for specific configuration
 )
 
@@ -94,7 +94,7 @@ func TestChargerSITMongo(t *testing.T) {
 func testChargerSInitCfg(t *testing.T) {
 	var err error
 	chargerCfgPath = path.Join(*dataDir, "conf", "samples", chargerConfigDIR)
-	chargerCfg, err = config.NewCGRConfigFromFolder(chargerCfgPath)
+	chargerCfg, err = config.NewCGRConfigFromPath(chargerCfgPath)
 	if err != nil {
 		t.Error(err)
 	}
@@ -132,40 +132,45 @@ func testChargerSRPCConn(t *testing.T) {
 }
 
 func testChargerSLoadAddCharger(t *testing.T) {
-	chargerProfile := &engine.ChargerProfile{
-		Tenant:    "cgrates.org",
-		ID:        "Charger1",
-		FilterIDs: []string{"*string:~Account:1001"},
-		ActivationInterval: &utils.ActivationInterval{
-			ActivationTime: time.Date(2014, 7, 29, 15, 0, 0, 0, time.UTC),
+	chargerProfile := &ChargerWithCache{
+		ChargerProfile: &engine.ChargerProfile{
+			Tenant:    "cgrates.org",
+			ID:        "Charger1",
+			FilterIDs: []string{"*string:~Account:1001"},
+			ActivationInterval: &utils.ActivationInterval{
+				ActivationTime: time.Date(2014, 7, 29, 15, 0, 0, 0, time.UTC),
+			},
+			RunID:        utils.MetaDefault,
+			AttributeIDs: []string{"ATTR_1001_SIMPLEAUTH"},
+			Weight:       20,
 		},
-		RunID:        "*default",
-		AttributeIDs: []string{"ATTR_1001_SIMPLEAUTH"},
-		Weight:       20,
 	}
+
 	var result string
 	if err := chargerRPC.Call("ApierV1.SetChargerProfile", chargerProfile, &result); err != nil {
 		t.Error(err)
 	} else if result != utils.OK {
 		t.Error("Unexpected reply returned", result)
 	}
-	alsPrf = &engine.AttributeProfile{
-		Tenant:   "cgrates.org",
-		ID:       "ATTR_1001_SIMPLEAUTH",
-		Contexts: []string{"simpleauth"},
-		Attributes: []*engine.Attribute{
-			{
-				FieldName: "Password",
-				Substitute: config.RSRParsers{
-					&config.RSRParser{
-						Rules:           "CGRateS.org",
-						AllFiltersMatch: true,
+	alsPrf = &AttributeWithCache{
+		AttributeProfile: &engine.AttributeProfile{
+			Tenant:   "cgrates.org",
+			ID:       "ATTR_1001_SIMPLEAUTH",
+			Contexts: []string{"simpleauth"},
+			Attributes: []*engine.Attribute{
+				{
+					FieldName: "Password",
+					Value: config.RSRParsers{
+						&config.RSRParser{
+							Rules:           "CGRateS.org",
+							AllFiltersMatch: true,
+						},
 					},
 				},
 			},
+			Blocker: false,
+			Weight:  10,
 		},
-		Blocker: false,
-		Weight:  10,
 	}
 	if err := chargerRPC.Call("ApierV1.SetAttributeProfile", alsPrf, &result); err != nil {
 		t.Error(err)
@@ -183,7 +188,7 @@ func testChargerSGetChargersForEvent(t *testing.T) {
 			ActivationInterval: &utils.ActivationInterval{
 				ActivationTime: time.Date(2014, 7, 29, 15, 0, 0, 0, time.UTC),
 			},
-			RunID:        "*default",
+			RunID:        utils.MetaDefault,
 			AttributeIDs: []string{"ATTR_1001_SIMPLEAUTH"},
 			Weight:       20,
 		},
@@ -212,7 +217,7 @@ func testChargerSProcessEvent(t *testing.T) {
 				Event: map[string]interface{}{
 					utils.Account: "1001",
 					"Password":    "CGRateS.org",
-					"RunID":       "*default",
+					"RunID":       utils.MetaDefault,
 				},
 			},
 		},
@@ -230,17 +235,19 @@ func testChargerSProcessEvent(t *testing.T) {
 }
 
 func testChargerSSetChargerProfile(t *testing.T) {
-	chargerProfile = &engine.ChargerProfile{
-		Tenant:    "cgrates.org",
-		ID:        "ApierTest",
-		FilterIDs: []string{"*string:~Account:1001", "*string:~Account:1002"},
-		ActivationInterval: &utils.ActivationInterval{
-			ActivationTime: time.Date(2014, 7, 14, 14, 35, 0, 0, time.UTC),
-			ExpiryTime:     time.Date(2014, 7, 14, 14, 35, 0, 0, time.UTC),
+	chargerProfile = &ChargerWithCache{
+		ChargerProfile: &engine.ChargerProfile{
+			Tenant:    "cgrates.org",
+			ID:        "ApierTest",
+			FilterIDs: []string{"*string:~Account:1001", "*string:~Account:1002"},
+			ActivationInterval: &utils.ActivationInterval{
+				ActivationTime: time.Date(2014, 7, 14, 14, 35, 0, 0, time.UTC),
+				ExpiryTime:     time.Date(2014, 7, 14, 14, 35, 0, 0, time.UTC),
+			},
+			RunID:        utils.MetaDefault,
+			AttributeIDs: []string{"Attr1", "Attr2"},
+			Weight:       20,
 		},
-		RunID:        "*default",
-		AttributeIDs: []string{"Attr1", "Attr2"},
-		Weight:       20,
 	}
 	var result string
 	if err := chargerRPC.Call("ApierV1.SetChargerProfile", chargerProfile, &result); err != nil {
@@ -252,17 +259,25 @@ func testChargerSSetChargerProfile(t *testing.T) {
 	if err := chargerRPC.Call("ApierV1.GetChargerProfile",
 		&utils.TenantID{Tenant: "cgrates.org", ID: "ApierTest"}, &reply); err != nil {
 		t.Error(err)
-	} else if !reflect.DeepEqual(chargerProfile, reply) {
-		t.Errorf("Expecting : %+v, received: %+v", chargerProfile, reply)
+	} else if !reflect.DeepEqual(chargerProfile.ChargerProfile, reply) {
+		t.Errorf("Expecting : %+v, received: %+v", chargerProfile.ChargerProfile, reply)
 	}
 }
 
 func testChargerSGetChargerProfileIDs(t *testing.T) {
 	expected := []string{"Charger1", "ApierTest"}
 	var result []string
-	if err := chargerRPC.Call("ApierV1.GetChargerProfileIDs", "cgrates.org", &result); err != nil {
+	if err := chargerRPC.Call(utils.ApierV1GetChargerProfileIDs, utils.TenantArgWithPaginator{TenantArg: utils.TenantArg{Tenant: "cgrates.org"}}, &result); err != nil {
 		t.Error(err)
 	} else if len(expected) != len(result) {
+		t.Errorf("Expecting : %+v, received: %+v", expected, result)
+	}
+	if err := chargerRPC.Call(utils.ApierV1GetChargerProfileIDs, utils.TenantArgWithPaginator{
+		TenantArg: utils.TenantArg{Tenant: "cgrates.org"},
+		Paginator: utils.Paginator{Limit: utils.IntPointer(1)},
+	}, &result); err != nil {
+		t.Error(err)
+	} else if 1 != len(result) {
 		t.Errorf("Expecting : %+v, received: %+v", expected, result)
 	}
 }
@@ -279,8 +294,8 @@ func testChargerSUpdateChargerProfile(t *testing.T) {
 	if err := chargerRPC.Call("ApierV1.GetChargerProfile",
 		&utils.TenantID{Tenant: "cgrates.org", ID: "ApierTest"}, &reply); err != nil {
 		t.Error(err)
-	} else if !reflect.DeepEqual(chargerProfile, reply) {
-		t.Errorf("Expecting : %+v, received: %+v", chargerProfile, reply)
+	} else if !reflect.DeepEqual(chargerProfile.ChargerProfile, reply) {
+		t.Errorf("Expecting : %+v, received: %+v", chargerProfile.ChargerProfile, reply)
 	}
 }
 

@@ -46,7 +46,24 @@ import (
 	"github.com/cgrates/rpcclient"
 )
 
-var startCGRateSTime time.Time
+var (
+	startCGRateSTime time.Time
+
+	rfc3339Rule                  = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.+$`)
+	sqlRule                      = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}$`)
+	utcFormat                    = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}[T]\d{2}:\d{2}:\d{2}$`)
+	gotimeRule                   = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}\.?\d*\s[+,-]\d+\s\w+$`)
+	gotimeRule2                  = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}\.?\d*\s[+,-]\d+\s[+,-]\d+$`)
+	fsTimestamp                  = regexp.MustCompile(`^\d{16}$`)
+	astTimestamp                 = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d*[+,-]\d+$`)
+	unixTimestampRule            = regexp.MustCompile(`^\d{10}$`)
+	unixTimestampMilisecondsRule = regexp.MustCompile(`^\d{13}$`)
+	unixTimestampNanosecondsRule = regexp.MustCompile(`^\d{19}$`)
+	oneLineTimestampRule         = regexp.MustCompile(`^\d{14}$`)
+	oneSpaceTimestampRule        = regexp.MustCompile(`^\d{2}\.\d{2}.\d{4}\s{1}\d{2}:\d{2}:\d{2}$`)
+	eamonTimestampRule           = regexp.MustCompile(`^\d{2}/\d{2}/\d{4}\s{1}\d{2}:\d{2}:\d{2}$`)
+	broadsoftTimestampRule       = regexp.MustCompile(`^\d{14}\.\d{3}`)
+)
 
 func init() {
 	startCGRateSTime = time.Now()
@@ -177,19 +194,6 @@ func ParseTimeDetectLayout(tmStr string, timezone string) (time.Time, error) {
 	if err != nil {
 		return nilTime, err
 	}
-	rfc3339Rule := regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.+$`)
-	sqlRule := regexp.MustCompile(`^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}$`)
-	utcFormat := regexp.MustCompile(`^\d{4}-\d{2}-\d{2}[T]\d{2}:\d{2}:\d{2}$`)
-	gotimeRule := regexp.MustCompile(`^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}\.?\d*\s[+,-]\d+\s\w+$`)
-	gotimeRule2 := regexp.MustCompile(`^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}\.?\d*\s[+,-]\d+\s[+,-]\d+$`)
-	fsTimestamp := regexp.MustCompile(`^\d{16}$`)
-	astTimestamp := regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d*[+,-]\d+$`)
-	unixTimestampRule := regexp.MustCompile(`^\d{10}$`)
-	unixTimestampMilisecondsRule := regexp.MustCompile(`^\d{13}$`)
-	oneLineTimestampRule := regexp.MustCompile(`^\d{14}$`)
-	oneSpaceTimestampRule := regexp.MustCompile(`^\d{2}\.\d{2}.\d{4}\s{1}\d{2}:\d{2}:\d{2}$`)
-	eamonTimestampRule := regexp.MustCompile(`^\d{2}/\d{2}/\d{4}\s{1}\d{2}:\d{2}:\d{2}$`)
-	broadsoftTimestampRule := regexp.MustCompile(`^\d{14}\.\d{3}`)
 	switch {
 	case tmStr == UNLIMITED || tmStr == "":
 	// leave it at zero
@@ -236,6 +240,12 @@ func ParseTimeDetectLayout(tmStr string, timezone string) (time.Time, error) {
 			return nilTime, err
 		} else {
 			return time.Unix(0, tmstmp*int64(time.Millisecond)).In(loc), nil
+		}
+	case unixTimestampNanosecondsRule.MatchString(tmStr):
+		if tmstmp, err := strconv.ParseInt(tmStr, 10, 64); err != nil {
+			return nilTime, err
+		} else {
+			return time.Unix(0, tmstmp).In(loc), nil
 		}
 	case tmStr == "0" || len(tmStr) == 0: // Time probably missing from request
 		return nilTime, nil
@@ -330,15 +340,10 @@ func MinDuration(d1, d2 time.Duration) time.Duration {
 // ParseZeroRatingSubject will parse the subject in the balance
 // returns duration if able to extract it from subject
 // returns error if not able to parse duration (ie: if ratingSubject is standard one)
-func ParseZeroRatingSubject(tor, rateSubj string) (time.Duration, error) {
+func ParseZeroRatingSubject(tor, rateSubj string, defaultRateSubj map[string]string) (time.Duration, error) {
 	rateSubj = strings.TrimSpace(rateSubj)
 	if rateSubj == "" || rateSubj == ANY {
-		switch tor {
-		case VOICE:
-			rateSubj = ZERO_RATING_SUBJECT_PREFIX + "1s"
-		default:
-			rateSubj = ZERO_RATING_SUBJECT_PREFIX + "1ns"
-		}
+		rateSubj = defaultRateSubj[tor]
 	}
 	if !strings.HasPrefix(rateSubj, ZERO_RATING_SUBJECT_PREFIX) {
 		return 0, errors.New("malformed rating subject: " + rateSubj)
@@ -364,10 +369,6 @@ func StatsJoin(keyVals ...string) string {
 
 func SplitStats(key string) []string {
 	return strings.Split(key, STATS_CHAR)
-}
-
-func LCRKey(direction, tenant, category, account, subject string) string {
-	return ConcatenatedKey(direction, tenant, category, account, subject)
 }
 
 func InfieldJoin(vals ...string) string {
@@ -782,11 +783,21 @@ func NewTenantID(tntID string) *TenantID {
 	if len(tIDSplt) == 1 { // only Tenant present
 		return &TenantID{Tenant: tIDSplt[0]}
 	}
-	return &TenantID{Tenant: tIDSplt[0], ID: tIDSplt[1]}
+	return &TenantID{Tenant: tIDSplt[0], ID: ConcatenatedKey(tIDSplt[1:]...)}
 }
 
 type TenantArg struct {
 	Tenant string
+}
+
+type TenantArgWithPaginator struct {
+	TenantArg
+	Paginator
+}
+
+type TenantWithArgDispatcher struct {
+	*TenantArg
+	*ArgDispatcher
 }
 
 type TenantID struct {
@@ -794,7 +805,22 @@ type TenantID struct {
 	ID     string
 }
 
+type TenantIDWithArgDispatcher struct {
+	*TenantID
+	*ArgDispatcher
+}
+
 func (tID *TenantID) TenantID() string {
+	return ConcatenatedKey(tID.Tenant, tID.ID)
+}
+
+type TenantIDWithCache struct {
+	Tenant string
+	ID     string
+	Cache  *string
+}
+
+func (tID *TenantIDWithCache) TenantID() string {
 	return ConcatenatedKey(tID.Tenant, tID.ID)
 }
 
@@ -923,4 +949,17 @@ func (ffn *FallbackFileName) AsString() string {
 type CachedRPCResponse struct {
 	Result interface{}
 	Error  error
+}
+
+type ArgDispatcher struct {
+	APIKey  *string
+	RouteID *string
+}
+
+func ReverseString(s string) string {
+	r := []rune(s)
+	for i, j := 0, len(r)-1; i < len(r)/2; i, j = i+1, j-1 {
+		r[i], r[j] = r[j], r[i]
+	}
+	return string(r)
 }

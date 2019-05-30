@@ -183,7 +183,7 @@ CREATE TABLE `tp_action_plans` (
   `created_at` TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `tpid` (`tpid`),
-  UNIQUE KEY `unique_action_schedule` (`tpid`,`tag`,`actions_tag`)
+  UNIQUE KEY `unique_action_schedule` (`tpid`,`tag`,`actions_tag`,`timing_tag`)
 );
 
 --
@@ -281,16 +281,17 @@ CREATE TABLE tp_stats (
   `activation_interval` varchar(64) NOT NULL,
   `queue_length` int(11) NOT NULL,
   `ttl` varchar(32) NOT NULL,
-  `metrics` varchar(128) NOT NULL,
-  `blocker` BOOLEAN NOT NULL,
-  `stored` BOOLEAN NOT NULL,
-  `weight` decimal(8,2) NOT NULL,
   `min_items` int(11) NOT NULL,
+  `metric_ids` varchar(128) NOT NULL,
+  `metric_filter_ids` varchar(64) NOT NULL,
+  `stored` BOOLEAN NOT NULL,
+  `blocker` BOOLEAN NOT NULL,
+  `weight` decimal(8,2) NOT NULL,
   `threshold_ids` varchar(64) NOT NULL,
   `created_at` TIMESTAMP,
   PRIMARY KEY (`pk`),
   KEY `tpid` (`tpid`),
-  UNIQUE KEY `unique_tp_stats` (`tpid`,  `tenant`, `id`, `filter_ids`)
+  UNIQUE KEY `unique_tp_stats` (`tpid`,  `tenant`, `id`, `filter_ids`,`metric_ids`)
 );
 
 --
@@ -386,14 +387,15 @@ CREATE TABLE tp_attributes (
   `activation_interval` varchar(64) NOT NULL,
   `attribute_filter_ids` varchar(64) NOT NULL,
   `field_name` varchar(64) NOT NULL,
-  `substitute` varchar(64) NOT NULL,
+  `type` varchar(64) NOT NULL,
+  `value` varchar(64) NOT NULL,
   `blocker` BOOLEAN NOT NULL,
   `weight` decimal(8,2) NOT NULL,
   `created_at` TIMESTAMP,
   PRIMARY KEY (`pk`),
   KEY `tpid` (`tpid`),
   UNIQUE KEY `unique_tp_attributes` (`tpid`,`tenant`,
-    `id`,`filter_ids`,`field_name`,`substitute` )
+    `id`,`filter_ids`,`field_name`,`value` )
 );
 
 --
@@ -422,8 +424,8 @@ CREATE TABLE tp_chargers (
 -- Table structure for table `tp_dispatchers`
 --
 
-DROP TABLE IF EXISTS tp_dispatchers;
-CREATE TABLE tp_dispatchers (
+DROP TABLE IF EXISTS tp_dispatcher_profiles;
+CREATE TABLE tp_dispatcher_profiles (
   `pk` int(11) NOT NULL AUTO_INCREMENT,
   `tpid` varchar(64) NOT NULL,
   `tenant` varchar(64) NOT NULL,
@@ -442,8 +444,27 @@ CREATE TABLE tp_dispatchers (
   `created_at` TIMESTAMP,
   PRIMARY KEY (`pk`),
   KEY `tpid` (`tpid`),
-  UNIQUE KEY `unique_tp_dispatchers` (`tpid`,`tenant`,
+  UNIQUE KEY `unique_tp_dispatcher_profiles` (`tpid`,`tenant`,
     `id`,`filter_ids`,`strategy`,`conn_id`,`conn_filter_ids`)
+);
+
+--
+-- Table structure for table `tp_dispatchers`
+--
+
+DROP TABLE IF EXISTS tp_dispatcher_hosts;
+CREATE TABLE tp_dispatcher_hosts (
+  `pk` int(11) NOT NULL AUTO_INCREMENT,
+  `tpid` varchar(64) NOT NULL,
+  `tenant` varchar(64) NOT NULL,
+  `id` varchar(64) NOT NULL,
+  `address` varchar(64) NOT NULL,
+  `transport` varchar(64) NOT NULL,
+  `created_at` TIMESTAMP,
+  PRIMARY KEY (`pk`),
+  KEY `tpid` (`tpid`),
+  UNIQUE KEY `unique_tp_dispatchers_hosts` (`tpid`,`tenant`,
+    `id`,`address`)
 );
 
 --

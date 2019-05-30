@@ -19,8 +19,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>
 package config
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -35,7 +37,7 @@ var (
 	cgrCfg                   *CGRConfig  // will be shared
 	dfltFsConnConfig         *FsConnCfg  // Default FreeSWITCH Connection configuration, built out of json default configuration
 	dfltKamConnConfig        *KamConnCfg // Default Kamailio Connection configuration
-	dfltHaPoolConfig         *HaPoolConfig
+	dfltRemoteHost           *RemoteHost
 	dfltAstConnCfg           *AsteriskConnCfg
 	dfltLoaderConfig         *LoaderSCfg
 	dfltLoaderDataTypeConfig *LoaderDataType
@@ -140,6 +142,7 @@ func NewDefaultCGRConfig() (*CGRConfig, error) {
 	cfg.filterSCfg = new(FilterSCfg)
 	cfg.ralsCfg = new(RalsCfg)
 	cfg.ralsCfg.RALsMaxComputedUsage = make(map[string]time.Duration)
+	cfg.ralsCfg.RALsBalanceRatingSubject = make(map[string]string)
 	cfg.schedulerCfg = new(SchedulerCfg)
 	cfg.cdrsCfg = new(CdrsCfg)
 	cfg.CdreProfiles = make(map[string]*CdreCfg)
@@ -151,6 +154,7 @@ func NewDefaultCGRConfig() (*CGRConfig, error) {
 	cfg.asteriskAgentCfg = new(AsteriskAgentCfg)
 	cfg.diameterAgentCfg = new(DiameterAgentCfg)
 	cfg.radiusAgentCfg = new(RadiusAgentCfg)
+	cfg.dnsAgentCfg = new(DNSAgentCfg)
 	cfg.attributeSCfg = new(AttributeSCfg)
 	cfg.chargerSCfg = new(ChargerSCfg)
 	cfg.resourceSCfg = new(ResourceSConfig)
@@ -163,9 +167,8 @@ func NewDefaultCGRConfig() (*CGRConfig, error) {
 	cfg.migratorCgrCfg = new(MigratorCgrCfg)
 	cfg.mailerCfg = new(MailerCfg)
 	cfg.loaderCfg = make([]*LoaderSCfg, 0)
-
-	//Depricated
 	cfg.SmOsipsConfig = new(SmOsipsConfig)
+	cfg.apier = new(ApierCfg)
 
 	cfg.ConfigReloads = make(map[string]chan struct{})
 	cfg.ConfigReloads[utils.CDRC] = make(chan struct{}, 1)
@@ -210,52 +213,80 @@ func NewCGRConfigFromJsonStringWithDefaults(cfgJsonStr string) (*CGRConfig, erro
 }
 
 // Reads all .json files out of a folder/subfolders and loads them up in lexical order
-func NewCGRConfigFromFolder(cfgDir string) (*CGRConfig, error) {
+func NewCGRConfigFromPath(path string) (*CGRConfig, error) {
 	cfg, err := NewDefaultCGRConfig()
 	if err != nil {
-
 		return nil, err
 	}
-	fi, err := os.Stat(cfgDir)
+	cfg.ConfigPath = path
+	if isUrl(path) {
+		return loadConfigFromHttp(cfg, path) // prefix protocol
+	}
+	fi, err := os.Stat(path)
 	if err != nil {
-		if strings.HasSuffix(err.Error(), "no such file or directory") {
-			return cfg, nil
+		if os.IsNotExist(err) {
+			return nil, utils.ErrPathNotReachable(path)
 		}
 		return nil, err
-	} else if !fi.IsDir() && cfgDir != utils.CONFIG_PATH { // If config dir defined, needs to exist, not checking for default
-		return nil, fmt.Errorf("Path: %s not a directory.", cfgDir)
+	} else if !fi.IsDir() && path != utils.CONFIG_PATH { // If config dir defined, needs to exist, not checking for default
+		return nil, fmt.Errorf("Path: %s not a directory.", path)
 	}
 	if fi.IsDir() {
-		jsonFilesFound := false
-		err = filepath.Walk(cfgDir, func(path string, info os.FileInfo, err error) error {
-			if !info.IsDir() {
-				return nil
-			}
-			cfgFiles, err := filepath.Glob(filepath.Join(path, "*.json"))
-			if err != nil {
+		return loadConfigFromFolder(cfg, path)
+	}
+	return cfg, nil
+}
+
+func loadConfigFromFolder(cfg *CGRConfig, cfgDir string) (*CGRConfig, error) {
+	jsonFilesFound := false
+	err := filepath.Walk(cfgDir, func(path string, info os.FileInfo, err error) error {
+		if !info.IsDir() {
+			return nil
+		}
+		cfgFiles, err := filepath.Glob(filepath.Join(path, "*.json"))
+		if err != nil {
+			return err
+		}
+		if cfgFiles == nil { // No need of processing further since there are no config files in the folder
+			return nil
+		}
+		if !jsonFilesFound {
+			jsonFilesFound = true
+		}
+		for _, jsonFilePath := range cfgFiles {
+			if cgrJsonCfg, err := NewCgrJsonCfgFromFile(jsonFilePath); err != nil {
+				utils.Logger.Err(fmt.Sprintf("<CGR-CFG> Error <%s> reading config from path: <%s>", err.Error(), jsonFilePath))
+				return err
+			} else if err := cfg.loadFromJsonCfg(cgrJsonCfg); err != nil {
+				utils.Logger.Err(fmt.Sprintf("<CGR-CFG> Error <%s> loading config from path: <%s>", err.Error(), jsonFilePath))
 				return err
 			}
-			if cfgFiles == nil { // No need of processing further since there are no config files in the folder
-				return nil
-			}
-			if !jsonFilesFound {
-				jsonFilesFound = true
-			}
-			for _, jsonFilePath := range cfgFiles {
-				if cgrJsonCfg, err := NewCgrJsonCfgFromFile(jsonFilePath); err != nil {
-					utils.Logger.Err(fmt.Sprintf("<CGR-CFG> Error <%s> reading config from path: <%s>", err.Error(), jsonFilePath))
-					return err
-				} else if err := cfg.loadFromJsonCfg(cgrJsonCfg); err != nil {
-					utils.Logger.Err(fmt.Sprintf("<CGR-CFG> Error <%s> loading config from path: <%s>", err.Error(), jsonFilePath))
-					return err
-				}
-			}
-			return nil
-		})
-		if err != nil {
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if !jsonFilesFound {
+		return nil, fmt.Errorf("No config file found on path %s", cfgDir)
+	}
+	if err := cfg.checkConfigSanity(); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+func loadConfigFromHttp(cfg *CGRConfig, urlPaths string) (*CGRConfig, error) {
+	for _, urlPath := range strings.Split(urlPaths, utils.INFIELD_SEP) {
+		if _, err := url.ParseRequestURI(urlPath); err != nil {
 			return nil, err
-		} else if !jsonFilesFound {
-			return nil, fmt.Errorf("No config file found on path %s", cfgDir)
+		}
+		if cgrJsonCfg, err := NewCgrJsonCfgFromHttp(urlPath); err != nil {
+			utils.Logger.Err(fmt.Sprintf("<CGR-CFG> Error <%s> reading config from path: <%s>", err.Error(), urlPath))
+			return nil, err
+		} else if err := cfg.loadFromJsonCfg(cgrJsonCfg); err != nil {
+			utils.Logger.Err(fmt.Sprintf("<CGR-CFG> Error <%s> loading config from path: <%s>", err.Error(), urlPath))
+			return nil, err
 		}
 	}
 	if err := cfg.checkConfigSanity(); err != nil {
@@ -268,6 +299,7 @@ func NewCGRConfigFromFolder(cfgDir string) (*CGRConfig, error) {
 type CGRConfig struct {
 	MaxCallDuration time.Duration // The maximum call duration (used by responder when querying DerivedCharging) // ToDo: export it in configuration file
 	DataFolderPath  string        // Path towards data folder, for tests internal usage, not loading out of .json options
+	ConfigPath      string        // Path towards config
 
 	// Cache defaults loaded from json and needing clones
 	dfltCdreProfile *CdreCfg // Default cdreConfig profile
@@ -297,6 +329,7 @@ type CGRConfig struct {
 	asteriskAgentCfg *AsteriskAgentCfg // AsteriskAgent config
 	diameterAgentCfg *DiameterAgentCfg // DiameterAgent config
 	radiusAgentCfg   *RadiusAgentCfg   // RadiusAgent config
+	dnsAgentCfg      *DNSAgentCfg      // DNSAgent config
 	attributeSCfg    *AttributeSCfg    // AttributeS config
 	chargerSCfg      *ChargerSCfg      // ChargerS config
 	resourceSCfg     *ResourceSConfig  // ResourceS config
@@ -310,11 +343,12 @@ type CGRConfig struct {
 	mailerCfg        *MailerCfg        // Mailer config
 	analyzerSCfg     *AnalyzerSCfg     // AnalyzerS config
 	SmOsipsConfig    *SmOsipsConfig    // SMOpenSIPS Configuration
+	apier            *ApierCfg
 }
 
 func (self *CGRConfig) checkConfigSanity() error {
 	// Rater checks
-	if self.ralsCfg.RALsEnabled {
+	if self.ralsCfg.RALsEnabled && !self.dispatcherSCfg.Enabled {
 		if !self.statsCfg.Enabled {
 			for _, connCfg := range self.ralsCfg.RALsStatSConns {
 				if connCfg.Address == utils.MetaInternal {
@@ -331,7 +365,7 @@ func (self *CGRConfig) checkConfigSanity() error {
 		}
 	}
 	// CDRServer checks
-	if self.cdrsCfg.CDRSEnabled {
+	if self.cdrsCfg.CDRSEnabled && !self.dispatcherSCfg.Enabled {
 		if !self.chargerSCfg.Enabled {
 			for _, conn := range self.cdrsCfg.CDRSChargerSConns {
 				if conn.Address == utils.MetaInternal {
@@ -430,13 +464,7 @@ func (self *CGRConfig) checkConfigSanity() error {
 		}
 	}
 	// SessionS checks
-	if self.sessionSCfg.Enabled {
-		if len(self.sessionSCfg.RALsConns) == 0 {
-			return errors.New("<SessionS> RALs definition is mandatory")
-		}
-		if len(self.sessionSCfg.ChargerSConns) == 0 {
-			return fmt.Errorf("<%s> %s connection is mandatory", utils.SessionS, utils.ChargerS)
-		}
+	if self.sessionSCfg.Enabled && !self.dispatcherSCfg.Enabled {
 		if !self.chargerSCfg.Enabled {
 			for _, conn := range self.sessionSCfg.ChargerSConns {
 				if conn.Address == utils.MetaInternal {
@@ -486,9 +514,6 @@ func (self *CGRConfig) checkConfigSanity() error {
 				}
 			}
 		}
-		if len(self.sessionSCfg.CDRsConns) == 0 {
-			return errors.New("<SessionS> CDRs definition is mandatory!")
-		}
 		if !self.cdrsCfg.CDRSEnabled {
 			for _, smgCDRSConn := range self.sessionSCfg.CDRsConns {
 				if smgCDRSConn.Address == utils.MetaInternal {
@@ -498,11 +523,14 @@ func (self *CGRConfig) checkConfigSanity() error {
 		}
 	}
 	// FreeSWITCHAgent checks
-	if self.fsAgentCfg.Enabled {
+	if self.fsAgentCfg.Enabled && !self.dispatcherSCfg.Enabled {
+		if len(self.fsAgentCfg.SessionSConns) == 0 {
+			return fmt.Errorf("<%s> SMG definition is mandatory!", utils.FreeSWITCHAgent)
+		}
 		for _, connCfg := range self.fsAgentCfg.SessionSConns {
-			if connCfg.Address != utils.MetaInternal {
-				return errors.New("only <*internal> connectivity allowed in in <freeswitch_agent> towards <sessions> for now")
-			}
+			// if connCfg.Address != utils.MetaInternal {
+			// 	return errors.New("only <*internal> connectivity allowed in in <freeswitch_agent> towards <sessions> for now")
+			// }
 			if connCfg.Address == utils.MetaInternal &&
 				!self.sessionSCfg.Enabled {
 				return errors.New("<sessions> not enabled but referenced by <freeswitch_agent>")
@@ -510,11 +538,14 @@ func (self *CGRConfig) checkConfigSanity() error {
 		}
 	}
 	// KamailioAgent checks
-	if self.kamAgentCfg.Enabled {
+	if self.kamAgentCfg.Enabled && !self.dispatcherSCfg.Enabled {
+		if len(self.kamAgentCfg.SessionSConns) == 0 {
+			return fmt.Errorf("<%s> SMG definition is mandatory!", utils.KamailioAgent)
+		}
 		for _, connCfg := range self.kamAgentCfg.SessionSConns {
-			if connCfg.Address != utils.MetaInternal {
-				return errors.New("only <*internal> connectivity allowed in in <kamailio_agent> towards <sessions> for now")
-			}
+			// if connCfg.Address != utils.MetaInternal {
+			// 	return errors.New("only <*internal> connectivity allowed in in <kamailio_agent> towards <sessions> for now")
+			// }
 			if connCfg.Address == utils.MetaInternal &&
 				!self.sessionSCfg.Enabled {
 				return errors.New("<sessions> not enabled but referenced by <kamailio_agent>")
@@ -522,7 +553,7 @@ func (self *CGRConfig) checkConfigSanity() error {
 		}
 	}
 	// SMOpenSIPS checks
-	if self.SmOsipsConfig.Enabled {
+	if self.SmOsipsConfig.Enabled && !self.dispatcherSCfg.Enabled {
 		if len(self.SmOsipsConfig.RALsConns) == 0 {
 			return errors.New("<SMOpenSIPS> Rater definition is mandatory!")
 		}
@@ -545,8 +576,8 @@ func (self *CGRConfig) checkConfigSanity() error {
 		}
 	}
 	// AsteriskAgent checks
-	if self.asteriskAgentCfg.Enabled {
-		/*if len(self.asteriskAgentCfg.SessionSConns) == 0 {
+	if self.asteriskAgentCfg.Enabled && !self.dispatcherSCfg.Enabled {
+		if len(self.asteriskAgentCfg.SessionSConns) == 0 {
 			return errors.New("<SMAsterisk> SMG definition is mandatory!")
 		}
 		for _, smAstSMGConn := range self.asteriskAgentCfg.SessionSConns {
@@ -554,35 +585,47 @@ func (self *CGRConfig) checkConfigSanity() error {
 				return errors.New("<SMAsterisk> SMG not enabled.")
 			}
 		}
-		*/
-		if !self.sessionSCfg.Enabled {
-			return errors.New("<SMAsterisk> SMG not enabled.")
-		}
+		// if !self.sessionSCfg.Enabled {
+		// 	return errors.New("<SMAsterisk> SMG not enabled.")
+		// }
 	}
 	// DAgent checks
-	if self.diameterAgentCfg.Enabled {
-		if !self.sessionSCfg.Enabled {
-			for _, daSMGConn := range self.diameterAgentCfg.SessionSConns {
-				if daSMGConn.Address == utils.MetaInternal {
-					return fmt.Errorf("%s not enabled but referenced by %s component",
-						utils.SessionS, utils.DiameterAgent)
-				}
+	if self.diameterAgentCfg.Enabled && !self.sessionSCfg.Enabled && !self.dispatcherSCfg.Enabled {
+		if len(self.diameterAgentCfg.SessionSConns) == 0 {
+			return fmt.Errorf("<%s> SMG definition is mandatory!", utils.DiameterAgent)
+		}
+		for _, daSMGConn := range self.diameterAgentCfg.SessionSConns {
+			if daSMGConn.Address == utils.MetaInternal {
+				return fmt.Errorf("%s not enabled but referenced by %s component",
+					utils.SessionS, utils.DiameterAgent)
 			}
 		}
 	}
-	if self.radiusAgentCfg.Enabled && !self.sessionSCfg.Enabled {
+	if self.radiusAgentCfg.Enabled && !self.sessionSCfg.Enabled && !self.dispatcherSCfg.Enabled {
+		if len(self.radiusAgentCfg.SessionSConns) == 0 {
+			return fmt.Errorf("<%s> SMG definition is mandatory!", utils.RadiusAgent)
+		}
 		for _, raSMGConn := range self.radiusAgentCfg.SessionSConns {
 			if raSMGConn.Address == utils.MetaInternal {
 				return errors.New("SMGeneric not enabled but referenced by RadiusAgent component")
 			}
 		}
 	}
+	if self.dnsAgentCfg.Enabled && !self.sessionSCfg.Enabled && !self.dispatcherSCfg.Enabled {
+		for _, sSConn := range self.dnsAgentCfg.SessionSConns {
+			if sSConn.Address == utils.MetaInternal {
+				return fmt.Errorf("%s not enabled but referenced by %s", utils.SessionS, utils.DNSAgent)
+			}
+		}
+	}
 	// HTTPAgent checks
 	for _, httpAgentCfg := range self.httpAgentCfg {
 		// httpAgent checks
-		for _, sSConn := range httpAgentCfg.SessionSConns {
-			if sSConn.Address == utils.MetaInternal && self.sessionSCfg.Enabled {
-				return errors.New("SessionS not enabled but referenced by HttpAgent component")
+		if !self.dispatcherSCfg.Enabled {
+			for _, sSConn := range httpAgentCfg.SessionSConns {
+				if sSConn.Address == utils.MetaInternal && self.sessionSCfg.Enabled {
+					return errors.New("SessionS not enabled but referenced by HttpAgent component")
+				}
 			}
 		}
 		if !utils.IsSliceMember([]string{utils.MetaUrl, utils.MetaXml}, httpAgentCfg.RequestPayload) {
@@ -599,7 +642,7 @@ func (self *CGRConfig) checkConfigSanity() error {
 			return fmt.Errorf("<%s> process_runs needs to be bigger than 0", utils.AttributeS)
 		}
 	}
-	if self.chargerSCfg.Enabled {
+	if self.chargerSCfg.Enabled && !self.dispatcherSCfg.Enabled {
 		for _, connCfg := range self.chargerSCfg.AttributeSConns {
 			if connCfg.Address == utils.MetaInternal &&
 				(self.attributeSCfg == nil || !self.attributeSCfg.Enabled) {
@@ -608,7 +651,7 @@ func (self *CGRConfig) checkConfigSanity() error {
 		}
 	}
 	// ResourceLimiter checks
-	if self.resourceSCfg.Enabled && !self.thresholdSCfg.Enabled {
+	if self.resourceSCfg.Enabled && !self.thresholdSCfg.Enabled && !self.dispatcherSCfg.Enabled {
 		for _, connCfg := range self.resourceSCfg.ThresholdSConns {
 			if connCfg.Address == utils.MetaInternal {
 				return errors.New("ThresholdS not enabled but requested by ResourceS component.")
@@ -616,7 +659,7 @@ func (self *CGRConfig) checkConfigSanity() error {
 		}
 	}
 	// StatS checks
-	if self.statsCfg.Enabled && !self.thresholdSCfg.Enabled {
+	if self.statsCfg.Enabled && !self.thresholdSCfg.Enabled && !self.dispatcherSCfg.Enabled {
 		for _, connCfg := range self.statsCfg.ThresholdSConns {
 			if connCfg.Address == utils.MetaInternal {
 				return errors.New("ThresholdS not enabled but requested by StatS component.")
@@ -624,7 +667,7 @@ func (self *CGRConfig) checkConfigSanity() error {
 		}
 	}
 	// SupplierS checks
-	if self.supplierSCfg.Enabled {
+	if self.supplierSCfg.Enabled && !self.dispatcherSCfg.Enabled {
 		for _, connCfg := range self.supplierSCfg.RALsConns {
 			if connCfg.Address != utils.MetaInternal {
 				return errors.New("Only <*internal> RALs connectivity allowed in SupplierS for now")
@@ -655,25 +698,8 @@ func (self *CGRConfig) checkConfigSanity() error {
 			}
 		}
 	}
-	if self.dispatcherSCfg.Enabled {
-		if self.attributeSCfg.Enabled {
-			return fmt.Errorf("<%s> cannot start in tandem with <%s>", utils.DispatcherS, utils.AttributeS)
-		}
-		if len(self.dispatcherSCfg.Conns) == 0 {
-			return fmt.Errorf("<%s> no connections defined", utils.DispatcherS)
-		}
-		for connID, haPool := range self.dispatcherSCfg.Conns {
-			for _, connCfg := range haPool {
-				if connCfg.Address == utils.MetaInternal {
-					return fmt.Errorf(
-						"<%s> connID: <%s> %s connections are not supported",
-						utils.DispatcherS, connID, utils.MetaInternal)
-				}
-			}
-		}
-	}
 	// Scheduler check connection with CDR Server
-	if !self.cdrsCfg.CDRSEnabled {
+	if !self.cdrsCfg.CDRSEnabled && !self.dispatcherSCfg.Enabled {
 		for _, connCfg := range self.schedulerCfg.CDRsConns {
 			if connCfg.Address == utils.MetaInternal {
 				return errors.New("CDR Server not enabled but requested by Scheduler")
@@ -824,6 +850,14 @@ func (self *CGRConfig) loadFromJsonCfg(jsnCfg *CgrJsonCfg) (err error) {
 		return err
 	}
 
+	jsnDNSCfg, err := jsnCfg.DNSAgentJsonCfg()
+	if err != nil {
+		return err
+	}
+	if err := self.dnsAgentCfg.loadFromJsonCfg(jsnDNSCfg, self.generalCfg.RsrSepatarot); err != nil {
+		return err
+	}
+
 	jsnHttpAgntCfg, err := jsnCfg.HttpAgentJsonCfg()
 	if err != nil {
 		return err
@@ -941,6 +975,14 @@ func (self *CGRConfig) loadFromJsonCfg(jsnCfg *CgrJsonCfg) (err error) {
 		return err
 	}
 
+	jsnApierCfg, err := jsnCfg.ApierCfgJson()
+	if err != nil {
+		return nil
+	}
+	if err := self.apier.loadFromJsonCfg(jsnApierCfg); err != nil {
+		return err
+	}
+
 	if jsnCdreCfg != nil {
 		for profileName, jsnCdre1Cfg := range jsnCdreCfg {
 			if _, hasProfile := self.CdreProfiles[profileName]; !hasProfile { // New profile, create before loading from json
@@ -1024,6 +1066,10 @@ func (self *CGRConfig) DiameterAgentCfg() *DiameterAgentCfg {
 
 func (self *CGRConfig) RadiusAgentCfg() *RadiusAgentCfg {
 	return self.radiusAgentCfg
+}
+
+func (self *CGRConfig) DNSAgentCfg() *DNSAgentCfg {
+	return self.dnsAgentCfg
 }
 
 func (cfg *CGRConfig) AttributeSCfg() *AttributeSCfg {
@@ -1139,4 +1185,95 @@ func (cfg *CGRConfig) MailerCfg() *MailerCfg {
 
 func (cfg *CGRConfig) AnalyzerSCfg() *AnalyzerSCfg {
 	return cfg.analyzerSCfg
+}
+
+func (cfg *CGRConfig) ApierCfg() *ApierCfg {
+	return cfg.apier
+}
+
+// Call implements rpcclient.RpcClientConnection interface for internal RPC
+func (cSv1 *CGRConfig) Call(serviceMethod string,
+	args interface{}, reply interface{}) error {
+	return utils.APIerRPCCall(cSv1, serviceMethod, args, reply)
+}
+
+type StringWithArgDispatcher struct {
+	*utils.ArgDispatcher
+	utils.TenantArg
+	Section string
+}
+
+//V1GetConfigSection will retrieve from CGRConfig a section
+func (cfg *CGRConfig) V1GetConfigSection(args *StringWithArgDispatcher, reply *map[string]interface{}) (err error) {
+	var jsonString string
+	switch args.Section {
+	case GENERAL_JSN:
+		jsonString = utils.ToJSON(cfg.GeneralCfg())
+	case DATADB_JSN:
+		jsonString = utils.ToJSON(cfg.DataDbCfg())
+	case STORDB_JSN:
+		jsonString = utils.ToJSON(cfg.StorDbCfg())
+	case TlsCfgJson:
+		jsonString = utils.ToJSON(cfg.TlsCfg())
+	case CACHE_JSN:
+		jsonString = utils.ToJSON(cfg.CacheCfg())
+	case LISTEN_JSN:
+		jsonString = utils.ToJSON(cfg.ListenCfg())
+	case HTTP_JSN:
+		jsonString = utils.ToJSON(cfg.HTTPCfg())
+	case FILTERS_JSON:
+		jsonString = utils.ToJSON(cfg.FilterSCfg())
+	case RALS_JSN:
+		jsonString = utils.ToJSON(cfg.RalsCfg())
+	case SCHEDULER_JSN:
+		jsonString = utils.ToJSON(cfg.SchedulerCfg())
+	case CDRS_JSN:
+		jsonString = utils.ToJSON(cfg.CdrsCfg())
+	case SessionSJson:
+		jsonString = utils.ToJSON(cfg.SessionSCfg())
+	case FS_JSN:
+		jsonString = utils.ToJSON(cfg.FsAgentCfg())
+	case KamailioAgentJSN:
+		jsonString = utils.ToJSON(cfg.KamAgentCfg())
+	case AsteriskAgentJSN:
+		jsonString = utils.ToJSON(cfg.AsteriskAgentCfg())
+	case DA_JSN:
+		jsonString = utils.ToJSON(cfg.DiameterAgentCfg())
+	case RA_JSN:
+		jsonString = utils.ToJSON(cfg.RadiusAgentCfg())
+	case DNSAgentJson:
+		jsonString = utils.ToJSON(cfg.DNSAgentCfg())
+	case ATTRIBUTE_JSN:
+		jsonString = utils.ToJSON(cfg.AttributeSCfg())
+	case ChargerSCfgJson:
+		jsonString = utils.ToJSON(cfg.ChargerSCfg())
+	case RESOURCES_JSON:
+		jsonString = utils.ToJSON(cfg.ResourceSCfg())
+	case STATS_JSON:
+		jsonString = utils.ToJSON(cfg.StatSCfg())
+	case THRESHOLDS_JSON:
+		jsonString = utils.ToJSON(cfg.ThresholdSCfg())
+	case SupplierSJson:
+		jsonString = utils.ToJSON(cfg.SupplierSCfg())
+	case SURETAX_JSON:
+		jsonString = utils.ToJSON(cfg.SureTaxCfg())
+	case DispatcherJson:
+		jsonString = utils.ToJSON(cfg.DispatcherSCfg())
+	case LoaderJson:
+		jsonString = utils.ToJSON(cfg.LoaderCfg())
+	case CgrLoaderCfgJson:
+		jsonString = utils.ToJSON(cfg.LoaderCgrCfg())
+	case CgrMigratorCfgJson:
+		jsonString = utils.ToJSON(cfg.MigratorCgrCfg())
+	case Apier:
+		jsonString = utils.ToJSON(cfg.ApierCfg())
+	case CDRC_JSN:
+		jsonString = utils.ToJSON(cfg.CdrcProfiles)
+	case CDRE_JSN:
+		jsonString = utils.ToJSON(cfg.CdreProfiles)
+	default:
+		return errors.New("Invalid section")
+	}
+	json.Unmarshal([]byte(jsonString), reply)
+	return
 }

@@ -87,6 +87,24 @@ func (m *Migrator) Migrate(taskIDs []string) (err error, stats map[string]int) {
 				return utils.NewCGRError(utils.Migrator, utils.ServerErrorCaps, err.Error(),
 					fmt.Sprintf("error: <%s> when seting versions for StorDB", err.Error())), nil
 			}
+		case utils.MetaEnsureIndexes:
+			if m.storDBOut.StorDB().GetStorageType() == utils.MONGO {
+				mgo := m.storDBOut.StorDB().(*engine.MongoStorage)
+				if err = mgo.EnsureIndexes(); err != nil {
+					return
+				}
+			} else {
+				log.Printf("The StorDB type has to be %s .\n ", utils.MONGO)
+			}
+
+			if m.dmOut.DataManager().DataDB().GetStorageType() == utils.MONGO {
+				mgo := m.dmOut.DataManager().DataDB().(*engine.MongoStorage)
+				if err = mgo.EnsureIndexes(); err != nil {
+					return
+				}
+			} else {
+				log.Printf("The DataDB type has to be %s .\n ", utils.MONGO)
+			}
 		case utils.MetaCDRs:
 			err = m.migrateCDRs()
 		case utils.MetaSessionsCosts:
@@ -235,6 +253,9 @@ func (m *Migrator) Migrate(taskIDs []string) (err error, stats map[string]int) {
 			if err := m.migrateDerivedChargers(); err != nil {
 				log.Print("ERROR: ", utils.MetaDerivedChargersV, " ", err)
 			}
+			if err := m.migrateDispatchers(); err != nil {
+				log.Print("ERROR: ", utils.MetaDispatchers, " ", err)
+			}
 			err = nil
 			//STORDB ALL
 		case utils.MetaStorDB:
@@ -286,6 +307,18 @@ func (m *Migrator) Migrate(taskIDs []string) (err error, stats map[string]int) {
 			if err := m.migrateTPDestinations(); err != nil {
 				log.Print("ERROR: ", utils.MetaTpDestinations, " ", err)
 			}
+			if err := m.migrateTPChargers(); err != nil {
+				log.Print("ERROR: ", utils.MetaTpChargers, " ", err)
+			}
+			if err := m.migrateTPDispatchers(); err != nil {
+				log.Print("ERROR: ", utils.MetaTpDispatchers, " ", err)
+			}
+			if err := m.migrateCDRs(); err != nil {
+				log.Print("ERROR: ", utils.MetaCDRs, " ", err)
+			}
+			if err := m.migrateSessionSCosts(); err != nil {
+				log.Print("ERROR: ", utils.MetaSessionsCosts, " ", err)
+			}
 			err = nil
 		}
 	}
@@ -293,4 +326,36 @@ func (m *Migrator) Migrate(taskIDs []string) (err error, stats map[string]int) {
 		stats[k] = v
 	}
 	return
+}
+
+func (m *Migrator) ensureIndexesDataDB(cols ...string) error {
+	if m.dmOut.DataManager().DataDB().GetStorageType() != utils.MONGO {
+		return nil
+	}
+	mgo := m.dmOut.DataManager().DataDB().(*engine.MongoStorage)
+	return mgo.EnsureIndexes(cols...)
+}
+
+func (m *Migrator) ensureIndexesStorDB(cols ...string) error {
+	if m.storDBOut.StorDB().GetStorageType() != utils.MONGO {
+		return nil
+	}
+	mgo := m.storDBOut.StorDB().(*engine.MongoStorage)
+	return mgo.EnsureIndexes(cols...)
+}
+
+// closes all opened DBs
+func (m *Migrator) Close() {
+	if m.dmIN != nil {
+		m.dmIN.close()
+	}
+	if m.dmOut != nil {
+		m.dmOut.close()
+	}
+	if m.storDBIn != nil {
+		m.storDBIn.close()
+	}
+	if m.storDBOut != nil {
+		m.storDBOut.close()
+	}
 }

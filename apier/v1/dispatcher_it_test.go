@@ -31,13 +31,15 @@ import (
 	"github.com/cgrates/cgrates/config"
 	"github.com/cgrates/cgrates/engine"
 	"github.com/cgrates/cgrates/utils"
+	"github.com/cgrates/ltcache"
 )
 
 var (
 	dispatcherCfgPath   string
 	dispatcherCfg       *config.CGRConfig
 	dispatcherRPC       *rpc.Client
-	dispatcherProfile   *engine.DispatcherProfile
+	dispatcherProfile   *DispatcherWithCache
+	dispatcherHost      *DispatcherHostWithCache
 	dispatcherConfigDIR string //run tests for specific configuration
 )
 
@@ -47,10 +49,19 @@ var sTestsDispatcher = []func(t *testing.T){
 	testDispatcherSResetStorDb,
 	testDispatcherSStartEngine,
 	testDispatcherSRPCConn,
+
 	testDispatcherSSetDispatcherProfile,
 	testDispatcherSGetDispatcherProfileIDs,
 	testDispatcherSUpdateDispatcherProfile,
+	testDispatcherSGetDispatcherProfileCache,
 	testDispatcherSRemDispatcherProfile,
+
+	testDispatcherSSetDispatcherHost,
+	testDispatcherSGetDispatcherHostIDs,
+	testDispatcherSUpdateDispatcherHost,
+	testDispatcherSGetDispatcherHostCache,
+	testDispatcherSRemDispatcherHost,
+
 	testDispatcherSKillEngine,
 }
 
@@ -72,12 +83,11 @@ func TestDispatcherSITMongo(t *testing.T) {
 func testDispatcherSInitCfg(t *testing.T) {
 	var err error
 	dispatcherCfgPath = path.Join(*dataDir, "conf", "samples", dispatcherConfigDIR)
-	dispatcherCfg, err = config.NewCGRConfigFromFolder(dispatcherCfgPath)
+	dispatcherCfg, err = config.NewCGRConfigFromPath(dispatcherCfgPath)
 	if err != nil {
 		t.Error(err)
 	}
 	dispatcherCfg.DataFolderPath = *dataDir
-	config.SetCgrConfig(dispatcherCfg)
 }
 
 func testDispatcherSInitDataDb(t *testing.T) {
@@ -117,13 +127,14 @@ func testDispatcherSSetDispatcherProfile(t *testing.T) {
 		t.Error(err)
 	}
 
-	dispatcherProfile = &engine.DispatcherProfile{
-		Tenant:    "cgrates.org",
-		ID:        "Dsp1",
-		FilterIDs: []string{"*string:Account:1001"},
-		Strategy:  utils.MetaFirst,
-		// Hosts:     []string{"192.168.56.203", "192.168.56.204"},
-		Weight: 20,
+	dispatcherProfile = &DispatcherWithCache{
+		DispatcherProfile: &engine.DispatcherProfile{
+			Tenant:    "cgrates.org",
+			ID:        "Dsp1",
+			FilterIDs: []string{"*string:~Account:1001"},
+			Strategy:  utils.MetaFirst,
+			Weight:    20,
+		},
 	}
 
 	if err := dispatcherRPC.Call(utils.ApierV1SetDispatcherProfile,
@@ -139,16 +150,20 @@ func testDispatcherSSetDispatcherProfile(t *testing.T) {
 		&utils.TenantID{Tenant: "cgrates.org", ID: "Dsp1"},
 		&dsp); err != nil {
 		t.Error(err)
-	} else if !reflect.DeepEqual(dispatcherProfile, dsp) {
-		t.Errorf("Expecting : %+v, received: %+v", dispatcherProfile, dsp)
+	} else if !reflect.DeepEqual(dispatcherProfile.DispatcherProfile, dsp) {
+		t.Errorf("Expecting : %+v, received: %+v", dispatcherProfile.DispatcherProfile, dsp)
 	}
 }
 
 func testDispatcherSGetDispatcherProfileIDs(t *testing.T) {
 	var result []string
+	if err := dispatcherRPC.Call(utils.ApierV1GetDispatcherProfileIDs,
+		utils.TenantArgWithPaginator{}, &result); err == nil {
+		t.Errorf("Expected: %s , received: %v", utils.NewErrMandatoryIeMissing(utils.Tenant).Error(), err)
+	}
 	expected := []string{"Dsp1"}
-	if err := dispatcherRPC.Call("ApierV1.GetDispatcherProfileIDs",
-		dispatcherProfile.Tenant, &result); err != nil {
+	if err := dispatcherRPC.Call(utils.ApierV1GetDispatcherProfileIDs,
+		utils.TenantArgWithPaginator{TenantArg: utils.TenantArg{Tenant: dispatcherProfile.Tenant}}, &result); err != nil {
 		t.Error(err)
 	} else if len(result) != len(expected) {
 		t.Errorf("Expecting : %+v, received: %+v", expected, result)
@@ -163,9 +178,9 @@ func testDispatcherSUpdateDispatcherProfile(t *testing.T) {
 		ActivationTime: time.Date(2019, 3, 1, 0, 0, 0, 0, time.UTC),
 		ExpiryTime:     time.Date(2019, 4, 1, 0, 0, 0, 0, time.UTC),
 	}
-	dispatcherProfile.Conns = []*engine.DispatcherConn{
-		{ID: "HOST1", Weight: 20.0},
-		{ID: "HOST2", Weight: 10.0},
+	dispatcherProfile.Hosts = engine.DispatcherHostProfiles{
+		&engine.DispatcherHostProfile{ID: "HOST1", Weight: 20.0},
+		&engine.DispatcherHostProfile{ID: "HOST2", Weight: 10.0},
 	}
 	if err := dispatcherRPC.Call(utils.ApierV1SetDispatcherProfile,
 		dispatcherProfile, &result); err != nil {
@@ -179,15 +194,24 @@ func testDispatcherSUpdateDispatcherProfile(t *testing.T) {
 		&utils.TenantID{Tenant: "cgrates.org", ID: "Dsp1"},
 		&dsp); err != nil {
 		t.Error(err)
-	} else if !reflect.DeepEqual(dispatcherProfile, dsp) {
-		t.Errorf("Expecting : %+v, received: %+v", dispatcherProfile, dsp)
+	} else if !reflect.DeepEqual(dispatcherProfile.DispatcherProfile, dsp) {
+		t.Errorf("Expecting : %+v, received: %+v", dispatcherProfile.DispatcherProfile, dsp)
+	}
+}
+
+func testDispatcherSGetDispatcherProfileCache(t *testing.T) {
+	var rcvStats map[string]*ltcache.CacheStats
+	if err := dispatcherRPC.Call(utils.CacheSv1GetCacheStats, nil, &rcvStats); err != nil {
+		t.Error(err)
+	} else if rcvStats[utils.CacheDispatcherProfiles].Items != 1 {
+		t.Errorf("Expecting: 1 DispatcherProfiles, received: %+v", rcvStats[utils.CacheDispatcherProfiles])
 	}
 }
 
 func testDispatcherSRemDispatcherProfile(t *testing.T) {
 	var result string
 	if err := dispatcherRPC.Call(utils.ApierV1RemoveDispatcherProfile,
-		&utils.TenantID{Tenant: "cgrates.org", ID: "Dsp1"},
+		&utils.TenantIDWithCache{Tenant: "cgrates.org", ID: "Dsp1"},
 		&result); err != nil {
 		t.Error(err)
 	} else if result != utils.OK {
@@ -202,7 +226,122 @@ func testDispatcherSRemDispatcherProfile(t *testing.T) {
 	}
 
 	if err := dispatcherRPC.Call(utils.ApierV1RemoveDispatcherProfile,
+		&utils.TenantIDWithCache{Tenant: "cgrates.org", ID: "Dsp1"},
+		&result); err.Error() != utils.ErrNotFound.Error() {
+		t.Errorf("Expected error: %v recived: %v", utils.ErrNotFound, err)
+	}
+}
+
+func testDispatcherSSetDispatcherHost(t *testing.T) {
+	var reply string
+	if err := dispatcherRPC.Call(utils.ApierV1GetDispatcherHost,
 		&utils.TenantID{Tenant: "cgrates.org", ID: "Dsp1"},
+		&reply); err == nil || err.Error() != utils.ErrNotFound.Error() {
+		t.Error(err)
+	}
+
+	dispatcherHost = &DispatcherHostWithCache{
+		DispatcherHost: &engine.DispatcherHost{
+			Tenant: "cgrates.org",
+			ID:     "DspHst1",
+			Conns: []*config.RemoteHost{
+				&config.RemoteHost{
+					Address: "*internal",
+				},
+				&config.RemoteHost{
+					Address:   ":2012",
+					Transport: utils.MetaJSONrpc,
+					TLS:       true,
+				},
+			},
+		},
+	}
+
+	if err := dispatcherRPC.Call(utils.ApierV1SetDispatcherHost,
+		dispatcherHost,
+		&reply); err != nil {
+		t.Error(err)
+	} else if reply != utils.OK {
+		t.Errorf("Expecting : %+v, received: %+v", utils.OK, reply)
+	}
+
+	var dsp *engine.DispatcherHost
+	if err := dispatcherRPC.Call(utils.ApierV1GetDispatcherHost,
+		&utils.TenantID{Tenant: "cgrates.org", ID: "DspHst1"},
+		&dsp); err != nil {
+		t.Error(err)
+	} else if !reflect.DeepEqual(dispatcherHost.DispatcherHost, dsp) {
+		t.Errorf("Expecting : %+v, received: %+v", dispatcherHost.DispatcherHost, dsp)
+	}
+}
+
+func testDispatcherSGetDispatcherHostIDs(t *testing.T) {
+	var result []string
+	if err := dispatcherRPC.Call(utils.ApierV1GetDispatcherHostIDs,
+		utils.TenantArgWithPaginator{}, &result); err == nil {
+		t.Errorf("Expected: %s , received: %v", utils.NewErrMandatoryIeMissing(utils.Tenant), err)
+	}
+	expected := []string{"DspHst1"}
+	if err := dispatcherRPC.Call(utils.ApierV1GetDispatcherHostIDs,
+		utils.TenantArgWithPaginator{TenantArg: utils.TenantArg{Tenant: dispatcherHost.Tenant}}, &result); err != nil {
+		t.Error(err)
+	} else if len(result) != len(expected) {
+		t.Errorf("Expecting : %+v, received: %+v", expected, result)
+	}
+}
+
+func testDispatcherSUpdateDispatcherHost(t *testing.T) {
+	var result string
+	dispatcherHost.Conns = append(dispatcherHost.Conns, &config.RemoteHost{
+		Address:   ":4012",
+		Transport: utils.MetaGOBrpc,
+		TLS:       false,
+	})
+	if err := dispatcherRPC.Call(utils.ApierV1SetDispatcherHost,
+		dispatcherHost, &result); err != nil {
+		t.Error(err)
+	} else if result != utils.OK {
+		t.Errorf("Expecting : %+v, received: %+v", utils.OK, result)
+	}
+
+	var dsp *engine.DispatcherHost
+	if err := dispatcherRPC.Call(utils.ApierV1GetDispatcherHost,
+		&utils.TenantID{Tenant: "cgrates.org", ID: "DspHst1"},
+		&dsp); err != nil {
+		t.Error(err)
+	} else if !reflect.DeepEqual(dispatcherHost.DispatcherHost, dsp) {
+		t.Errorf("Expecting : %+v, received: %+v", dispatcherHost.DispatcherHost, dsp)
+	}
+}
+
+func testDispatcherSGetDispatcherHostCache(t *testing.T) {
+	var rcvStats map[string]*ltcache.CacheStats
+	if err := dispatcherRPC.Call(utils.CacheSv1GetCacheStats, nil, &rcvStats); err != nil {
+		t.Error(err)
+	} else if rcvStats[utils.CacheDispatcherHosts].Items != 0 {
+		t.Errorf("Expecting: 0 DispatcherProfiles, received: %+v", rcvStats[utils.CacheDispatcherProfiles])
+	}
+}
+
+func testDispatcherSRemDispatcherHost(t *testing.T) {
+	var result string
+	if err := dispatcherRPC.Call(utils.ApierV1RemoveDispatcherHost,
+		&utils.TenantIDWithCache{Tenant: "cgrates.org", ID: "DspHst1"},
+		&result); err != nil {
+		t.Error(err)
+	} else if result != utils.OK {
+		t.Errorf("Expecting : %+v, received: %+v", utils.OK, result)
+	}
+
+	var dsp *engine.DispatcherHost
+	if err := dispatcherRPC.Call(utils.ApierV1GetDispatcherHost,
+		&utils.TenantID{Tenant: "cgrates.org", ID: "DspHst1"},
+		&dsp); err == nil || err.Error() != utils.ErrNotFound.Error() {
+		t.Error(err)
+	}
+
+	if err := dispatcherRPC.Call(utils.ApierV1RemoveDispatcherHost,
+		&utils.TenantIDWithCache{Tenant: "cgrates.org", ID: "DspHst1"},
 		&result); err.Error() != utils.ErrNotFound.Error() {
 		t.Errorf("Expected error: %v recived: %v", utils.ErrNotFound, err)
 	}

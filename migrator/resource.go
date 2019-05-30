@@ -46,6 +46,9 @@ func (m *Migrator) migrateCurrentResource() (err error) {
 		if err := m.dmOut.DataManager().SetResourceProfile(res, true); err != nil {
 			return err
 		}
+		if err := m.dmIN.DataManager().RemoveResourceProfile(tenant, idg, utils.NonTransactional, false); err != nil {
+			return err
+		}
 		m.stats[utils.Resource] += 1
 	}
 	return
@@ -69,9 +72,11 @@ func (m *Migrator) migrateResources() (err error) {
 	switch vrs[utils.Resource] {
 	case current[utils.Resource]:
 		if m.sameDataDB {
-			return
+			break
 		}
-		return m.migrateCurrentResource()
+		if err = m.migrateCurrentResource(); err != nil {
+			return err
+		}
 	}
-	return
+	return m.ensureIndexesDataDB(engine.ColRsP)
 }

@@ -43,7 +43,7 @@ var (
 // test for 0 balance with session terminate with 1s usage
 func TestSesItLoadConfig(t *testing.T) {
 	sesCfgPath = path.Join(*dataDir, "conf", "samples", "tutmysql_internal")
-	if sesCfg, err = config.NewCGRConfigFromFolder(sesCfgPath); err != nil {
+	if sesCfg, err = config.NewCGRConfigFromPath(sesCfgPath); err != nil {
 		t.Error(err)
 	}
 }
@@ -118,7 +118,7 @@ func TestSesItAddVoiceBalance(t *testing.T) {
 func TestSesItInitSession(t *testing.T) {
 	args1 := &sessions.V1InitSessionArgs{
 		InitSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: sesTenant,
 			ID:     "TestSesItInitiateSession",
 			Event: map[string]interface{}{
@@ -150,7 +150,7 @@ func TestSesItInitSession(t *testing.T) {
 func TestSesItTerminateSession(t *testing.T) {
 	args := &sessions.V1TerminateSessionArgs{
 		TerminateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: sesTenant,
 			ID:     "TestSesItUpdateSession",
 			Event: map[string]interface{}{

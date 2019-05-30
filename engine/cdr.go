@@ -290,7 +290,11 @@ func (cdr *CDR) AsMapStringIface() (mp map[string]interface{}) {
 	mp[utils.PreRated] = cdr.PreRated
 	mp[utils.CostSource] = cdr.CostSource
 	mp[utils.Cost] = cdr.Cost
-	mp[utils.CostDetails] = cdr.CostDetails
+	if cdr.CostDetails != nil {
+		var result map[string]interface{}
+		json.Unmarshal([]byte(utils.ToJSON(cdr.CostDetails)), &result)
+		mp[utils.CostDetails] = result
+	}
 	return
 }
 
@@ -878,4 +882,19 @@ func (self *UsageRecord) AsCallDescriptor(timezone string, denyNegative bool) (*
 
 func (self *UsageRecord) GetId() string {
 	return utils.Sha1(self.ToR, self.RequestType, self.Tenant, self.Category, self.Account, self.Subject, self.Destination, self.SetupTime, self.AnswerTime, self.Usage)
+}
+
+type CDRWithArgDispatcher struct {
+	*CDR
+	*utils.ArgDispatcher
+}
+
+type ExternalCDRWithArgDispatcher struct {
+	*ExternalCDR
+	*utils.ArgDispatcher
+}
+
+type UsageRecordWithArgDispatcher struct {
+	*UsageRecord
+	*utils.ArgDispatcher
 }

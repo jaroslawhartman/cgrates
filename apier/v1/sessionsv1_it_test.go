@@ -61,7 +61,7 @@ func TestSSv1ItInitCfg(t *testing.T) {
 	var err error
 	sSv1CfgPath = path.Join(*dataDir, "conf", "samples", "sessions")
 	// Init config first
-	sSv1Cfg, err = config.NewCGRConfigFromFolder(sSv1CfgPath)
+	sSv1Cfg, err = config.NewCGRConfigFromPath(sSv1CfgPath)
 	if err != nil {
 		t.Error(err)
 	}
@@ -135,7 +135,7 @@ func TestSSv1ItAuth(t *testing.T) {
 		AuthorizeResources: true,
 		GetSuppliers:       true,
 		GetAttributes:      true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSSv1ItAuth",
 			Event: map[string]interface{}{
@@ -164,6 +164,7 @@ func TestSSv1ItAuth(t *testing.T) {
 	eSplrs := &engine.SortedSuppliers{
 		ProfileID: "SPL_ACNT_1001",
 		Sorting:   utils.MetaWeight,
+		Count:     2,
 		SortedSuppliers: []*engine.SortedSupplier{
 			{
 				SupplierID: "supplier1",
@@ -180,7 +181,7 @@ func TestSSv1ItAuth(t *testing.T) {
 		},
 	}
 	if !reflect.DeepEqual(eSplrs, rply.Suppliers) {
-		t.Errorf("expecting: %+v, received: %+v", utils.ToJSON(eSplrs), utils.ToJSON(rply.Suppliers))
+		t.Errorf("expecting: %+v,\n received: %+v", utils.ToJSON(eSplrs), utils.ToJSON(rply.Suppliers))
 	}
 	eAttrs := &engine.AttrSProcessEventReply{
 		MatchedProfiles: []string{"ATTR_ACNT_1001"},
@@ -216,7 +217,7 @@ func TestSSv1ItAuthWithDigest(t *testing.T) {
 		AuthorizeResources: true,
 		GetSuppliers:       true,
 		GetAttributes:      true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSSv1ItAuth",
 			Event: map[string]interface{}{
@@ -258,7 +259,7 @@ func TestSSv1ItInitiateSession(t *testing.T) {
 		InitSession:       true,
 		AllocateResources: true,
 		GetAttributes:     true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSSv1ItInitiateSession",
 			Event: map[string]interface{}{
@@ -313,10 +314,10 @@ func TestSSv1ItInitiateSession(t *testing.T) {
 			utils.ToJSON(eAttrs), utils.ToJSON(rply.Attributes))
 	}
 	aSessions := make([]*sessions.ActiveSession, 0)
-	if err := sSv1BiRpc.Call(utils.SessionSv1GetActiveSessions, nil, &aSessions); err != nil {
+	if err := sSv1BiRpc.Call(utils.SessionSv1GetActiveSessions, &utils.SessionFilter{}, &aSessions); err != nil {
 		t.Error(err)
 	} else if len(aSessions) != 2 {
-		t.Errorf("wrong active sessions: %s", utils.ToJSON(aSessions))
+		t.Errorf("wrong active sessions: %s \n , and len(aSessions) %+v", utils.ToJSON(aSessions), len(aSessions))
 	}
 }
 
@@ -326,7 +327,7 @@ func TestSSv1ItInitiateSessionWithDigest(t *testing.T) {
 		InitSession:       true,
 		AllocateResources: true,
 		GetAttributes:     true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSSv1ItInitiateSession",
 			Event: map[string]interface{}{
@@ -346,7 +347,7 @@ func TestSSv1ItInitiateSessionWithDigest(t *testing.T) {
 	var rply sessions.V1InitReplyWithDigest
 	if err := sSv1BiRpc.Call(utils.SessionSv1InitiateSessionWithDigest,
 		args, &rply); err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 	if *rply.MaxUsage != initUsage.Seconds() {
 		t.Errorf("Unexpected MaxUsage: %v", rply.MaxUsage)
@@ -372,7 +373,7 @@ func TestSSv1ItUpdateSession(t *testing.T) {
 	args := &sessions.V1UpdateSessionArgs{
 		GetAttributes: true,
 		UpdateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSSv1ItUpdateSession",
 			Event: map[string]interface{}{
@@ -435,7 +436,7 @@ func TestSSv1ItTerminateSession(t *testing.T) {
 	args := &sessions.V1TerminateSessionArgs{
 		TerminateSession: true,
 		ReleaseResources: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSSv1ItUpdateSession",
 			Event: map[string]interface{}{
@@ -502,7 +503,7 @@ func TestSSv1ItProcessEvent(t *testing.T) {
 		AllocateResources: true,
 		Debit:             true,
 		GetAttributes:     true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSSv1ItProcessEvent",
 			Event: map[string]interface{}{
@@ -656,7 +657,7 @@ func TestSSv1ItForceUpdateSession(t *testing.T) {
 	args := &sessions.V1UpdateSessionArgs{
 		GetAttributes: true,
 		UpdateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSSv1ItUpdateSession",
 			Event: map[string]interface{}{
@@ -794,7 +795,7 @@ func TestSSv1ItDynamicDebit(t *testing.T) {
 	args1 := &sessions.V1InitSessionArgs{
 		InitSession:   true,
 		GetAttributes: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSSv1ItInitiateSession",
 			Event: map[string]interface{}{

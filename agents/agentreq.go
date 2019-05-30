@@ -66,8 +66,9 @@ func newAgentRequest(req config.DataProvider,
 type AgentRequest struct {
 	Request    config.DataProvider  // request
 	Vars       *config.NavigableMap // shared data
-	CGRRequest *config.NavigableMap
+	CGRRequest *config.NavigableMap // Used in reply to acced the request that was send
 	CGRReply   *config.NavigableMap
+	CGRAReq    *config.NavigableMap // Used to acces live build in request; both available as active request and active reply
 	Reply      *config.NavigableMap
 	tenant,
 	timezone string
@@ -90,16 +91,22 @@ func (ar *AgentRequest) FieldAsInterface(fldPath []string) (val interface{}, err
 	default:
 		return nil, fmt.Errorf("unsupported field prefix: <%s>", fldPath[0])
 	case utils.MetaReq:
-		return ar.Request.FieldAsInterface(fldPath[1:])
+		val, err = ar.Request.FieldAsInterface(fldPath[1:])
 	case utils.MetaVars:
-		return ar.Vars.FieldAsInterface(fldPath[1:])
+		val, err = ar.Vars.FieldAsInterface(fldPath[1:])
 	case utils.MetaCgreq:
-		return ar.CGRRequest.FieldAsInterface(fldPath[1:])
+		val, err = ar.CGRRequest.FieldAsInterface(fldPath[1:])
 	case utils.MetaCgrep:
-		return ar.CGRReply.FieldAsInterface(fldPath[1:])
+		val, err = ar.CGRReply.FieldAsInterface(fldPath[1:])
 	case utils.MetaRep:
-		return ar.Reply.FieldAsInterface(fldPath[1:])
+		val, err = ar.Reply.FieldAsInterface(fldPath[1:])
+	case utils.MetaCGRAReq:
+		val, err = ar.CGRAReq.FieldAsInterface(fldPath[1:])
 	}
+	if nmItems, isNMItems := val.([]*config.NMItem); isNMItems { // special handling of NMItems, take the last value out of it
+		val = nmItems[len(nmItems)-1].Data // could be we need nil protection here
+	}
+	return
 }
 
 // FieldAsString implements engine.DataProvider
@@ -108,17 +115,13 @@ func (ar *AgentRequest) FieldAsString(fldPath []string) (val string, err error) 
 	if iface, err = ar.FieldAsInterface(fldPath); err != nil {
 		return
 	}
-	if nmItems, isNMItems := iface.([]*config.NMItem); isNMItems { // special handling of NMItems, take the last value out of it
-		iface = nmItems[len(nmItems)-1].Data // could be we need nil protection here
-	}
 	return utils.IfaceAsString(iface)
 }
 
 // AsNavigableMap implements engine.DataProvider
 func (ar *AgentRequest) AsNavigableMap(tplFlds []*config.FCTemplate) (
 	nM *config.NavigableMap, err error) {
-	nM = config.NewNavigableMap(nil)
-
+	ar.CGRAReq = config.NewNavigableMap(nil)
 	for _, tplFld := range tplFlds {
 		if pass, err := ar.filterS.Pass(ar.tenant,
 			tplFld.Filters, ar); err != nil {
@@ -126,48 +129,50 @@ func (ar *AgentRequest) AsNavigableMap(tplFlds []*config.FCTemplate) (
 		} else if !pass {
 			continue
 		}
-		out, err := ar.ParseField(tplFld)
-		if err != nil {
-			if err == utils.ErrNotFound {
-				if !tplFld.Mandatory {
-					err = nil
-					continue
+		if tplFld.FieldId != utils.META_NONE {
+			out, err := ar.ParseField(tplFld)
+			if err != nil {
+				if err == utils.ErrNotFound {
+					if !tplFld.Mandatory {
+						err = nil
+						continue
+					}
+					err = utils.ErrPrefixNotFound(tplFld.Tag)
 				}
-				err = utils.ErrPrefixNotFound(tplFld.Tag)
-			}
-			return nil, err
-		}
-		var valSet []*config.NMItem
-		fldPath := strings.Split(tplFld.FieldId, utils.NestingSep)
-		nMItm := &config.NMItem{Data: out, Path: fldPath, Config: tplFld}
-		if nMFields, err := nM.FieldAsInterface(fldPath); err != nil {
-			if err != utils.ErrNotFound {
 				return nil, err
 			}
-		} else {
-			valSet = nMFields.([]*config.NMItem) // start from previous stored fields
-			if tplFld.Type == utils.META_COMPOSED {
-				prevNMItem := valSet[len(valSet)-1] // could be we need nil protection here
-				prevDataStr, err := utils.IfaceAsString(prevNMItem.Data)
-				if err != nil {
+			var valSet []*config.NMItem
+			fldPath := strings.Split(tplFld.FieldId, utils.NestingSep)
+			nMItm := &config.NMItem{Data: out, Path: fldPath, Config: tplFld}
+			if nMFields, err := ar.CGRAReq.FieldAsInterface(fldPath); err != nil {
+				if err != utils.ErrNotFound {
 					return nil, err
 				}
-				outStr, err := utils.IfaceAsString(out)
-				if err != nil {
-					return nil, err
+			} else {
+				valSet = nMFields.([]*config.NMItem) // start from previous stored fields
+				if tplFld.Type == utils.META_COMPOSED {
+					prevNMItem := valSet[len(valSet)-1] // could be we need nil protection here
+					prevDataStr, err := utils.IfaceAsString(prevNMItem.Data)
+					if err != nil {
+						return nil, err
+					}
+					outStr, err := utils.IfaceAsString(out)
+					if err != nil {
+						return nil, err
+					}
+					*nMItm = *prevNMItem // inherit the particularities, ie AttributeName
+					nMItm.Data = prevDataStr + outStr
 				}
-				*nMItm = *prevNMItem // inherit the particularities, ie AttributeName
-				nMItm.Data = prevDataStr + outStr
+				valSet = valSet[:len(valSet)-1] // discard the last item
 			}
-			valSet = valSet[:len(valSet)-1] // discard the last item
+			valSet = append(valSet, nMItm)
+			ar.CGRAReq.Set(fldPath, valSet, false, true)
 		}
-		valSet = append(valSet, nMItm)
-		nM.Set(fldPath, valSet, false, true)
 		if tplFld.Blocker { // useful in case of processing errors first
 			break
 		}
 	}
-	return
+	return ar.CGRAReq, nil
 }
 
 // parseField outputs the value based on the template item
@@ -259,6 +264,16 @@ func (aReq *AgentRequest) ParseField(
 			iFaceVals[i] = utils.StringToInterface(strVal)
 		}
 		out, err = utils.Sum(iFaceVals...)
+	case utils.MetaDifference:
+		iFaceVals := make([]interface{}, len(cfgFld.Value))
+		for i, val := range cfgFld.Value {
+			strVal, err := val.ParseDataProvider(aReq, utils.NestingSep)
+			if err != nil {
+				return "", err
+			}
+			iFaceVals[i] = utils.StringToInterface(strVal)
+		}
+		out, err = utils.Difference(iFaceVals...)
 	case utils.MetaValueExponent:
 		if len(cfgFld.Value) != 2 {
 			return nil, fmt.Errorf("invalid arguments <%s> to %s",

@@ -59,9 +59,9 @@ func TestRadiusAgentCfgloadFromJsonCfg(t *testing.T) {
 		ListenNet:          "udp",
 		ListenAuth:         "127.0.0.1:1812",
 		ListenAcct:         "127.0.0.1:1813",
-		ClientSecrets:      map[string]string{"*default": "CGRateS.org"},
-		ClientDictionaries: map[string]string{"*default": "/usr/share/cgrates/radius/dict/"},
-		SessionSConns:      []*HaPoolConfig{{Address: "*internal"}},
+		ClientSecrets:      map[string]string{utils.MetaDefault: "CGRateS.org"},
+		ClientDictionaries: map[string]string{utils.MetaDefault: "/usr/share/cgrates/radius/dict/"},
+		SessionSConns:      []*RemoteHost{{Address: "*internal"}},
 	}
 	if jsnCfg, err := NewCgrJsonCfgFromReader(strings.NewReader(cfgJSONStr)); err != nil {
 		t.Error(err)
@@ -71,40 +71,5 @@ func TestRadiusAgentCfgloadFromJsonCfg(t *testing.T) {
 		t.Error(err)
 	} else if !reflect.DeepEqual(expected, racfg) {
 		t.Errorf("Expected: %+v , recived: %+v", utils.ToJSON(expected), utils.ToJSON(racfg))
-	}
-}
-
-func TestRARequestProcessorloadFromJsonCfg(t *testing.T) {
-	var rareq, expected RARequestProcessor
-	if err := rareq.loadFromJsonCfg(nil, utils.INFIELD_SEP); err != nil {
-		t.Error(err)
-	} else if !reflect.DeepEqual(rareq, expected) {
-		t.Errorf("Expected: %+v ,recived: %+v", expected, rareq)
-	}
-	if err := rareq.loadFromJsonCfg(new(RAReqProcessorJsnCfg), utils.INFIELD_SEP); err != nil {
-		t.Error(err)
-	} else if !reflect.DeepEqual(rareq, expected) {
-		t.Errorf("Expected: %+v ,recived: %+v", expected, rareq)
-	}
-	json := &RAReqProcessorJsnCfg{
-		Id:                  utils.StringPointer("cgrates"),
-		Tenant:              utils.StringPointer("tenant"),
-		Filters:             &[]string{"filter1", "filter2"},
-		Flags:               &[]string{"flag1", "flag2"},
-		Timezone:            utils.StringPointer("Local"),
-		Continue_on_success: utils.BoolPointer(true),
-	}
-	expected = RARequestProcessor{
-		Id:                "cgrates",
-		Tenant:            NewRSRParsersMustCompile("tenant", true, utils.INFIELD_SEP),
-		Filters:           []string{"filter1", "filter2"},
-		Flags:             utils.StringMap{"flag1": true, "flag2": true},
-		Timezone:          "Local",
-		ContinueOnSuccess: true,
-	}
-	if err = rareq.loadFromJsonCfg(json, utils.INFIELD_SEP); err != nil {
-		t.Error(err)
-	} else if !reflect.DeepEqual(expected, rareq) {
-		t.Errorf("Expected: %+v , recived: %+v", utils.ToJSON(expected), utils.ToJSON(rareq))
 	}
 }

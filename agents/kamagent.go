@@ -31,21 +31,31 @@ import (
 	"github.com/cgrates/cgrates/sessions"
 	"github.com/cgrates/cgrates/utils"
 	"github.com/cgrates/kamevapi"
+	"github.com/cgrates/rpcclient"
+)
+
+var (
+	kamAuthReqRegexp   = regexp.MustCompile(CGR_AUTH_REQUEST)
+	kamCallStartRegexp = regexp.MustCompile(CGR_CALL_START)
+	kamCallEndRegexp   = regexp.MustCompile(CGR_CALL_END)
+	kamDlgListRegexp   = regexp.MustCompile(CGR_DLG_LIST)
 )
 
 func NewKamailioAgent(kaCfg *config.KamAgentCfg,
-	sessionS *utils.BiRPCInternalClient, timezone string) (ka *KamailioAgent) {
-	ka = &KamailioAgent{cfg: kaCfg, sessionS: sessionS,
+	sessionS rpcclient.RpcClientConnection, timezone string) (ka *KamailioAgent) {
+	ka = &KamailioAgent{
+		cfg:              kaCfg,
+		sessionS:         sessionS,
 		timezone:         timezone,
 		conns:            make(map[string]*kamevapi.KamEvapi),
-		activeSessionIDs: make(chan []*sessions.SessionID)}
-	ka.sessionS.SetClientConn(ka) // pass the connection to KA back into smg so we can receive the disconnects
+		activeSessionIDs: make(chan []*sessions.SessionID),
+	}
 	return
 }
 
 type KamailioAgent struct {
 	cfg              *config.KamAgentCfg
-	sessionS         *utils.BiRPCInternalClient
+	sessionS         rpcclient.RpcClientConnection
 	timezone         string
 	conns            map[string]*kamevapi.KamEvapi
 	activeSessionIDs chan []*sessions.SessionID
@@ -54,12 +64,10 @@ type KamailioAgent struct {
 func (self *KamailioAgent) Connect() error {
 	var err error
 	eventHandlers := map[*regexp.Regexp][]func([]byte, string){
-		regexp.MustCompile(CGR_AUTH_REQUEST): {
-			self.onCgrAuth},
-		regexp.MustCompile(CGR_CALL_START): {
-			self.onCallStart},
-		regexp.MustCompile(CGR_CALL_END): {self.onCallEnd},
-		regexp.MustCompile(CGR_DLG_LIST): {self.onDlgList},
+		kamAuthReqRegexp:   {self.onCgrAuth},
+		kamCallStartRegexp: {self.onCallStart},
+		kamCallEndRegexp:   {self.onCallEnd},
+		kamDlgListRegexp:   {self.onDlgList},
 	}
 	errChan := make(chan error)
 	for _, connCfg := range self.cfg.EvapiConns {
@@ -115,6 +123,7 @@ func (ka *KamailioAgent) onCgrAuth(evData []byte, connID string) {
 		return
 	}
 	authArgs.CGREvent.Event[utils.OriginHost] = ka.conns[connID].RemoteAddr().String()
+	authArgs.CGREvent.Event[EvapiConnID] = connID // Attach the connection ID
 	var authReply sessions.V1AuthorizeReply
 	err = ka.sessionS.Call(utils.SessionSv1AuthorizeEvent, authArgs, &authReply)
 	if kar, err := kev.AsKamAuthReply(authArgs, &authReply, err); err != nil {
@@ -187,6 +196,7 @@ func (ka *KamailioAgent) onCallEnd(evData []byte, connID string) {
 	}
 	var reply string
 	tsArgs.CGREvent.Event[utils.OriginHost] = ka.conns[connID].RemoteAddr().String()
+	tsArgs.CGREvent.Event[EvapiConnID] = connID // Attach the connection ID in case we need to create a session and disconnect it
 	if err := ka.sessionS.Call(utils.SessionSv1TerminateSession,
 		tsArgs, &reply); err != nil {
 		utils.Logger.Err(
@@ -200,7 +210,9 @@ func (ka *KamailioAgent) onCallEnd(evData []byte, connID string) {
 			return
 		}
 		cgrEv.Event[utils.OriginHost] = ka.conns[connID].RemoteAddr().String()
-		if err := ka.sessionS.Call(utils.SessionSv1ProcessCDR, cgrEv, &reply); err != nil {
+		cgrArgs := cgrEv.ConsumeArgs(strings.Index(kev[utils.CGRSubsystems], utils.MetaDispatchers) != -1, false)
+		if err := ka.sessionS.Call(utils.SessionSv1ProcessCDR,
+			&utils.CGREventWithArgDispatcher{CGREvent: cgrEv, ArgDispatcher: cgrArgs.ArgDispatcher}, &reply); err != nil {
 			utils.Logger.Err(fmt.Sprintf("%s> failed processing CGREvent: %s, error: %s",
 				utils.KamailioAgent, utils.ToJSON(cgrEv), err.Error()))
 		}
@@ -243,7 +255,15 @@ func (ka *KamailioAgent) V1DisconnectSession(args utils.AttrDisconnectSession, r
 	if err != nil {
 		return err
 	}
-	connID, err := utils.IfaceAsString(args.EventStart[EvapiConnID])
+	connIDIface, has := args.EventStart[EvapiConnID]
+	if !has {
+		utils.Logger.Err(
+			fmt.Sprintf("<%s> error: <%s:%s> when attempting to disconnect <%s:%s> and <%s:%s>",
+				utils.KamailioAgent, utils.ErrNotFound.Error(), EvapiConnID,
+				KamHashEntry, hEntry, KamHashID, hID))
+		return
+	}
+	connID, err := utils.IfaceAsString(connIDIface)
 	if err != nil {
 		return err
 	}

@@ -993,7 +993,7 @@ func TestFsEvV1AuthorizeArgs(t *testing.T) {
 	}
 	expected := &sessions.V1AuthorizeArgs{
 		GetMaxUsage: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: ev.GetTenant(utils.META_DEFAULT),
 			ID:     utils.UUIDSha1Prefix(),
 			Time:   &sTime,
@@ -1036,7 +1036,7 @@ func TestFsEvV1InitSessionArgs(t *testing.T) {
 	}
 	expected := &sessions.V1InitSessionArgs{
 		InitSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: ev.GetTenant(utils.META_DEFAULT),
 			ID:     utils.UUIDSha1Prefix(),
 			Time:   &sTime,
@@ -1066,7 +1066,7 @@ func TestFsEvV1TerminateSessionArgs(t *testing.T) {
 	}
 	expected := &sessions.V1TerminateSessionArgs{
 		TerminateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: ev.GetTenant(utils.META_DEFAULT),
 			ID:     utils.UUIDSha1Prefix(),
 			Time:   &sTime,

@@ -49,6 +49,7 @@ func TestDiameterAgentCfgloadFromJsonCfg(t *testing.T) {
 	"origin_realm": "cgrates.org",								// diameter Origin-Realm AVP used in replies
 	"vendor_id": 0,												// diameter Vendor-Id AVP used in replies
 	"product_name": "CGRateS",									// diameter Product-Name AVP used in replies
+	"synced_conn_requests": true,
 	"templates":{},
 	"request_processors": [],
 },
@@ -56,11 +57,12 @@ func TestDiameterAgentCfgloadFromJsonCfg(t *testing.T) {
 	expected = DiameterAgentCfg{
 		Listen:           "127.0.0.1:3868",
 		DictionariesPath: "/usr/share/cgrates/diameter/dict/",
-		SessionSConns:    []*HaPoolConfig{{Address: "*internal"}},
+		SessionSConns:    []*RemoteHost{{Address: "*internal"}},
 		OriginHost:       "CGR-DA",
 		OriginRealm:      "cgrates.org",
 		VendorId:         0,
 		ProductName:      "CGRateS",
+		SyncedConnReqs:   true,
 		Templates:        make(map[string][]*FCTemplate),
 	}
 	if jsnCfg, err := NewCgrJsonCfgFromReader(strings.NewReader(cfgJSONStr)); err != nil {
@@ -71,40 +73,5 @@ func TestDiameterAgentCfgloadFromJsonCfg(t *testing.T) {
 		t.Error(err)
 	} else if !reflect.DeepEqual(expected, dacfg) {
 		t.Errorf("Expected: %+v , recived: %+v", utils.ToJSON(expected), utils.ToJSON(dacfg))
-	}
-}
-
-func TestDARequestProcessorloadFromJsonCfg(t *testing.T) {
-	var dareq, expected DARequestProcessor
-	if err := dareq.loadFromJsonCfg(nil, utils.INFIELD_SEP); err != nil {
-		t.Error(err)
-	} else if !reflect.DeepEqual(dareq, expected) {
-		t.Errorf("Expected: %+v ,recived: %+v", expected, dareq)
-	}
-	if err := dareq.loadFromJsonCfg(new(DARequestProcessorJsnCfg), utils.INFIELD_SEP); err != nil {
-		t.Error(err)
-	} else if !reflect.DeepEqual(dareq, expected) {
-		t.Errorf("Expected: %+v ,recived: %+v", expected, dareq)
-	}
-	json := &DARequestProcessorJsnCfg{
-		Id:                  utils.StringPointer("cgrates"),
-		Tenant:              utils.StringPointer("tenant"),
-		Filters:             &[]string{"filter1", "filter2"},
-		Flags:               &[]string{"flag1", "flag2"},
-		Timezone:            utils.StringPointer("Local"),
-		Continue_on_success: utils.BoolPointer(true),
-	}
-	expected = DARequestProcessor{
-		ID:                "cgrates",
-		Tenant:            NewRSRParsersMustCompile("tenant", true, utils.INFIELD_SEP),
-		Filters:           []string{"filter1", "filter2"},
-		Flags:             utils.StringMap{"flag1": true, "flag2": true},
-		Timezone:          "Local",
-		ContinueOnSuccess: true,
-	}
-	if err = dareq.loadFromJsonCfg(json, utils.INFIELD_SEP); err != nil {
-		t.Error(err)
-	} else if !reflect.DeepEqual(expected, dareq) {
-		t.Errorf("Expected: %+v , recived: %+v", utils.ToJSON(expected), utils.ToJSON(dareq))
 	}
 }

@@ -45,7 +45,7 @@ var (
 
 func TestA1itLoadConfig(t *testing.T) {
 	a1CfgPath = path.Join(*dataDir, "conf", "samples", "tutmongo")
-	if a1Cfg, err = config.NewCGRConfigFromFolder(a1CfgPath); err != nil {
+	if a1Cfg, err = config.NewCGRConfigFromPath(a1CfgPath); err != nil {
 		t.Error(err)
 	}
 }
@@ -106,7 +106,7 @@ func TestA1itLoadTPFromFolder(t *testing.T) {
 	chargerProfile := &engine.ChargerProfile{
 		Tenant:       "cgrates.org",
 		ID:           "Default",
-		RunID:        "*default",
+		RunID:        utils.MetaDefault,
 		AttributeIDs: []string{"*none"},
 		Weight:       20,
 	}
@@ -144,7 +144,7 @@ func TestA1itDataSession1(t *testing.T) {
 	usage := time.Duration(10240)
 	initArgs := &sessions.V1InitSessionArgs{
 		InitSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestA1itDataSession1",
 			Event: map[string]interface{}{
@@ -178,7 +178,7 @@ func TestA1itDataSession1(t *testing.T) {
 
 	updateArgs := &sessions.V1UpdateSessionArgs{
 		UpdateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsVoiceLastUsed",
 			Event: map[string]interface{}{
@@ -215,7 +215,7 @@ func TestA1itDataSession1(t *testing.T) {
 	usage = time.Duration(1 * time.Minute)
 	termArgs := &sessions.V1TerminateSessionArgs{
 		TerminateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsVoiceLastUsed",
 			Event: map[string]interface{}{
@@ -327,8 +327,8 @@ func TestA1itConcurrentAPs(t *testing.T) {
 		}(acnt)
 		go func(acnt string) {
 			var reply string
-			if err := a1rpc.Call("ApierV1.RemActionTiming",
-				v1.AttrRemActionTiming{Tenant: "cgrates.org", Account: acnt, ActionPlanId: "PACKAGE_1"}, &reply); err != nil {
+			if err := a1rpc.Call("ApierV1.RemoveActionTiming",
+				v1.AttrRemoveActionTiming{Tenant: "cgrates.org", Account: acnt, ActionPlanId: "PACKAGE_1"}, &reply); err != nil {
 				t.Error(err)
 			}
 			wg.Done()

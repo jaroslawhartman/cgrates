@@ -20,6 +20,7 @@ package main
 
 import (
 	"fmt"
+	"reflect"
 
 	v1 "github.com/cgrates/cgrates/apier/v1"
 	v2 "github.com/cgrates/cgrates/apier/v2"
@@ -30,11 +31,12 @@ import (
 )
 
 // Starts rater and reports on chan
-func startRater(internalRaterChan chan rpcclient.RpcClientConnection, cacheS *engine.CacheS,
-	internalThdSChan, internalStatSChan chan rpcclient.RpcClientConnection,
+func startRater(internalRaterChan, internalApierv1, internalApierv2, internalThdSChan, internalStatSChan,
+	internalCacheSChan, internalSchedulerSChan, internalDispatcherSChan chan rpcclient.RpcClientConnection,
 	serviceManager *servmanager.ServiceManager, server *utils.Server,
-	dm *engine.DataManager, loadDb engine.LoadStorage, cdrDb engine.CdrStorage, stopHandled *bool,
-	exitChan chan bool, filterSChan chan *engine.FilterS) {
+	dm *engine.DataManager, loadDb engine.LoadStorage, cdrDb engine.CdrStorage,
+	chS *engine.CacheS, // separate from channel for optimization
+	filterSChan chan *engine.FilterS, exitChan chan bool) {
 	filterS := <-filterSChan
 	filterSChan <- filterS
 	var waitTasks []chan struct{}
@@ -42,19 +44,29 @@ func startRater(internalRaterChan chan rpcclient.RpcClientConnection, cacheS *en
 	waitTasks = append(waitTasks, cacheTaskChan)
 	go func() { //Wait for cache load
 		defer close(cacheTaskChan)
-		<-cacheS.GetPrecacheChannel(utils.CacheDestinations)
-		<-cacheS.GetPrecacheChannel(utils.CacheReverseDestinations)
-		<-cacheS.GetPrecacheChannel(utils.CacheRatingPlans)
-		<-cacheS.GetPrecacheChannel(utils.CacheRatingProfiles)
-		<-cacheS.GetPrecacheChannel(utils.CacheActions)
-		<-cacheS.GetPrecacheChannel(utils.CacheActionPlans)
-		<-cacheS.GetPrecacheChannel(utils.CacheAccountActionPlans)
-		<-cacheS.GetPrecacheChannel(utils.CacheActionTriggers)
-		<-cacheS.GetPrecacheChannel(utils.CacheSharedGroups)
+		<-chS.GetPrecacheChannel(utils.CacheDestinations)
+		<-chS.GetPrecacheChannel(utils.CacheReverseDestinations)
+		<-chS.GetPrecacheChannel(utils.CacheRatingPlans)
+		<-chS.GetPrecacheChannel(utils.CacheRatingProfiles)
+		<-chS.GetPrecacheChannel(utils.CacheActions)
+		<-chS.GetPrecacheChannel(utils.CacheActionPlans)
+		<-chS.GetPrecacheChannel(utils.CacheAccountActionPlans)
+		<-chS.GetPrecacheChannel(utils.CacheActionTriggers)
+		<-chS.GetPrecacheChannel(utils.CacheSharedGroups)
+		<-chS.GetPrecacheChannel(utils.CacheTimings)
 	}()
 
-	var thdS *rpcclient.RpcClientPool
-	if len(cfg.RalsCfg().RALsThresholdSConns) != 0 { // Connections to ThresholdS
+	var dispatcherConn rpcclient.RpcClientConnection
+	isDispatcherEnabled := cfg.DispatcherSCfg().Enabled
+	if isDispatcherEnabled {
+		dispatcherConn = <-internalDispatcherSChan
+		internalDispatcherSChan <- dispatcherConn
+	}
+
+	var thdS rpcclient.RpcClientConnection
+	if isDispatcherEnabled {
+		thdS = dispatcherConn
+	} else if len(cfg.RalsCfg().RALsThresholdSConns) != 0 { // Connections to ThresholdS
 		thdsTaskChan := make(chan struct{})
 		waitTasks = append(waitTasks, thdsTaskChan)
 		go func() {
@@ -65,8 +77,7 @@ func startRater(internalRaterChan chan rpcclient.RpcClientConnection, cacheS *en
 				cfg.TlsCfg().ClientCerificate, cfg.TlsCfg().CaCertificate,
 				cfg.GeneralCfg().ConnectAttempts, cfg.GeneralCfg().Reconnects,
 				cfg.GeneralCfg().ConnectTimeout, cfg.GeneralCfg().ReplyTimeout,
-				cfg.RalsCfg().RALsThresholdSConns, internalThdSChan,
-				cfg.GeneralCfg().InternalTtl, false)
+				cfg.RalsCfg().RALsThresholdSConns, internalThdSChan, false)
 			if err != nil {
 				utils.Logger.Crit(fmt.Sprintf("<RALs> Could not connect to ThresholdS, error: %s", err.Error()))
 				exitChan <- true
@@ -75,8 +86,10 @@ func startRater(internalRaterChan chan rpcclient.RpcClientConnection, cacheS *en
 		}()
 	}
 
-	var stats *rpcclient.RpcClientPool
-	if len(cfg.RalsCfg().RALsStatSConns) != 0 { // Connections to StatS
+	var stats rpcclient.RpcClientConnection
+	if isDispatcherEnabled {
+		stats = dispatcherConn
+	} else if len(cfg.RalsCfg().RALsStatSConns) != 0 { // Connections to StatS
 		statsTaskChan := make(chan struct{})
 		waitTasks = append(waitTasks, statsTaskChan)
 		go func() {
@@ -87,10 +100,57 @@ func startRater(internalRaterChan chan rpcclient.RpcClientConnection, cacheS *en
 				cfg.TlsCfg().ClientCerificate, cfg.TlsCfg().CaCertificate,
 				cfg.GeneralCfg().ConnectAttempts, cfg.GeneralCfg().Reconnects,
 				cfg.GeneralCfg().ConnectTimeout, cfg.GeneralCfg().ReplyTimeout,
-				cfg.RalsCfg().RALsStatSConns, internalStatSChan,
-				cfg.GeneralCfg().InternalTtl, false)
+				cfg.RalsCfg().RALsStatSConns, internalStatSChan, false)
 			if err != nil {
 				utils.Logger.Crit(fmt.Sprintf("<RALs> Could not connect to StatS, error: %s", err.Error()))
+				exitChan <- true
+				return
+			}
+		}()
+	}
+
+	//create cache connection
+	var cacheSrpc rpcclient.RpcClientConnection
+	if isDispatcherEnabled {
+		cacheSrpc = dispatcherConn
+	} else if len(cfg.ApierCfg().CachesConns) != 0 {
+		cachesTaskChan := make(chan struct{})
+		waitTasks = append(waitTasks, cachesTaskChan)
+		go func() {
+			defer close(cachesTaskChan)
+			var err error
+			cacheSrpc, err = engine.NewRPCPool(rpcclient.POOL_FIRST,
+				cfg.TlsCfg().ClientKey,
+				cfg.TlsCfg().ClientCerificate, cfg.TlsCfg().CaCertificate,
+				cfg.GeneralCfg().ConnectAttempts, cfg.GeneralCfg().Reconnects,
+				cfg.GeneralCfg().ConnectTimeout, cfg.GeneralCfg().ReplyTimeout,
+				cfg.ApierCfg().CachesConns, internalCacheSChan, false)
+			if err != nil {
+				utils.Logger.Crit(fmt.Sprintf("<APIer> Could not connect to CacheS, error: %s", err.Error()))
+				exitChan <- true
+				return
+			}
+		}()
+	}
+
+	//create scheduler connection
+	var schedulerSrpc rpcclient.RpcClientConnection
+	if isDispatcherEnabled {
+		schedulerSrpc = dispatcherConn
+	} else if len(cfg.ApierCfg().SchedulerConns) != 0 {
+		schedulerSTaskChan := make(chan struct{})
+		waitTasks = append(waitTasks, schedulerSTaskChan)
+		go func() {
+			defer close(schedulerSTaskChan)
+			var err error
+			schedulerSrpc, err = engine.NewRPCPool(rpcclient.POOL_FIRST,
+				cfg.TlsCfg().ClientKey,
+				cfg.TlsCfg().ClientCerificate, cfg.TlsCfg().CaCertificate,
+				cfg.GeneralCfg().ConnectAttempts, cfg.GeneralCfg().Reconnects,
+				cfg.GeneralCfg().ConnectTimeout, cfg.GeneralCfg().ReplyTimeout,
+				cfg.ApierCfg().SchedulerConns, internalSchedulerSChan, false)
+			if err != nil {
+				utils.Logger.Crit(fmt.Sprintf("<APIer> Could not connect to SchedulerS, error: %s", err.Error()))
 				exitChan <- true
 				return
 			}
@@ -101,9 +161,19 @@ func startRater(internalRaterChan chan rpcclient.RpcClientConnection, cacheS *en
 	for _, chn := range waitTasks {
 		<-chn
 	}
+
 	responder := &engine.Responder{
 		ExitChan:         exitChan,
 		MaxComputedUsage: cfg.RalsCfg().RALsMaxComputedUsage}
+
+	// correct reflect on cacheS since there is no APIer init
+	if cacheSrpc != nil && reflect.ValueOf(cacheSrpc).IsNil() {
+		cacheSrpc = nil
+	}
+	// correct reflect on schedulerS since there is no APIer init
+	if schedulerSrpc != nil && reflect.ValueOf(schedulerSrpc).IsNil() {
+		schedulerSrpc = nil
+	}
 	apierRpcV1 := &v1.ApierV1{
 		StorDb:      loadDb,
 		DataManager: dm,
@@ -113,7 +183,10 @@ func startRater(internalRaterChan chan rpcclient.RpcClientConnection, cacheS *en
 		ServManager: serviceManager,
 		HTTPPoster: engine.NewHTTPPoster(cfg.GeneralCfg().HttpSkipTlsVerify,
 			cfg.GeneralCfg().ReplyTimeout),
-		FilterS: filterS}
+		FilterS:    filterS,
+		CacheS:     cacheSrpc,
+		SchedulerS: schedulerSrpc}
+
 	if thdS != nil {
 		engine.SetThresholdS(thdS) // temporary architectural fix until we will have separate AccountS
 	}
@@ -124,9 +197,11 @@ func startRater(internalRaterChan chan rpcclient.RpcClientConnection, cacheS *en
 	apierRpcV2 := &v2.ApierV2{
 		ApierV1: *apierRpcV1}
 
-	server.RpcRegister(responder)
-	server.RpcRegister(apierRpcV1)
-	server.RpcRegister(apierRpcV2)
+	if !cfg.DispatcherSCfg().Enabled {
+		server.RpcRegister(responder)
+		server.RpcRegister(apierRpcV1)
+		server.RpcRegister(apierRpcV2)
+	}
 
 	utils.RegisterRpcParams("", &v1.CDRsV1{})
 	utils.RegisterRpcParams("", &v2.CDRsV2{})
@@ -135,5 +210,8 @@ func startRater(internalRaterChan chan rpcclient.RpcClientConnection, cacheS *en
 	utils.RegisterRpcParams("", apierRpcV1)
 	utils.RegisterRpcParams("", apierRpcV2)
 	utils.GetRpcParams("")
+
+	internalApierv1 <- apierRpcV1
+	internalApierv2 <- apierRpcV2
 	internalRaterChan <- responder // Rater done
 }

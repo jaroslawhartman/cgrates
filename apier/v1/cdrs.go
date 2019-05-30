@@ -40,7 +40,8 @@ func (apier *ApierV1) GetEventCost(attrs utils.AttrGetCallCost, reply *engine.Ev
 			err = utils.NewErrServerError(err)
 		}
 		return err
-	} else if len(cdrs) == 0 {
+	} else if len(cdrs) == 0 ||
+		cdrs[0].CostDetails == nil { // to avoid nil pointer dereference
 		return utils.ErrNotFound
 	} else {
 		*reply = *cdrs[0].CostDetails
@@ -79,18 +80,27 @@ func (apier *ApierV1) RemoveCDRs(attrs utils.RPCCDRsFilter, reply *string) error
 	return nil
 }
 
+func NewCDRsV1(CDRs *engine.CDRServer) *CDRsV1 {
+	return &CDRsV1{CDRs: CDRs}
+}
+
 // Receive CDRs via RPC methods
 type CDRsV1 struct {
 	CDRs *engine.CDRServer
 }
 
 // ProcessCDR will process a CDR in CGRateS internal format
-func (cdrSv1 *CDRsV1) ProcessCDR(cdr *engine.CDR, reply *string) error {
+func (cdrSv1 *CDRsV1) ProcessCDR(cdr *engine.CDRWithArgDispatcher, reply *string) error {
 	return cdrSv1.CDRs.V1ProcessCDR(cdr, reply)
 }
 
+// ProcessCDR will process a CDR in CGRateS internal format
+func (cdrSv1 *CDRsV1) ProcessEvent(arg *engine.ArgV1ProcessEvent, reply *string) error {
+	return cdrSv1.CDRs.V1ProcessEvent(arg, reply)
+}
+
 // ProcessExternalCDR will process a CDR in external format
-func (cdrSv1 *CDRsV1) ProcessExternalCDR(cdr *engine.ExternalCDR, reply *string) error {
+func (cdrSv1 *CDRsV1) ProcessExternalCDR(cdr *engine.ExternalCDRWithArgDispatcher, reply *string) error {
 	return cdrSv1.CDRs.V1ProcessExternalCDR(cdr, reply)
 }
 
@@ -104,10 +114,15 @@ func (cdrSv1 *CDRsV1) StoreSessionCost(attr *engine.AttrCDRSStoreSMCost, reply *
 	return cdrSv1.CDRs.V1StoreSessionCost(attr, reply)
 }
 
-func (cdrSv1 *CDRsV1) CountCDRs(args *utils.RPCCDRsFilter, reply *int64) error {
+func (cdrSv1 *CDRsV1) CountCDRs(args *utils.RPCCDRsFilterWithArgDispatcher, reply *int64) error {
 	return cdrSv1.CDRs.V1CountCDRs(args, reply)
 }
 
-func (cdrSv1 *CDRsV1) GetCDRs(args utils.RPCCDRsFilter, reply *[]*engine.CDR) error {
+func (cdrSv1 *CDRsV1) GetCDRs(args utils.RPCCDRsFilterWithArgDispatcher, reply *[]*engine.CDR) error {
 	return cdrSv1.CDRs.V1GetCDRs(args, reply)
+}
+
+func (cdrSv1 *CDRsV1) Ping(ign *utils.CGREventWithArgDispatcher, reply *string) error {
+	*reply = utils.Pong
+	return nil
 }

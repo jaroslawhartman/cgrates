@@ -39,9 +39,13 @@ var (
 			ActivationInterval: &utils.ActivationInterval{
 				ActivationTime: time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
 			},
-			QueueLength:  10,
-			TTL:          time.Duration(10) * time.Second,
-			Metrics:      []string{"*sum#Usage"},
+			QueueLength: 10,
+			TTL:         time.Duration(10) * time.Second,
+			Metrics: []*MetricWithFilters{
+				&MetricWithFilters{
+					MetricID: "*sum#Usage",
+				},
+			},
 			ThresholdIDs: []string{},
 			Blocker:      false,
 			Stored:       true,
@@ -55,9 +59,13 @@ var (
 			ActivationInterval: &utils.ActivationInterval{
 				ActivationTime: time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
 			},
-			QueueLength:  10,
-			TTL:          time.Duration(10) * time.Second,
-			Metrics:      []string{"*sum#Usage"},
+			QueueLength: 10,
+			TTL:         time.Duration(10) * time.Second,
+			Metrics: []*MetricWithFilters{
+				&MetricWithFilters{
+					MetricID: "*sum#Usage",
+				},
+			},
 			ThresholdIDs: []string{},
 			Blocker:      false,
 			Stored:       true,
@@ -71,9 +79,13 @@ var (
 			ActivationInterval: &utils.ActivationInterval{
 				ActivationTime: time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
 			},
-			QueueLength:  10,
-			TTL:          time.Duration(10) * time.Second,
-			Metrics:      []string{"*sum#Usage"},
+			QueueLength: 10,
+			TTL:         time.Duration(10) * time.Second,
+			Metrics: []*MetricWithFilters{
+				&MetricWithFilters{
+					MetricID: "*sum#Usage",
+				},
+			},
 			ThresholdIDs: []string{},
 			Blocker:      false,
 			Stored:       true,
@@ -88,7 +100,7 @@ var (
 	}
 	statsEvs = []*StatsArgsProcessEvent{
 		{
-			CGREvent: utils.CGREvent{
+			CGREvent: &utils.CGREvent{
 				Tenant: "cgrates.org",
 				ID:     "event1",
 				Event: map[string]interface{}{
@@ -103,7 +115,7 @@ var (
 			},
 		},
 		{
-			CGREvent: utils.CGREvent{
+			CGREvent: &utils.CGREvent{
 				Tenant: "cgrates.org",
 				ID:     "event2",
 				Event: map[string]interface{}{
@@ -117,7 +129,7 @@ var (
 			},
 		},
 		{
-			CGREvent: utils.CGREvent{
+			CGREvent: &utils.CGREvent{
 				Tenant: "cgrates.org",
 				ID:     "event3",
 				Event: map[string]interface{}{
@@ -308,7 +320,7 @@ func TestStatQueuesProcessEvent(t *testing.T) {
 }
 
 func TestStatQueuesMatchWithIndexFalse(t *testing.T) {
-	statService.filterS.cfg.FilterSCfg().IndexedSelects = false
+	statService.filterS.cfg.StatSCfg().IndexedSelects = false
 	msq, err := statService.matchingStatQueuesForEvent(statsEvs[0])
 	if err != nil {
 		t.Errorf("Error: %+v", err)
@@ -351,9 +363,13 @@ func TestStatQueuesV1ProcessEvent(t *testing.T) {
 		ActivationInterval: &utils.ActivationInterval{
 			ActivationTime: time.Date(2014, 7, 14, 14, 25, 0, 0, time.UTC),
 		},
-		QueueLength:  10,
-		TTL:          time.Duration(10) * time.Second,
-		Metrics:      []string{"*sum#Usage"},
+		QueueLength: 10,
+		TTL:         time.Duration(10) * time.Second,
+		Metrics: []*MetricWithFilters{
+			&MetricWithFilters{
+				MetricID: "*sum#Usage",
+			},
+		},
 		ThresholdIDs: []string{},
 		Stored:       true,
 		Weight:       20,

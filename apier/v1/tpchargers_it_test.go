@@ -1,4 +1,4 @@
-// +build offline_tp
+// +build integration
 
 /*
 Real-time Online/Offline Charging System (OCS) for Telecom & ISP environments
@@ -25,6 +25,7 @@ import (
 	"net/rpc/jsonrpc"
 	"path"
 	"reflect"
+	"sort"
 	"testing"
 
 	"github.com/cgrates/cgrates/config"
@@ -76,7 +77,7 @@ func TestTPChrgsITMongo(t *testing.T) {
 func testTPChrgsInitCfg(t *testing.T) {
 	var err error
 	tpChrgsCfgPath = path.Join(tpChrgsDataDir, "conf", "samples", tpChrgsConfigDIR)
-	tpChrgsCfg, err = config.NewCGRConfigFromFolder(tpChrgsCfgPath)
+	tpChrgsCfg, err = config.NewCGRConfigFromPath(tpChrgsCfgPath)
 	if err != nil {
 		t.Error(err)
 	}
@@ -128,10 +129,12 @@ func testTPChrgsSetTPChrgs(t *testing.T) {
 			ActivationTime: "2014-07-29T15:00:00Z",
 			ExpiryTime:     "",
 		},
-		RunID:        "*default",
+		RunID:        utils.MetaDefault,
 		AttributeIDs: []string{"Attr1", "Attr2"},
 		Weight:       20,
 	}
+	sort.Strings(tpChrgs.FilterIDs)
+	sort.Strings(tpChrgs.AttributeIDs)
 	var result string
 	if err := tpChrgsRPC.Call("ApierV1.SetTPCharger", tpChrgs, &result); err != nil {
 		t.Error(err)
@@ -144,9 +147,12 @@ func testTPChrgsGetTPChrgsAfterSet(t *testing.T) {
 	var reply *utils.TPChargerProfile
 	if err := tpChrgsRPC.Call("ApierV1.GetTPCharger",
 		&utils.TPTntID{TPid: "TP1", Tenant: "cgrates.org", ID: "Chrgs"}, &reply); err != nil {
-		t.Error(err)
-	} else if !reflect.DeepEqual(tpChrgs, reply) {
-		t.Errorf("Expecting : %+v, received: %+v", tpChrgs, reply)
+		t.Fatal(err)
+	}
+	sort.Strings(reply.FilterIDs)
+	sort.Strings(reply.AttributeIDs)
+	if !reflect.DeepEqual(tpChrgs, reply) {
+		t.Errorf("Expecting : %+v, received: %+v", utils.ToJSON(tpChrgs), utils.ToJSON(reply))
 	}
 }
 
@@ -157,7 +163,7 @@ func testTPChrgsGetTPChrgsIDs(t *testing.T) {
 		&AttrGetTPAttributeProfileIds{TPid: "TP1"}, &result); err != nil {
 		t.Error(err)
 	} else if !reflect.DeepEqual(expectedTPID, result) {
-		t.Errorf("Expecting: %+v, received: %+v", expectedTPID, result)
+		t.Errorf("Expecting: %+v, received: %+v", utils.ToJSON(expectedTPID), utils.ToJSON(result))
 	}
 }
 
@@ -175,15 +181,18 @@ func testTPChrgsGetTPChrgsAfterUpdate(t *testing.T) {
 	var reply *utils.TPChargerProfile
 	if err := tpChrgsRPC.Call("ApierV1.GetTPCharger",
 		&utils.TPTntID{TPid: "TP1", Tenant: "cgrates.org", ID: "Chrgs"}, &reply); err != nil {
-		t.Error(err)
-	} else if !reflect.DeepEqual(tpChrgs, reply) {
-		t.Errorf("Expecting : %+v, received: %+v", tpChrgs, reply)
+		t.Fatal(err)
+	}
+	sort.Strings(reply.FilterIDs)
+	sort.Strings(reply.AttributeIDs)
+	if !reflect.DeepEqual(tpChrgs, reply) {
+		t.Errorf("Expecting : %+v, received: %+v", utils.ToJSON(tpChrgs), utils.ToJSON(reply))
 	}
 }
 
 func testTPChrgsRemTPChrgs(t *testing.T) {
 	var resp string
-	if err := tpChrgsRPC.Call("ApierV1.RemTPCharger",
+	if err := tpChrgsRPC.Call("ApierV1.RemoveTPCharger",
 		&utils.TPTntID{TPid: "TP1", Tenant: "cgrates.org", ID: "Chrgs"},
 		&resp); err != nil {
 		t.Error(err)

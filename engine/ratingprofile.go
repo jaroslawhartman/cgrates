@@ -174,10 +174,20 @@ func (rpf *RatingProfile) GetRatingPlansForPrefix(cd *CallDescriptor) (err error
 				if destIDs, err := dm.DataDB().GetReverseDestination(p, false, utils.NonTransactional); err == nil {
 					var bestWeight *float64
 					for _, dID := range destIDs {
+						var timeChecker bool
 						if _, ok := rpl.DestinationRates[dID]; ok {
 							ril := rpl.RateIntervalList(dID)
+							//check if RateInverval is active for call descriptor time
+							for _, ri := range ril {
+								if !ri.Timing.IsActiveAt(cd.TimeStart) {
+									continue
+								} else {
+									timeChecker = true
+									break
+								}
+							}
 							currentWeight := ril.GetWeight()
-							if bestWeight == nil || currentWeight > *bestWeight {
+							if timeChecker && (bestWeight == nil || currentWeight > *bestWeight) {
 								bestWeight = utils.Float64Pointer(currentWeight)
 								rps = ril
 								prefix = p

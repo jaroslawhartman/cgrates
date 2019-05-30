@@ -24,6 +24,10 @@
 	"enabled": true,					// start the CDR Server service:  <true|false>
 },
 
+"scheduler": {
+	"enabled": true,
+},
+
 "attributes": {
 	"enabled": true,
 },
@@ -44,6 +48,12 @@
 	],
 	"rals_conns": [
 		{"address": "127.0.0.1:22012", "transport": "*json"},
+	],
+	"cdrs_conns": [
+		{"address": "*internal"}
+	],
+	"chargers_conns": [
+		{"address": "*internal"}
 	],
 },
 

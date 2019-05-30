@@ -19,14 +19,16 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>
 package console
 
 import (
-	"github.com/cgrates/cgrates/apier/v1"
+	"reflect"
+
+	v1 "github.com/cgrates/cgrates/apier/v1"
 	"github.com/cgrates/cgrates/utils"
 )
 
 func init() {
 	c := &CmdRemRatingProfile{
 		name:      "ratingprofile_rem",
-		rpcMethod: "ApierV1.RemoveRatingProfile",
+		rpcMethod: utils.ApierV1RemoveRatingProfile,
 	}
 	commands[c.Name()] = c
 	c.CommandExecuter = &CommandExecuter{c}
@@ -57,6 +59,9 @@ func (self *CmdRemRatingProfile) RpcParams(reset bool) interface{} {
 }
 
 func (self *CmdRemRatingProfile) PostprocessRpcParams() error {
+	if reflect.DeepEqual(self.rpcParams, &v1.AttrRemoveRatingProfile{Direction: utils.OUT}) {
+		return utils.ErrMandatoryIeMissing
+	}
 	return nil
 }
 

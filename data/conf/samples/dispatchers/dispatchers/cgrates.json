@@ -8,6 +8,7 @@
 
 "general": {
  	"node_id": "DispatcherS1",
+	"log_level": 7,
  	"reconnects": 1,	
 },
 
@@ -28,27 +29,27 @@
 
 
 "attributes": {
-	"enabled": false
+	"enabled": true
 },
 
+"scheduler": {
+	"enabled": true,				
+},
+
+"rals": {
+	"enabled": true,
+},
+
+"sessions": {
+	"enabled": true,
+	"listen_bijson": ":3014",
+},
 
 "dispatchers":{
  	"enabled": true,
  	"attributes_conns": [
-		{"address": "127.0.0.1:5012", "transport": "*json"},
+		{"address": "*internal"},
  	],
-	"conns": {
-		"AttributeS1": [
-			{"address": "127.0.0.1:5012", "transport": "*json"},
-		],
-		"ALL": [
-			{"address": "127.0.0.1:6012", "transport": "*json"},
-		],
-		"ALL2": [
-			{"address": "127.0.0.1:7012", "transport": "*json"},
-		],
-	},
 },
-
 
 }

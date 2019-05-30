@@ -23,40 +23,62 @@ import (
 	"github.com/cgrates/cgrates/utils"
 )
 
-func (dS *DispatcherService) ChargerSv1Ping(args *CGREvWithApiKey, reply *string) (err error) {
+func (dS *DispatcherService) ChargerSv1Ping(args *utils.CGREventWithArgDispatcher, reply *string) (err error) {
+	args.CGREvent.Tenant = utils.FirstNonEmpty(args.CGREvent.Tenant, dS.cfg.GeneralCfg().DefaultTenant)
 	if dS.attrS != nil {
+		if args.ArgDispatcher == nil {
+			return utils.NewErrMandatoryIeMissing(utils.ArgDispatcherField)
+		}
 		if err = dS.authorize(utils.ChargerSv1Ping,
-			args.CGREvent.Tenant,
-			args.APIKey, args.CGREvent.Time); err != nil {
+			args.Tenant,
+			args.APIKey, args.Time); err != nil {
 			return
 		}
 	}
-	return dS.Dispatch(&args.CGREvent, utils.MetaChargers, args.RouteID,
-		utils.ChargerSv1Ping, args.CGREvent, reply)
+	var routeID *string
+	if args.ArgDispatcher != nil {
+		routeID = args.ArgDispatcher.RouteID
+	}
+	return dS.Dispatch(args.CGREvent, utils.MetaChargers, routeID,
+		utils.ChargerSv1Ping, args, reply)
 }
 
-func (dS *DispatcherService) ChargerSv1GetChargersForEvent(args *CGREvWithApiKey,
+func (dS *DispatcherService) ChargerSv1GetChargersForEvent(args *utils.CGREventWithArgDispatcher,
 	reply *engine.ChargerProfiles) (err error) {
 	if dS.attrS != nil {
+		if args.ArgDispatcher == nil {
+			return utils.NewErrMandatoryIeMissing(utils.ArgDispatcherField)
+		}
 		if err = dS.authorize(utils.ChargerSv1GetChargersForEvent,
 			args.CGREvent.Tenant,
 			args.APIKey, args.CGREvent.Time); err != nil {
 			return
 		}
 	}
-	return dS.Dispatch(&args.CGREvent, utils.MetaChargers, args.RouteID,
-		utils.ChargerSv1GetChargersForEvent, args.CGREvent, reply)
+	var routeID *string
+	if args.ArgDispatcher != nil {
+		routeID = args.ArgDispatcher.RouteID
+	}
+	return dS.Dispatch(args.CGREvent, utils.MetaChargers, routeID,
+		utils.ChargerSv1GetChargersForEvent, args, reply)
 }
 
-func (dS *DispatcherService) ChargerSv1ProcessEvent(args *CGREvWithApiKey,
+func (dS *DispatcherService) ChargerSv1ProcessEvent(args *utils.CGREventWithArgDispatcher,
 	reply *[]*engine.ChrgSProcessEventReply) (err error) {
 	if dS.attrS != nil {
+		if args.ArgDispatcher == nil {
+			return utils.NewErrMandatoryIeMissing(utils.ArgDispatcherField)
+		}
 		if err = dS.authorize(utils.ChargerSv1ProcessEvent,
 			args.CGREvent.Tenant,
 			args.APIKey, args.CGREvent.Time); err != nil {
 			return
 		}
 	}
-	return dS.Dispatch(&args.CGREvent, utils.MetaChargers, args.RouteID,
-		utils.ChargerSv1ProcessEvent, args.CGREvent, reply)
+	var routeID *string
+	if args.ArgDispatcher != nil {
+		routeID = args.ArgDispatcher.RouteID
+	}
+	return dS.Dispatch(args.CGREvent, utils.MetaChargers, routeID,
+		utils.ChargerSv1ProcessEvent, args, reply)
 }

@@ -1,4 +1,4 @@
-// +build offline_tp
+// +build integration
 
 /*
 Real-time Online/Offline Charging System (OCS) for Telecom & ISP environments
@@ -25,6 +25,8 @@ import (
 	"net/rpc/jsonrpc"
 	"path"
 	"reflect"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/cgrates/cgrates/config"
@@ -76,7 +78,7 @@ func TestTPSplPrfITMongo(t *testing.T) {
 func testTPSplPrfInitCfg(t *testing.T) {
 	var err error
 	tpSplPrfCfgPath = path.Join(tpSplPrfDataDire, "conf", "samples", tpSplPrfConfigDIR)
-	tpSplPrfCfg, err = config.NewCGRConfigFromFolder(tpSplPrfCfgPath)
+	tpSplPrfCfg, err = config.NewCGRConfigFromPath(tpSplPrfCfgPath)
 	if err != nil {
 		t.Error(err)
 	}
@@ -145,6 +147,7 @@ func testTPSplPrfSetTPSplPrf(t *testing.T) {
 		},
 		Weight: 20,
 	}
+	sort.Strings(tpSplPr.FilterIDs)
 	var result string
 	if err := tpSplPrfRPC.Call("ApierV1.SetTPSupplierProfile",
 		tpSplPr, &result); err != nil {
@@ -158,8 +161,10 @@ func testTPSplPrfGetTPSplPrfAfterSet(t *testing.T) {
 	var reply *utils.TPSupplierProfile
 	if err := tpSplPrfRPC.Call("ApierV1.GetTPSupplierProfile",
 		&utils.TPTntID{TPid: "TP1", Tenant: "cgrates.org", ID: "SUPL_1"}, &reply); err != nil {
-		t.Error(err)
-	} else if !reflect.DeepEqual(tpSplPr, reply) {
+		t.Fatal(err)
+	}
+	sort.Strings(reply.FilterIDs)
+	if !reflect.DeepEqual(tpSplPr, reply) {
 		t.Errorf("Expecting : %+v, received: %+v", utils.ToJSON(tpSplPr), utils.ToJSON(reply))
 	}
 }
@@ -208,46 +213,29 @@ func testTPSplPrfUpdateTPSplPrf(t *testing.T) {
 	} else if result != utils.OK {
 		t.Error("Unexpected reply returned", result)
 	}
+	sort.Slice(tpSplPr.Suppliers, func(i, j int) bool {
+		return strings.Compare(tpSplPr.Suppliers[i].ID, tpSplPr.Suppliers[j].ID) == -1
+	})
 }
 
 func testTPSplPrfGetTPSplPrfAfterUpdate(t *testing.T) {
 	var reply *utils.TPSupplierProfile
-	reverseSuppliers := []*utils.TPSupplier{
-		&utils.TPSupplier{
-			ID:                 "supplier2",
-			FilterIDs:          []string{"FLTR_1"},
-			AccountIDs:         []string{"Acc3"},
-			RatingPlanIDs:      []string{"RPL_1"},
-			ResourceIDs:        []string{"ResGroup1"},
-			StatIDs:            []string{"Stat1"},
-			Weight:             20,
-			Blocker:            false,
-			SupplierParameters: "SortingParam2",
-		},
-		&utils.TPSupplier{
-			ID:                 "supplier1",
-			FilterIDs:          []string{"FLTR_1"},
-			AccountIDs:         []string{"Acc1", "Acc2"},
-			RatingPlanIDs:      []string{"RPL_1"},
-			ResourceIDs:        []string{"ResGroup1"},
-			StatIDs:            []string{"Stat1"},
-			Weight:             10,
-			Blocker:            true,
-			SupplierParameters: "SortingParam1",
-		},
-	}
 	if err := tpSplPrfRPC.Call("ApierV1.GetTPSupplierProfile",
 		&utils.TPTntID{TPid: "TP1", Tenant: "cgrates.org", ID: "SUPL_1"}, &reply); err != nil {
-		t.Error(err)
-	} else if !reflect.DeepEqual(tpSplPr.Suppliers, reply.Suppliers) &&
-		!reflect.DeepEqual(tpSplPr.Suppliers, reverseSuppliers) {
+		t.Fatal(err)
+	}
+	sort.Strings(reply.FilterIDs)
+	sort.Slice(reply.Suppliers, func(i, j int) bool {
+		return strings.Compare(reply.Suppliers[i].ID, reply.Suppliers[j].ID) == -1
+	})
+	if !reflect.DeepEqual(tpSplPr.Suppliers, reply.Suppliers) {
 		t.Errorf("Expecting: %+v,\n received: %+v", utils.ToJSON(tpSplPr), utils.ToJSON(reply))
 	}
 }
 
 func testTPSplPrfRemTPSplPrf(t *testing.T) {
 	var resp string
-	if err := tpSplPrfRPC.Call("ApierV1.RemTPSupplierProfile",
+	if err := tpSplPrfRPC.Call("ApierV1.RemoveTPSupplierProfile",
 		&utils.TPTntID{TPid: "TP1", Tenant: "cgrates.org", ID: "SUPL_1"},
 		&resp); err != nil {
 		t.Error(err)

@@ -21,10 +21,10 @@ package config
 // DispatcherSCfg is the configuration of dispatcher service
 type DispatcherSCfg struct {
 	Enabled             bool
+	IndexedSelects      bool
 	StringIndexedFields *[]string
 	PrefixIndexedFields *[]string
-	AttributeSConns     []*HaPoolConfig
-	Conns               map[string][]*HaPoolConfig
+	AttributeSConns     []*RemoteHost
 }
 
 func (dps *DispatcherSCfg) loadFromJsonCfg(jsnCfg *DispatcherSJsonCfg) (err error) {
@@ -33,6 +33,9 @@ func (dps *DispatcherSCfg) loadFromJsonCfg(jsnCfg *DispatcherSJsonCfg) (err erro
 	}
 	if jsnCfg.Enabled != nil {
 		dps.Enabled = *jsnCfg.Enabled
+	}
+	if jsnCfg.Indexed_selects != nil {
+		dps.IndexedSelects = *jsnCfg.Indexed_selects
 	}
 	if jsnCfg.String_indexed_fields != nil {
 		sif := make([]string, len(*jsnCfg.String_indexed_fields))
@@ -49,24 +52,10 @@ func (dps *DispatcherSCfg) loadFromJsonCfg(jsnCfg *DispatcherSJsonCfg) (err erro
 		dps.PrefixIndexedFields = &pif
 	}
 	if jsnCfg.Attributes_conns != nil {
-		dps.AttributeSConns = make([]*HaPoolConfig, len(*jsnCfg.Attributes_conns))
+		dps.AttributeSConns = make([]*RemoteHost, len(*jsnCfg.Attributes_conns))
 		for idx, jsnHaCfg := range *jsnCfg.Attributes_conns {
-			dps.AttributeSConns[idx] = NewDfltHaPoolConfig()
+			dps.AttributeSConns[idx] = NewDfltRemoteHost()
 			dps.AttributeSConns[idx].loadFromJsonCfg(jsnHaCfg)
-		}
-	}
-	if jsnCfg.Conns != nil {
-		dps.Conns = make(map[string][]*HaPoolConfig, len(*jsnCfg.Conns))
-		for id, conns := range *jsnCfg.Conns {
-			if conns == nil {
-				continue
-			}
-			Conns := make([]*HaPoolConfig, len(*conns))
-			for idx, jsnHaCfg := range *conns {
-				Conns[idx] = NewDfltHaPoolConfig()
-				Conns[idx].loadFromJsonCfg(jsnHaCfg)
-			}
-			dps.Conns[id] = Conns
 		}
 	}
 	return nil

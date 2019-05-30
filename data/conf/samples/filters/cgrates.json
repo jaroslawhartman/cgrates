@@ -35,6 +35,9 @@
 	],
 },
 
+"scheduler": {
+	"enabled": true,				
+},
 
 "filters": {								
 	"stats_conns": [
@@ -43,26 +46,33 @@
 	"resources_conns": [
 		{"address": "127.0.0.1:2012", "transport":"*json"},
 	],
-	"indexed_selects":false,					
 },
 
 
 "resources": {
 	"enabled": true,
+	"indexed_selects":false,					
 	"store_interval": "1s",
 },
 
 
 "stats": {
 	"enabled": true,
+	"indexed_selects":false,					
 	"store_interval": "1s",
 },
 
 
 "thresholds": {
 	"enabled": true,
+	"indexed_selects":false,					
 	"store_interval": "1s",
 },
 
+"apier": {	
+	"caches_conns":[						// connections to CacheS for reloads
+		{"address": "127.0.0.1:2012", "transport": "*json"},
+	],						
+},
 
 }

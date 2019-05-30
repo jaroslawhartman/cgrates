@@ -31,7 +31,8 @@ func (m *Migrator) migrateCurrentTPactionplans() (err error) {
 		return err
 	}
 	for _, tpid := range tpids {
-		ids, err := m.storDBIn.StorDB().GetTpTableIds(tpid, utils.TBLTPActionPlans, utils.TPDistinctIds{"tag"}, map[string]string{}, nil)
+		ids, err := m.storDBIn.StorDB().GetTpTableIds(tpid, utils.TBLTPActionPlans,
+			utils.TPDistinctIds{"tag"}, map[string]string{}, nil)
 		if err != nil {
 			return err
 		}
@@ -77,12 +78,11 @@ func (m *Migrator) migrateTPactionplans() (err error) {
 	switch vrs[utils.TpActionPlans] {
 	case current[utils.TpActionPlans]:
 		if m.sameStorDB {
-			return
+			break
 		}
 		if err := m.migrateCurrentTPactionplans(); err != nil {
 			return err
 		}
-		return
 	}
-	return
+	return m.ensureIndexesStorDB(utils.TBLTPActionPlans)
 }

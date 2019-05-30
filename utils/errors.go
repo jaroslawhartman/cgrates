@@ -74,8 +74,11 @@ var (
 	ErrCDRCNoProfileID          = errors.New("CDRC_PROFILE_WITHOUT_ID")
 	ErrCDRCNoInDir              = errors.New("CDRC_PROFILE_WITHOUT_IN_DIR")
 	ErrNotEnoughParameters      = errors.New("NotEnoughParameters")
+	ErrNotConnected             = errors.New("NOT_CONNECTED")
 	RalsErrorPrfx               = "RALS_ERROR"
 	DispatcherErrorPrefix       = "DISPATCHER_ERROR"
+	ErrUnsupportedFormat        = errors.New("UNSUPPORTED_FORMAT")
+	ErrNoDatabaseConn           = errors.New("NO_DATA_BASE_CONNECTION")
 )
 
 // NewCGRError initialises a new CGRError
@@ -212,4 +215,12 @@ func IsNetworkError(err error) bool {
 		err.Error() == ErrReplyTimeout.Error() ||
 		err.Error() == ErrSessionNotFound.Error() ||
 		strings.HasPrefix(err.Error(), "rpc: can't find service")
+}
+
+func ErrPathNotReachable(path string) error {
+	return fmt.Errorf("path:%+q is not reachable", path)
+}
+
+func ErrNotConvertibleTF(from, to string) error {
+	return fmt.Errorf("%s : from: %s to:%s", ErrNotConvertibleNoCaps.Error(), from, to)
 }

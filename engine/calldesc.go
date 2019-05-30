@@ -551,37 +551,44 @@ func (cd *CallDescriptor) GetCost() (*CallCost, error) {
 	if err != nil || cd.GetDuration() == 0 {
 		return cc, err
 	}
-
 	cost := 0.0
 	for i, ts := range cc.Timespans {
 		// only add connect fee if this is the first/only call cost request
-		//log.Printf("Interval: %+v", ts.RateInterval.Timing)
 		if cd.LoopIndex == 0 && i == 0 && ts.RateInterval != nil {
-			cost += ts.RateInterval.Rating.ConnectFee
+			//Add the ConnectFee increment at the beggining
+			ts.Increments = append(Increments{&Increment{
+				Duration:       0,
+				Cost:           ts.RateInterval.Rating.ConnectFee,
+				CompressFactor: 1,
+				BalanceInfo: &DebitInfo{
+					Monetary:  nil,
+					Unit:      nil,
+					AccountID: "",
+				},
+			}}, ts.Increments...)
+			//Add the cost from ConnectFee to TimeSpan
+			ts.Cost = ts.Cost + ts.RateInterval.Rating.ConnectFee
 		}
-		//log.Printf("TS: %+v", ts)
 		// handle max cost
 		maxCost, strategy := ts.RateInterval.GetMaxCost()
 
 		ts.Cost = ts.CalculateCost()
 		cost += ts.Cost
 		cd.MaxCostSoFar += cost
-		//log.Print("Before: ", cost)
+
 		if strategy != "" && maxCost > 0 {
 			//log.Print("HERE: ", strategy, maxCost)
 			if strategy == utils.MAX_COST_FREE && cd.MaxCostSoFar >= maxCost {
 				cost = maxCost
 				cd.MaxCostSoFar = maxCost
 			}
-
 		}
-		//log.Print("Cost: ", cost)
 	}
 	cc.Cost = cost
+
 	// global rounding
 	roundingDecimals, roundingMethod := cc.GetLongestRounding()
 	cc.Cost = utils.Round(cc.Cost, roundingDecimals, roundingMethod)
-
 	return cc, nil
 }
 
@@ -1018,6 +1025,7 @@ func (cd *CallDescriptor) Clone() *CallDescriptor {
 		CgrID:           cd.CgrID,
 		RunID:           cd.RunID,
 	}
+
 }
 
 // AccountSummary returns the AccountSummary for cached account
@@ -1057,4 +1065,9 @@ func (cd *CallDescriptor) AsNavigableMap(tpl []*config.FCTemplate) (nM *config.N
 // RemoteHost is part of utils.DataProvider
 func (cd *CallDescriptor) RemoteHost() net.Addr {
 	return utils.LocalAddr()
+}
+
+type CallDescriptorWithArgDispatcher struct {
+	*CallDescriptor
+	*utils.ArgDispatcher
 }

@@ -290,6 +290,11 @@ func (fsev FSEvent) GetOriginatorIP(fieldName string) string {
 	return utils.FirstNonEmpty(fsev[fieldName], fsev[VarCGROriginHost], fsev[FS_IPv4])
 }
 
+// GetOriginHost returns the first non empty between: fsev[VarCGROriginHost], conns[connId].cfg.Alias and fsev[FS_IPv4]
+func (fsev FSEvent) GetOriginHost() string {
+	return utils.FirstNonEmpty(fsev[VarCGROriginHost], fsev[FS_IPv4])
+}
+
 func (fsev FSEvent) GetExtraFields() map[string]string {
 	extraFields := make(map[string]string)
 	for _, fldRule := range config.CgrConfig().FsAgentCfg().ExtraFields {
@@ -311,7 +316,7 @@ func (fsev FSEvent) ParseEventValue(rsrFld *config.RSRParser, timezone string) (
 	case utils.OriginID:
 		return rsrFld.ParseValue(fsev.GetUUID())
 	case utils.OriginHost:
-		return rsrFld.ParseValue(utils.FirstNonEmpty(fsev[VarCGROriginHost], fsev[FS_IPv4]))
+		return rsrFld.ParseValue(fsev.GetOriginHost())
 	case utils.Source:
 		return rsrFld.ParseValue("FS_EVENT")
 	case utils.RequestType:
@@ -379,7 +384,7 @@ func (fsev FSEvent) AsMapStringInterface(timezone string) map[string]interface{}
 	}
 	mp[utils.ToR] = utils.VOICE
 	mp[utils.OriginID] = fsev.GetUUID()
-	mp[utils.OriginHost] = fsev.GetOriginatorIP(utils.META_DEFAULT)
+	mp[utils.OriginHost] = fsev.GetOriginHost()
 	mp[utils.Source] = "FS_" + fsev.GetName()
 	mp[utils.RequestType] = fsev.GetReqType(utils.META_DEFAULT)
 	mp[utils.Direction] = fsev.GetDirection(utils.META_DEFAULT)
@@ -408,7 +413,7 @@ func (fsev FSEvent) V1AuthorizeArgs() (args *sessions.V1AuthorizeArgs) {
 	cgrEv.Event[utils.Usage] = config.CgrConfig().SessionSCfg().MaxCallDuration // no billsec available in auth
 	args = &sessions.V1AuthorizeArgs{                                           // defaults
 		GetMaxUsage: true,
-		CGREvent:    *cgrEv,
+		CGREvent:    cgrEv,
 	}
 	subsystems, has := fsev[VarCGRSubsystems]
 	if !has {
@@ -424,6 +429,9 @@ func (fsev FSEvent) V1AuthorizeArgs() (args *sessions.V1AuthorizeArgs) {
 	args.GetAttributes = strings.Index(subsystems, utils.MetaAttributes) != -1
 	args.ProcessThresholds = strings.Index(subsystems, utils.MetaThresholds) != -1
 	args.ProcessStats = strings.Index(subsystems, utils.MetaStats) != -1
+	cgrArgs := cgrEv.ConsumeArgs(strings.Index(subsystems, utils.MetaDispatchers) != -1, true)
+	args.ArgDispatcher = cgrArgs.ArgDispatcher
+	args.Paginator = *cgrArgs.SupplierPaginator
 	return
 }
 
@@ -435,7 +443,7 @@ func (fsev FSEvent) V1InitSessionArgs() (args *sessions.V1InitSessionArgs) {
 	}
 	args = &sessions.V1InitSessionArgs{ // defaults
 		InitSession: true,
-		CGREvent:    *cgrEv,
+		CGREvent:    cgrEv,
 	}
 	subsystems, has := fsev[VarCGRSubsystems]
 	if !has {
@@ -446,6 +454,8 @@ func (fsev FSEvent) V1InitSessionArgs() (args *sessions.V1InitSessionArgs) {
 	args.GetAttributes = strings.Index(subsystems, utils.MetaAttributes) != -1
 	args.ProcessThresholds = strings.Index(subsystems, utils.MetaThresholds) != -1
 	args.ProcessStats = strings.Index(subsystems, utils.MetaStats) != -1
+	cgrArgs := cgrEv.ConsumeArgs(strings.Index(subsystems, utils.MetaDispatchers) != -1, false)
+	args.ArgDispatcher = cgrArgs.ArgDispatcher
 	return
 }
 
@@ -457,7 +467,7 @@ func (fsev FSEvent) V1TerminateSessionArgs() (args *sessions.V1TerminateSessionA
 	}
 	args = &sessions.V1TerminateSessionArgs{ // defaults
 		TerminateSession: true,
-		CGREvent:         *cgrEv,
+		CGREvent:         cgrEv,
 	}
 	subsystems, has := fsev[VarCGRSubsystems]
 	if !has {
@@ -467,6 +477,8 @@ func (fsev FSEvent) V1TerminateSessionArgs() (args *sessions.V1TerminateSessionA
 	args.ReleaseResources = strings.Index(subsystems, utils.MetaResources) != -1
 	args.ProcessThresholds = strings.Index(subsystems, utils.MetaThresholds) != -1
 	args.ProcessStats = strings.Index(subsystems, utils.MetaStats) != -1
+	cgrArgs := cgrEv.ConsumeArgs(strings.Index(subsystems, utils.MetaDispatchers) != -1, false)
+	args.ArgDispatcher = cgrArgs.ArgDispatcher
 	return
 }
 

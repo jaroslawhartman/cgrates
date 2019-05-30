@@ -1,4 +1,4 @@
-// +build offline_tp
+// +build integration
 
 /*
 Real-time Online/Offline Charging System (OCS) for Telecom & ISP environments
@@ -54,7 +54,7 @@ var sTestsTPActionTriggers = []func(t *testing.T){
 	testTPActionTriggersGetTPActionTriggersIds,
 	testTPActionTriggersUpdateTPActionTriggers,
 	testTPActionTriggersGetTPActionTriggersAfterUpdate,
-	testTPActionTriggersRemTPActionTriggers,
+	testTPActionTriggersRemoveTPActionTriggers,
 	testTPActionTriggersGetTPActionTriggersAfterRemove,
 	testTPActionTriggersKillEngine,
 }
@@ -84,7 +84,7 @@ func TestTPActionTriggersITPG(t *testing.T) {
 func testTPActionTriggersInitCfg(t *testing.T) {
 	var err error
 	tpActionTriggerCfgPath = path.Join(tpActionTriggerDataDir, "conf", "samples", tpActionTriggerConfigDIR)
-	tpActionTriggerCfg, err = config.NewCGRConfigFromFolder(tpActionTriggerCfgPath)
+	tpActionTriggerCfg, err = config.NewCGRConfigFromPath(tpActionTriggerCfgPath)
 	if err != nil {
 		t.Error(err)
 	}
@@ -92,9 +92,9 @@ func testTPActionTriggersInitCfg(t *testing.T) {
 	config.SetCgrConfig(tpActionTriggerCfg)
 	switch tpActionTriggerConfigDIR {
 	case "tutmongo": // Mongo needs more time to reset db, need to investigate
-		tpActionDelay = 2000
+		tpActionTriggerDelay = 2000
 	default:
-		tpActionDelay = 1000
+		tpActionTriggerDelay = 1000
 	}
 }
 
@@ -145,7 +145,6 @@ func testTPActionTriggersSetTPActionTriggers(t *testing.T) {
 				ActivationDate:        "",
 				BalanceId:             "",
 				BalanceType:           "*monetary",
-				BalanceDirections:     "*out",
 				BalanceDestinationIds: "FS_USERS",
 				BalanceWeight:         "",
 				BalanceExpirationDate: "",
@@ -155,7 +154,6 @@ func testTPActionTriggersSetTPActionTriggers(t *testing.T) {
 				BalanceSharedGroups:   "",
 				BalanceBlocker:        "",
 				BalanceDisabled:       "",
-				MinQueuedItems:        3,
 				ActionsId:             "LOG_WARNING",
 				Weight:                10,
 			},
@@ -170,7 +168,6 @@ func testTPActionTriggersSetTPActionTriggers(t *testing.T) {
 				ActivationDate:        "",
 				BalanceId:             "",
 				BalanceType:           "*monetary",
-				BalanceDirections:     "*out",
 				BalanceDestinationIds: "FS_USERS",
 				BalanceWeight:         "",
 				BalanceExpirationDate: "",
@@ -180,7 +177,6 @@ func testTPActionTriggersSetTPActionTriggers(t *testing.T) {
 				BalanceSharedGroups:   "",
 				BalanceBlocker:        "",
 				BalanceDisabled:       "",
-				MinQueuedItems:        3,
 				ActionsId:             "LOG_WARNING",
 				Weight:                10,
 			},
@@ -232,7 +228,6 @@ func testTPActionTriggersUpdateTPActionTriggers(t *testing.T) {
 			ActivationDate:        "",
 			BalanceId:             "",
 			BalanceType:           "*monetary",
-			BalanceDirections:     "*out",
 			BalanceDestinationIds: "FS_USERS",
 			BalanceWeight:         "",
 			BalanceExpirationDate: "",
@@ -242,7 +237,6 @@ func testTPActionTriggersUpdateTPActionTriggers(t *testing.T) {
 			BalanceSharedGroups:   "",
 			BalanceBlocker:        "",
 			BalanceDisabled:       "",
-			MinQueuedItems:        3,
 			ActionsId:             "LOG_WARNING",
 			Weight:                10,
 		},
@@ -257,7 +251,6 @@ func testTPActionTriggersUpdateTPActionTriggers(t *testing.T) {
 			ActivationDate:        "",
 			BalanceId:             "",
 			BalanceType:           "*monetary",
-			BalanceDirections:     "*out",
 			BalanceDestinationIds: "FS_USERS",
 			BalanceWeight:         "",
 			BalanceExpirationDate: "",
@@ -267,7 +260,6 @@ func testTPActionTriggersUpdateTPActionTriggers(t *testing.T) {
 			BalanceSharedGroups:   "",
 			BalanceBlocker:        "",
 			BalanceDisabled:       "",
-			MinQueuedItems:        3,
 			ActionsId:             "LOG_WARNING",
 			Weight:                10,
 		},
@@ -282,7 +274,6 @@ func testTPActionTriggersUpdateTPActionTriggers(t *testing.T) {
 			ActivationDate:        "",
 			BalanceId:             "",
 			BalanceType:           "",
-			BalanceDirections:     "",
 			BalanceDestinationIds: "",
 			BalanceWeight:         "",
 			BalanceExpirationDate: "",
@@ -292,7 +283,6 @@ func testTPActionTriggersUpdateTPActionTriggers(t *testing.T) {
 			BalanceSharedGroups:   "",
 			BalanceBlocker:        "",
 			BalanceDisabled:       "",
-			MinQueuedItems:        5,
 			ActionsId:             "LOG_WARNING",
 			Weight:                10,
 		},
@@ -322,9 +312,9 @@ func testTPActionTriggersGetTPActionTriggersAfterUpdate(t *testing.T) {
 
 }
 
-func testTPActionTriggersRemTPActionTriggers(t *testing.T) {
+func testTPActionTriggersRemoveTPActionTriggers(t *testing.T) {
 	var resp string
-	if err := tpActionTriggerRPC.Call("ApierV1.RemTPActionTriggers",
+	if err := tpActionTriggerRPC.Call("ApierV1.RemoveTPActionTriggers",
 		&AttrGetTPActionTriggers{TPid: "TPAct", ID: "ID"}, &resp); err != nil {
 		t.Error(err)
 	} else if resp != utils.OK {

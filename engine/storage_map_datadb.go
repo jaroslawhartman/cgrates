@@ -195,7 +195,7 @@ func (ms *MapStorage) HasDataDrv(category, subject, tenant string) (bool, error)
 	case utils.ResourcesPrefix, utils.ResourceProfilesPrefix, utils.StatQueuePrefix,
 		utils.StatQueueProfilePrefix, utils.ThresholdPrefix, utils.ThresholdProfilePrefix,
 		utils.FilterPrefix, utils.SupplierProfilePrefix, utils.AttributeProfilePrefix,
-		utils.ChargerProfilePrefix, utils.DispatcherProfilePrefix:
+		utils.ChargerProfilePrefix, utils.DispatcherProfilePrefix, utils.DispatcherHostPrefix:
 		_, exists := ms.dict[category+utils.ConcatenatedKey(tenant, subject)]
 		return exists, nil
 	}
@@ -1325,6 +1325,39 @@ func (ms *MapStorage) RemoveDispatcherProfileDrv(tenant, id string) (err error) 
 	return
 }
 
+func (ms *MapStorage) GetDispatcherHostDrv(tenant, id string) (r *DispatcherHost, err error) {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+	values, ok := ms.dict[utils.DispatcherHostPrefix+utils.ConcatenatedKey(tenant, id)]
+	if !ok {
+		return nil, utils.ErrNotFound
+	}
+	err = ms.ms.Unmarshal(values, &r)
+	if err != nil {
+		return nil, err
+	}
+	return
+}
+
+func (ms *MapStorage) SetDispatcherHostDrv(r *DispatcherHost) (err error) {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+	result, err := ms.ms.Marshal(r)
+	if err != nil {
+		return err
+	}
+	ms.dict[utils.DispatcherHostPrefix+utils.ConcatenatedKey(r.Tenant, r.ID)] = result
+	return
+}
+
+func (ms *MapStorage) RemoveDispatcherHostDrv(tenant, id string) (err error) {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+	key := utils.DispatcherHostPrefix + utils.ConcatenatedKey(tenant, id)
+	delete(ms.dict, key)
+	return
+}
+
 func (ms *MapStorage) GetVersions(itm string) (vrs Versions, err error) {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
@@ -1388,4 +1421,33 @@ func (ms *MapStorage) RemoveVersions(vrs Versions) (err error) {
 
 func (ms *MapStorage) GetStorageType() string {
 	return utils.MAPSTOR
+}
+
+func (ms *MapStorage) GetItemLoadIDsDrv(itemIDPrefix string) (loadIDs map[string]int64, err error) {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+	values, ok := ms.dict[utils.LoadIDs]
+	if !ok {
+		return nil, utils.ErrNotFound
+	}
+	err = ms.ms.Unmarshal(values, &loadIDs)
+	if err != nil {
+		return nil, err
+	}
+	if itemIDPrefix != "" {
+		return map[string]int64{itemIDPrefix: loadIDs[itemIDPrefix]}, nil
+	}
+	return loadIDs, nil
+}
+
+func (ms *MapStorage) SetLoadIDsDrv(loadIDs map[string]int64) (err error) {
+	var result []byte
+	result, err = ms.ms.Marshal(loadIDs)
+	if err != nil {
+		return err
+	}
+	ms.mu.Lock()
+	ms.dict[utils.LoadIDs] = result
+	ms.mu.Unlock()
+	return
 }

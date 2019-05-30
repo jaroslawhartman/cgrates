@@ -20,6 +20,8 @@ package engine
 import (
 	"log"
 	"reflect"
+	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -226,11 +228,11 @@ cgrates.org,ResGroup21,FLTR_1,2014-07-29T15:00:00Z,1s,2,call,true,true,10,
 cgrates.org,ResGroup22,FLTR_ACNT_dan,2014-07-29T15:00:00Z,3600s,2,premium_call,true,true,10,
 `
 	stats = `
-#Tenant[0],Id[1],FilterIDs[2],ActivationInterval[3],QueueLength[4],TTL[5],Metrics[6],Blocker[7],Stored[8],Weight[9],MinItems[10],Thresholds[11]
-cgrates.org,TestStats,FLTR_1,2014-07-29T15:00:00Z,100,1s,*sum#Value;*average#Value,true,true,20,2,Th1;Th2
-cgrates.org,TestStats,,,,,*sum#Usage,true,true,20,2,
-cgrates.org,TestStats2,FLTR_1,2014-07-29T15:00:00Z,100,1s,*sum#Value;*sum#Usage;*average#Value;*average#Usage,true,true,20,2,Th
-cgrates.org,TestStats2,,,,,*sum#Cost;*average#Cost,true,true,20,2,
+#Tenant[0],Id[1],FilterIDs[2],ActivationInterval[3],QueueLength[4],TTL[5],MinItems[6],Metrics[7],MetricFilterIDs[8],Stored[9],Blocker[10],Weight[11],ThresholdIDs[12]
+cgrates.org,TestStats,FLTR_1,2014-07-29T15:00:00Z,100,1s,2,*sum#Value;*average#Value,,true,true,20,Th1;Th2
+cgrates.org,TestStats,,,,,2,*sum#Usage,,true,true,20,
+cgrates.org,TestStats2,FLTR_1,2014-07-29T15:00:00Z,100,1s,2,*sum#Value;*sum#Usage;*average#Value;*average#Usage,,true,true,20,Th
+cgrates.org,TestStats2,,,,,2,*sum#Cost;*average#Cost,,true,true,20,
 `
 
 	thresholds = `
@@ -255,9 +257,9 @@ cgrates.org,SPP_1,,,,,supplier1,FLTR_DST_DE,Account2,RPL_3,ResGroup3,Stat2,10,,,
 cgrates.org,SPP_1,,,,,supplier1,,,,ResGroup4,Stat3,10,,,
 `
 	attributeProfiles = `
-#Tenant,ID,Contexts,FilterIDs,ActivationInterval,AttributeFilterIDs,FieldName,Substitute,Blocker,Weight
-cgrates.org,ALS1,con1,FLTR_1,2014-07-29T15:00:00Z,*string:Field1:Initial,Field1,Sub1,true,20
-cgrates.org,ALS1,con2;con3,,,,Field2,Sub2,true,20
+#Tenant,ID,Contexts,FilterIDs,ActivationInterval,AttributeFilterIDs,FieldName,Type,Value,Blocker,Weight
+cgrates.org,ALS1,con1,FLTR_1,2014-07-29T15:00:00Z,*string:Field1:Initial,Field1,*variable,Sub1,true,20
+cgrates.org,ALS1,con2;con3,,,,Field2,*variable,Sub2,true,20
 `
 	chargerProfiles = `
 #Tenant,ID,FilterIDs,ActivationInterval,RunID,AttributeIDs,Weight
@@ -268,6 +270,11 @@ cgrates.org,Charger1,*string:Account:1001,2014-07-29T15:00:00Z,*rated,ATTR_1001_
 cgrates.org,D1,*any,*string:Account:1001,2014-07-29T15:00:00Z,*first,,C1,*gt:Usage:10,10,false,192.168.56.203,20
 cgrates.org,D1,,,,*first,,C2,*lt:Usage:10,10,false,192.168.56.204,
 `
+	dispatcherHosts = `
+#Tenant[0],ID[1],Address[2],Transport[3],TLS[4]
+cgrates.org,ALL1,127.0.0.1:2012,*json,true
+cgrates.org,ALL1,127.0.0.1:3012,*json,false
+`
 )
 
 var csvr *TpReader
@@ -275,8 +282,8 @@ var csvr *TpReader
 func init() {
 	csvr = NewTpReader(dm.dataDB, NewStringCSVStorage(',', destinations, timings, rates, destinationRates,
 		ratingPlans, ratingProfiles, sharedGroups, actions, actionPlans, actionTriggers,
-		accountActions, resProfiles, stats, thresholds,
-		filters, sppProfiles, attributeProfiles, chargerProfiles, dispatcherProfiles), testTPID, "")
+		accountActions, resProfiles, stats, thresholds, filters, sppProfiles, attributeProfiles,
+		chargerProfiles, dispatcherProfiles, dispatcherHosts), testTPID, "", nil, nil)
 
 	if err := csvr.LoadDestinations(); err != nil {
 		log.Print("error in LoadDestinations:", err)
@@ -333,7 +340,10 @@ func init() {
 		log.Print("error in LoadChargerProfiles:", err)
 	}
 	if err := csvr.LoadDispatcherProfiles(); err != nil {
-		log.Print("error in LoadChargerProfiles:", err)
+		log.Print("error in LoadDispatcherProfiles:", err)
+	}
+	if err := csvr.LoadDispatcherHosts(); err != nil {
+		log.Print("error in LoadDispatcherHosts:", err)
 	}
 	csvr.WriteToDatabase(false, false, false)
 	Cache.Clear(nil)
@@ -1186,8 +1196,8 @@ func TestLoadAccountActions(t *testing.T) {
 }
 
 func TestLoadResourceProfiles(t *testing.T) {
-	eResProfiles := map[utils.TenantID]*utils.TPResource{
-		utils.TenantID{Tenant: "cgrates.org", ID: "ResGroup21"}: &utils.TPResource{
+	eResProfiles := map[utils.TenantID]*utils.TPResourceProfile{
+		utils.TenantID{Tenant: "cgrates.org", ID: "ResGroup21"}: &utils.TPResourceProfile{
 			TPid:      testTPID,
 			Tenant:    "cgrates.org",
 			ID:        "ResGroup21",
@@ -1202,7 +1212,7 @@ func TestLoadResourceProfiles(t *testing.T) {
 			Blocker:           true,
 			Stored:            true,
 		},
-		utils.TenantID{Tenant: "cgrates.org", ID: "ResGroup22"}: &utils.TPResource{
+		utils.TenantID{Tenant: "cgrates.org", ID: "ResGroup22"}: &utils.TPResourceProfile{
 			TPid:      testTPID,
 			Tenant:    "cgrates.org",
 			ID:        "ResGroup22",
@@ -1227,8 +1237,8 @@ func TestLoadResourceProfiles(t *testing.T) {
 }
 
 func TestLoadStatQueueProfiles(t *testing.T) {
-	eStats := map[utils.TenantID]*utils.TPStats{
-		utils.TenantID{Tenant: "cgrates.org", ID: "TestStats"}: &utils.TPStats{
+	eStats := map[utils.TenantID]*utils.TPStatProfile{
+		utils.TenantID{Tenant: "cgrates.org", ID: "TestStats"}: &utils.TPStatProfile{
 			Tenant:    "cgrates.org",
 			TPid:      testTPID,
 			ID:        "TestStats",
@@ -1238,9 +1248,16 @@ func TestLoadStatQueueProfiles(t *testing.T) {
 			},
 			QueueLength: 100,
 			TTL:         "1s",
-			Metrics: []string{"*sum:Value",
-				"*average:Value",
-				"*sum:Usage",
+			Metrics: []*utils.MetricWithFilters{
+				&utils.MetricWithFilters{
+					MetricID: "*sum#Value",
+				},
+				&utils.MetricWithFilters{
+					MetricID: "*sum#Usage",
+				},
+				&utils.MetricWithFilters{
+					MetricID: "*average#Value",
+				},
 			},
 			ThresholdIDs: []string{"Th1", "Th2"},
 			Blocker:      true,
@@ -1248,7 +1265,7 @@ func TestLoadStatQueueProfiles(t *testing.T) {
 			Weight:       20,
 			MinItems:     2,
 		},
-		utils.TenantID{Tenant: "cgrates.org", ID: "TestStats2"}: &utils.TPStats{
+		utils.TenantID{Tenant: "cgrates.org", ID: "TestStats2"}: &utils.TPStatProfile{
 			Tenant:    "cgrates.org",
 			TPid:      testTPID,
 			ID:        "TestStats2",
@@ -1258,12 +1275,27 @@ func TestLoadStatQueueProfiles(t *testing.T) {
 			},
 			QueueLength: 100,
 			TTL:         "1s",
-			Metrics: []string{"*sum:Value",
-				"*average:Value",
-				"*sum:Usage",
-				"*average:Usage",
-				"*sum:Cost",
-				"*average:Cost",
+			Metrics: []*utils.MetricWithFilters{
+				&utils.MetricWithFilters{
+					MetricID: "*sum#Value",
+				},
+				&utils.MetricWithFilters{
+					MetricID: "*sum#Usage",
+				},
+				&utils.MetricWithFilters{
+					FilterIDs: []string{"*string:Account:1001"},
+					MetricID:  "*sum#Cost",
+				},
+				&utils.MetricWithFilters{
+					MetricID: "*average#Value",
+				},
+				&utils.MetricWithFilters{
+					MetricID: "*average#Usage",
+				},
+				&utils.MetricWithFilters{
+					FilterIDs: []string{"*string:Account:1001"},
+					MetricID:  "*average#Cost",
+				},
 			},
 			ThresholdIDs: []string{"Th"},
 			Blocker:      true,
@@ -1295,7 +1327,7 @@ func TestLoadStatQueueProfiles(t *testing.T) {
 				utils.ToJSON(csvr.sqProfiles[stKey].ThresholdIDs))
 		} else if !reflect.DeepEqual(len(eStats[stKey].Metrics),
 			len(csvr.sqProfiles[stKey].Metrics)) {
-			t.Errorf("Expecting: %s, received: %s",
+			t.Errorf("Expecting: %s, \n received: %s",
 				utils.ToJSON(eStats[stKey].Metrics),
 				utils.ToJSON(csvr.sqProfiles[stKey].Metrics))
 		}
@@ -1303,8 +1335,8 @@ func TestLoadStatQueueProfiles(t *testing.T) {
 }
 
 func TestLoadThresholdProfiles(t *testing.T) {
-	eThresholds := map[utils.TenantID]*utils.TPThreshold{
-		utils.TenantID{Tenant: "cgrates.org", ID: "Threshold1"}: &utils.TPThreshold{
+	eThresholds := map[utils.TenantID]*utils.TPThresholdProfile{
+		utils.TenantID{Tenant: "cgrates.org", ID: "Threshold1"}: &utils.TPThresholdProfile{
 			TPid:      testTPID,
 			Tenant:    "cgrates.org",
 			ID:        "Threshold1",
@@ -1321,8 +1353,8 @@ func TestLoadThresholdProfiles(t *testing.T) {
 			Async:     true,
 		},
 	}
-	eThresholdReverse := map[utils.TenantID]*utils.TPThreshold{
-		utils.TenantID{Tenant: "cgrates.org", ID: "Threshold1"}: &utils.TPThreshold{
+	eThresholdReverse := map[utils.TenantID]*utils.TPThresholdProfile{
+		utils.TenantID{Tenant: "cgrates.org", ID: "Threshold1"}: &utils.TPThresholdProfile{
 			TPid:      testTPID,
 			Tenant:    "cgrates.org",
 			ID:        "Threshold1",
@@ -1479,14 +1511,16 @@ func TestLoadAttributeProfiles(t *testing.T) {
 			},
 			Attributes: []*utils.TPAttribute{
 				&utils.TPAttribute{
-					FilterIDs:  []string{"*string:Field1:Initial"},
-					FieldName:  "Field1",
-					Substitute: "Sub1",
+					FilterIDs: []string{"*string:Field1:Initial"},
+					FieldName: "Field1",
+					Type:      utils.MetaVariable,
+					Value:     "Sub1",
 				},
 				&utils.TPAttribute{
-					FilterIDs:  []string{},
-					FieldName:  "Field2",
-					Substitute: "Sub2",
+					FilterIDs: []string{},
+					FieldName: "Field2",
+					Type:      utils.MetaVariable,
+					Value:     "Sub2",
 				},
 			},
 			Blocker: true,
@@ -1548,15 +1582,15 @@ func TestLoadDispatcherProfiles(t *testing.T) {
 		},
 		Strategy: "*first",
 		Weight:   20,
-		Conns: []*utils.TPDispatcherConns{
-			&utils.TPDispatcherConns{
+		Hosts: []*utils.TPDispatcherHostProfile{
+			&utils.TPDispatcherHostProfile{
 				ID:        "C1",
 				FilterIDs: []string{"*gt:Usage:10"},
 				Weight:    10,
 				Params:    []interface{}{"192.168.56.203"},
 				Blocker:   false,
 			},
-			&utils.TPDispatcherConns{
+			&utils.TPDispatcherHostProfile{
 				ID:        "C2",
 				FilterIDs: []string{"*lt:Usage:10"},
 				Weight:    10,
@@ -1576,15 +1610,15 @@ func TestLoadDispatcherProfiles(t *testing.T) {
 		},
 		Strategy: "*first",
 		Weight:   20,
-		Conns: []*utils.TPDispatcherConns{
-			&utils.TPDispatcherConns{
+		Hosts: []*utils.TPDispatcherHostProfile{
+			&utils.TPDispatcherHostProfile{
 				ID:        "C2",
 				FilterIDs: []string{"*lt:Usage:10"},
 				Weight:    10,
 				Params:    []interface{}{"192.168.56.204"},
 				Blocker:   false,
 			},
-			&utils.TPDispatcherConns{
+			&utils.TPDispatcherHostProfile{
 				ID:        "C1",
 				FilterIDs: []string{"*gt:Usage:10"},
 				Weight:    10,
@@ -1599,6 +1633,37 @@ func TestLoadDispatcherProfiles(t *testing.T) {
 	} else if !reflect.DeepEqual(eDispatcherProfiles, csvr.dispatcherProfiles[dppKey]) &&
 		!reflect.DeepEqual(revHosts, csvr.dispatcherProfiles[dppKey]) {
 		t.Errorf("Expecting: %+v, received: %+v", utils.ToJSON(eDispatcherProfiles), utils.ToJSON(csvr.dispatcherProfiles[dppKey]))
+	}
+}
+
+func TestLoadDispatcherHosts(t *testing.T) {
+	eDispatcherHosts := &utils.TPDispatcherHost{
+		TPid:   testTPID,
+		Tenant: "cgrates.org",
+		ID:     "ALL1",
+		Conns: []*utils.TPDispatcherHostConn{
+			&utils.TPDispatcherHostConn{
+				Address:   "127.0.0.1:2012",
+				Transport: utils.MetaJSONrpc,
+				TLS:       true,
+			},
+			&utils.TPDispatcherHostConn{
+				Address:   "127.0.0.1:3012",
+				Transport: utils.MetaJSONrpc,
+				TLS:       false,
+			},
+		},
+	}
+
+	dphKey := utils.TenantID{Tenant: "cgrates.org", ID: "ALL1"}
+	if len(csvr.dispatcherHosts) != 1 {
+		t.Fatalf("Failed to load chargerProfiles: %s", utils.ToIJSON(csvr.chargerProfiles))
+	}
+	sort.Slice(csvr.dispatcherHosts[dphKey].Conns, func(i, j int) bool {
+		return strings.Compare(csvr.dispatcherHosts[dphKey].Conns[i].Address, csvr.dispatcherHosts[dphKey].Conns[j].Address) == -1
+	})
+	if !reflect.DeepEqual(eDispatcherHosts, csvr.dispatcherHosts[dphKey]) {
+		t.Errorf("Expecting: %+v, received: %+v", utils.ToJSON(eDispatcherHosts), utils.ToJSON(csvr.dispatcherHosts[dphKey]))
 	}
 }
 

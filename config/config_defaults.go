@@ -41,11 +41,11 @@ const CGRATES_CFG_JSON = `
 	"default_category": "call",								// default category to consider when missing from requests
 	"default_tenant": "cgrates.org",						// default tenant to consider when missing from requests
 	"default_timezone": "Local",							// default timezone for timestamps where not specified <""|UTC|Local|$IANA_TZ_DB>
+	"default_caching":"*reload",							// default actions to do when caching items
 	"connect_attempts": 5,									// initial server connect attempts
 	"reconnects": -1,										// number of retries in case of connection lost
 	"connect_timeout": "1s",								// consider connection unsuccessful on timeout, 0 to disable the feature
 	"reply_timeout": "2s",									// consider connection down for replies taking longer than this value
-	"internal_ttl": "5s",									// maximum duration to wait for internal connections before giving up
 	"locking_timeout": "0",									// timeout internal locks to avoid deadlocks
 	"digest_separator": ",",								// separator to use in replies containing data digests
 	"digest_equal": ":",									// equal symbol used in case of digests
@@ -61,6 +61,7 @@ const CGRATES_CFG_JSON = `
 	"db_user": "cgrates", 					// username to use when connecting to data_db
 	"db_password": "", 						// password to use when connecting to data_db
 	"redis_sentinel":"",					// the name of sentinel when used
+	"query_timeout":"10s",
 },
 
 
@@ -75,6 +76,7 @@ const CGRATES_CFG_JSON = `
 	"max_idle_conns": 10,					// maximum database connections idle, not applying for mongo
 	"conn_max_lifetime": 0, 				// maximum amount of time in seconds a connection may be reused (0 for unlimited), not applying for mongo
 	"cdrs_indexes": [],						// indexes on cdrs table to speed up queries, used only in case of mongo
+	"query_timeout":"10s",
 },
 
 
@@ -138,6 +140,7 @@ const CGRATES_CFG_JSON = `
 	"attribute_profiles": {"limit": -1, "ttl": "", "static_ttl": false, "precache": false},		// control attribute profile caching
 	"charger_profiles": {"limit": -1, "ttl": "", "static_ttl": false, "precache": false},		// control charger profile caching
 	"dispatcher_profiles": {"limit": -1, "ttl": "", "static_ttl": false, "precache": false},	// control dispatcher profile caching
+	"dispatcher_hosts": {"limit": -1, "ttl": "", "static_ttl": false, "precache": false},		// control dispatcher hosts caching
 	"resource_filter_indexes" : {"limit": -1, "ttl": "", "static_ttl": false}, 					// control resource filter indexes caching
 	"stat_filter_indexes" : {"limit": -1, "ttl": "", "static_ttl": false}, 						// control stat filter indexes caching
 	"threshold_filter_indexes" : {"limit": -1, "ttl": "", "static_ttl": false}, 				// control threshold filter indexes caching
@@ -148,13 +151,14 @@ const CGRATES_CFG_JSON = `
 	"dispatcher_routes": {"limit": -1, "ttl": "", "static_ttl": false}, 						// control dispatcher routes caching
 	"diameter_messages": {"limit": -1, "ttl": "3h", "static_ttl": false},						// diameter messages caching
 	"rpc_responses": {"limit": 0, "ttl": "2s", "static_ttl": false},							// RPC responses caching
+	"closed_sessions": {"limit": -1, "ttl": "10s", "static_ttl": false},						// closed sessions cached for CDRs
+	"load_ids": {"limit": -1, "ttl": "", "static_ttl": false, "precache": false},				// control the load_ids for items
 },
 
 
 "filters": {								// Filters configuration (*new)
 	"stats_conns": [],						// connections to StatS for <*stats> filters, empty to disable stats functionality: <""|*internal|x.y.z.y:1234>
 	"resources_conns": [],					// connections to ResourceS for <*resources> filters, empty to disable stats functionality: <""|*internal|x.y.z.y:1234>
-	"indexed_selects":true,					// enable profile matching exclusively on indexes
 },
 
 
@@ -169,6 +173,14 @@ const CGRATES_CFG_JSON = `
 		"*voice": "72h",
 		"*data": "107374182400",
 		"*sms": "10000"
+	},
+	"balance_rating_subject":{				// default rating subject in case that balance rating subject is empty
+		"*any": "*zero1ns",
+		"*voice": "*zero1s",
+		"*data": "*zero1ns",
+		"*sms": "*zero1ns",
+		"*monetary":"*zero1ns",
+		"*generic":"*zero1ns",
 	},
 },
 
@@ -288,15 +300,9 @@ const CGRATES_CFG_JSON = `
 "sessions": {
 	"enabled": false,						// starts the session service: <true|false>
 	"listen_bijson": "127.0.0.1:2014",		// address where to listen for bidirectional JSON-RPC requests
-	"chargers_conns": [						// connections to ChargerS for session forking <*internal|x.y.z.y:1234>
-		{"address": "*internal"}
-	],					
-	"rals_conns": [							// connections to RALs for rating/accounting <""|*internal|127.0.0.1:2013>
-		{"address": "*internal"}
-	],
-	"cdrs_conns": [							// connections to CDRs for CDR posting <*internal|x.y.z.y:1234>
-		{"address": "*internal"}
-	],
+	"chargers_conns": [],					// connections to ChargerS for session forking <*internal|x.y.z.y:1234>
+	"rals_conns": [],						// connections to RALs for rating/accounting <""|*internal|127.0.0.1:2013>
+	"cdrs_conns": [],						// connections to CDRs for CDR posting <*internal|x.y.z.y:1234>
 	"resources_conns": [],					// connections to ResourceS for resources monitoring <""|*internal|127.0.0.1:2013>
 	"thresholds_conns": [],					// connections to ThresholdS for reporting session events <""|*internal|127.0.0.1:2013>
 	"stats_conns": [],						// connections to StatS for reporting session events <""|*internal|127.0.0.1:2013>
@@ -304,6 +310,7 @@ const CGRATES_CFG_JSON = `
 	"attributes_conns": [],					// connections to AttributeS for altering event fields <""|*internal|127.0.0.1:2013>
 	"session_replication_conns": [],		// replicate sessions towards these session services
 	"debit_interval": "0s",					// interval to perform debits on.
+	"store_session_costs": false,			// enable storing of the session costs within CDRs
 	"min_call_duration": "0s",				// only authorize calls with allowed duration higher than this
 	"max_call_duration": "3h",				// maximum call duration a prepaid call can last
 	"session_ttl": "0s",					// time after a session with no updates is terminated, not defined by default
@@ -373,6 +380,7 @@ const CGRATES_CFG_JSON = `
 	"vendor_id": 0,												// diameter Vendor-Id AVP used in replies
 	"product_name": "CGRateS",									// diameter Product-Name AVP used in replies
 	"max_active_requests": -1,									// limit the number of active requests processed by the server <-1|0-n>
+	"synced_conn_requests": false,								// process one request at the time per connection
 	"asr_template": "",											// enable AbortSession message being sent to client on DisconnectSession
 	"templates":{												// default message templates
 		"*err": [
@@ -446,8 +454,22 @@ const CGRATES_CFG_JSON = `
 ],
 
 
+"dns_agent": {
+	"enabled": false,											// enables the DNS agent: <true|false>
+	"listen": "127.0.0.1:2053",									// address where to listen for DNS requests <x.y.z.y:1234>
+	"listen_net": "udp",										// network to listen on <udp|tcp|tcp-tls>
+	"sessions_conns": [											// connections to SessionS for session management and CDR posting
+		{"address": "*internal"}
+	],
+	"timezone": "",												// timezone of the events if not specified  <UTC|Local|$IANA_TZ_DB>
+	"request_processors": [										// request processors to be applied to DNS messages
+	],
+},
+
+
 "attributes": {								// AttributeS config
 	"enabled": false,						// starts attribute service: <true|false>.
+	"indexed_selects":true,					// enable profile matching exclusively on indexes
 	//"string_indexed_fields": [],			// query indexes based on these fields for faster processing
 	"prefix_indexed_fields": [],			// query indexes based on these fields for faster processing
 	"process_runs": 1,						// number of run loops when processing event
@@ -457,6 +479,7 @@ const CGRATES_CFG_JSON = `
 "chargers": {								// ChargerS config
 	"enabled": false,						// starts charger service: <true|false>.
 	"attributes_conns": [],					// connections to AttributeS for event fields altering <""|127.0.0.1:2013>
+	"indexed_selects":true,					// enable profile matching exclusively on indexes
 	//"string_indexed_fields": [],			// query indexes based on these fields for faster processing
 	"prefix_indexed_fields": [],			// query indexes based on these fields for faster processing
 },
@@ -466,6 +489,7 @@ const CGRATES_CFG_JSON = `
 	"enabled": false,						// starts ResourceLimiter service: <true|false>.
 	"store_interval": "",					// dump cache regularly to dataDB, 0 - dump at start/shutdown: <""|$dur>
 	"thresholds_conns": [],					// connections to ThresholdS for resource reporting, empty to disable thresholds functionality: <""|*internal|x.y.z.y:1234>
+	"indexed_selects":true,					// enable profile matching exclusively on indexes
 	//"string_indexed_fields": [],			// query indexes based on these fields for faster processing
 	"prefix_indexed_fields": [],			// query indexes based on these fields for faster processing
 },
@@ -474,7 +498,9 @@ const CGRATES_CFG_JSON = `
 "stats": {									// StatS config
 	"enabled": false,						// starts Stat service: <true|false>.
 	"store_interval": "",					// dump cache regularly to dataDB, 0 - dump at start/shutdown: <""|$dur>
+	"store_uncompressed_limit": 0,					// used to compress data
 	"thresholds_conns": [],					// connections to ThresholdS for StatUpdates, empty to disable thresholds functionality: <""|*internal|x.y.z.y:1234>
+	"indexed_selects":true,					// enable profile matching exclusively on indexes
 	//"string_indexed_fields": [],			// query indexes based on these fields for faster processing
 	"prefix_indexed_fields": [],			// query indexes based on these fields for faster processing
 },
@@ -483,6 +509,7 @@ const CGRATES_CFG_JSON = `
 "thresholds": {								// ThresholdS
 	"enabled": false,						// starts ThresholdS service: <true|false>.
 	"store_interval": "",					// dump cache regularly to dataDB, 0 - dump at start/shutdown: <""|$dur>
+	"indexed_selects":true,					// enable profile matching exclusively on indexes
 	//"string_indexed_fields": [],			// query indexes based on these fields for faster processing
 	"prefix_indexed_fields": [],			// query indexes based on these fields for faster processing
 },
@@ -490,6 +517,7 @@ const CGRATES_CFG_JSON = `
 
 "suppliers": {								// SupplierS config
 	"enabled": false,						// starts SupplierS service: <true|false>.
+	"indexed_selects":true,					// enable profile matching exclusively on indexes
 	//"string_indexed_fields": [],			// query indexes based on these fields for faster processing
 	"prefix_indexed_fields": [],			// query indexes based on these fields for faster processing
 	"attributes_conns": [],					// connections to AttributeS for altering events before supplier queries: <""|*internal|127.0.0.1:2013>
@@ -527,8 +555,9 @@ const CGRATES_CFG_JSON = `
 					{"tag": "ActivationInterval", "field_id": "ActivationInterval", "type": "*composed", "value": "~4"},
 					{"tag": "AttributeFilterIDs", "field_id": "AttributeFilterIDs", "type": "*composed", "value": "~5"},
 					{"tag": "FieldName", "field_id": "FieldName", "type": "*composed", "value": "~6"},
-					{"tag": "Substitute", "field_id": "Substitute", "type": "*composed", "value": "~7"},
-					{"tag": "Weight", "field_id": "Weight", "type": "*composed", "value": "~8"},
+					{"tag": "Type", "field_id": "Type", "type": "*composed", "value": "~7"},
+					{"tag": "Value", "field_id": "Value", "type": "*composed", "value": "~8"},
+					{"tag": "Weight", "field_id": "Weight", "type": "*composed", "value": "~9"},
 				],
 			},
 			{
@@ -632,7 +661,7 @@ const CGRATES_CFG_JSON = `
 			},
 			{
 				"type": "*dispatchers",						// data source type
-				"file_name": "Dispatchers.csv",				// file name in the tp_in_dir
+				"file_name": "DispatcherProfiles.csv",		// file name in the tp_in_dir
 				"fields": [
 					{"tag": "Tenant", "field_id": "Tenant", "type": "*composed", "value": "~0", "mandatory": true},
 					{"tag": "ID", "field_id": "ID", "type": "*composed", "value": "~1", "mandatory": true},
@@ -647,6 +676,17 @@ const CGRATES_CFG_JSON = `
 					{"tag": "ConnBlocker", "field_id": "ConnBlocker", "type": "*composed", "value": "~10"},
 					{"tag": "ConnParameters", "field_id": "ConnParameters", "type": "*composed", "value": "~11"},
 					{"tag": "Weight", "field_id": "Weight", "type": "*composed", "value": "~12"},
+				],
+			},
+			{
+				"type": "*dispatcher_hosts",						// data source type
+				"file_name": "DispatcherHosts.csv",					// file name in the tp_in_dir 
+				"fields": [
+					{"tag": "Tenant", "field_id": "Tenant", "type": "*composed", "value": "~0", "mandatory": true},
+					{"tag": "ID", "field_id": "ID", "type": "*composed", "value": "~1", "mandatory": true},
+					{"tag": "Address", "field_id": "Address", "type": "*composed", "value": "~2"},
+					{"tag": "Transport", "field_id": "Transport", "type": "*composed", "value": "~3"},
+					{"tag": "TLS", "field_id": "TLS", "type": "*composed", "value": "~4"},
 				],
 			},
 		],
@@ -701,7 +741,7 @@ const CGRATES_CFG_JSON = `
 		{"address": "127.0.0.1:2012", "transport": "*json"}
 	],
 	"scheduler_conns": [					// connections to SchedulerS for reloads
-		{"address": "127.0.0.1:2012"}
+		{"address": "127.0.0.1:2012", "transport": "*json"}
 	],
 },
 
@@ -726,11 +766,10 @@ const CGRATES_CFG_JSON = `
 
 "dispatchers":{								// DispatcherS config
 	"enabled": false,						// starts DispatcherS service: <true|false>.
+	"indexed_selects":true,					// enable profile matching exclusively on indexes
 	//"string_indexed_fields": [],			// query indexes based on these fields for faster processing
 	"prefix_indexed_fields": [],			// query indexes based on these fields for faster processing
 	"attributes_conns": [],					// connections to AttributeS for API authorization, empty to disable auth functionality: <""|*internal|x.y.z.y:1234>
-	"conns": {								// connection pools to use for dispatching requests
-	},
 },
 
 
@@ -738,5 +777,14 @@ const CGRATES_CFG_JSON = `
 	"enabled":false							// starts AnalyzerS service: <true|false>.
 },
 
+
+"apier": {	
+	"caches_conns":[						// connections to CacheS for reloads
+		{"address": "*internal"},
+	],
+	"scheduler_conns": [					// connections to SchedulerS for reloads
+		{"address": "*internal"}
+	],						
+},
 
 }`

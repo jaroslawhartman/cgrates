@@ -19,6 +19,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>
 package v1
 
 import (
+	"time"
+
 	"github.com/cgrates/cgrates/engine"
 	"github.com/cgrates/cgrates/utils"
 )
@@ -29,10 +31,7 @@ func (apierV1 *ApierV1) GetSupplierProfile(arg utils.TenantID, reply *engine.Sup
 		return utils.NewErrMandatoryIeMissing(missing...)
 	}
 	if spp, err := apierV1.DataManager.GetSupplierProfile(arg.Tenant, arg.ID, true, true, utils.NonTransactional); err != nil {
-		if err.Error() != utils.ErrNotFound.Error() {
-			err = utils.NewErrServerError(err)
-		}
-		return err
+		return utils.APIErrorHandler(err)
 	} else {
 		*reply = *spp
 	}
@@ -40,26 +39,49 @@ func (apierV1 *ApierV1) GetSupplierProfile(arg utils.TenantID, reply *engine.Sup
 }
 
 // GetSupplierProfileIDs returns list of supplierProfile IDs registered for a tenant
-func (apierV1 *ApierV1) GetSupplierProfileIDs(tenant string, sppPrfIDs *[]string) error {
-	prfx := utils.SupplierProfilePrefix + tenant + ":"
+func (apierV1 *ApierV1) GetSupplierProfileIDs(args utils.TenantArgWithPaginator, sppPrfIDs *[]string) error {
+	if missing := utils.MissingStructFields(&args, []string{utils.Tenant}); len(missing) != 0 { //Params missing
+		return utils.NewErrMandatoryIeMissing(missing...)
+	}
+	prfx := utils.SupplierProfilePrefix + args.Tenant + ":"
 	keys, err := apierV1.DataManager.DataDB().GetKeysForPrefix(prfx)
 	if err != nil {
 		return err
+	}
+	if len(keys) == 0 {
+		return utils.ErrNotFound
 	}
 	retIDs := make([]string, len(keys))
 	for i, key := range keys {
 		retIDs[i] = key[len(prfx):]
 	}
-	*sppPrfIDs = retIDs
+	*sppPrfIDs = args.PaginateStringSlice(retIDs)
 	return nil
 }
 
+type SupplierWithCache struct {
+	*engine.SupplierProfile
+	Cache *string
+}
+
 //SetSupplierProfile add a new Supplier configuration
-func (apierV1 *ApierV1) SetSupplierProfile(spp *engine.SupplierProfile, reply *string) error {
-	if missing := utils.MissingStructFields(spp, []string{"Tenant", "ID"}); len(missing) != 0 {
+func (apierV1 *ApierV1) SetSupplierProfile(args *SupplierWithCache, reply *string) error {
+	if missing := utils.MissingStructFields(args.SupplierProfile, []string{"Tenant", "ID"}); len(missing) != 0 {
 		return utils.NewErrMandatoryIeMissing(missing...)
 	}
-	if err := apierV1.DataManager.SetSupplierProfile(spp, true); err != nil {
+	if err := apierV1.DataManager.SetSupplierProfile(args.SupplierProfile, true); err != nil {
+		return utils.APIErrorHandler(err)
+	}
+	//generate a loadID for CacheSupplierProfiles and store it in database
+	if err := apierV1.DataManager.SetLoadIDs(map[string]int64{utils.CacheSupplierProfiles: time.Now().UnixNano()}); err != nil {
+		return utils.APIErrorHandler(err)
+	}
+	//handle caching for SupplierProfile
+	argCache := utils.ArgsGetCacheItem{
+		CacheID: utils.CacheSupplierProfiles,
+		ItemID:  args.TenantID(),
+	}
+	if err := apierV1.CallCache(GetCacheOpt(args.Cache), argCache); err != nil {
 		return utils.APIErrorHandler(err)
 	}
 	*reply = utils.OK
@@ -67,15 +89,24 @@ func (apierV1 *ApierV1) SetSupplierProfile(spp *engine.SupplierProfile, reply *s
 }
 
 //RemoveSupplierProfile remove a specific Supplier configuration
-func (apierV1 *ApierV1) RemoveSupplierProfile(arg utils.TenantID, reply *string) error {
-	if missing := utils.MissingStructFields(&arg, []string{"Tenant", "ID"}); len(missing) != 0 { //Params missing
+func (apierV1 *ApierV1) RemoveSupplierProfile(args *utils.TenantIDWithCache, reply *string) error {
+	if missing := utils.MissingStructFields(args, []string{"Tenant", "ID"}); len(missing) != 0 { //Params missing
 		return utils.NewErrMandatoryIeMissing(missing...)
 	}
-	if err := apierV1.DataManager.RemoveSupplierProfile(arg.Tenant, arg.ID, utils.NonTransactional, true); err != nil {
-		if err.Error() != utils.ErrNotFound.Error() {
-			err = utils.NewErrServerError(err)
-		}
-		return err
+	if err := apierV1.DataManager.RemoveSupplierProfile(args.Tenant, args.ID, utils.NonTransactional, true); err != nil {
+		return utils.APIErrorHandler(err)
+	}
+	//generate a loadID for CacheSupplierProfiles and store it in database
+	if err := apierV1.DataManager.SetLoadIDs(map[string]int64{utils.CacheSupplierProfiles: time.Now().UnixNano()}); err != nil {
+		return utils.APIErrorHandler(err)
+	}
+	//handle caching for SupplierProfile
+	argCache := utils.ArgsGetCacheItem{
+		CacheID: utils.CacheSupplierProfiles,
+		ItemID:  args.TenantID(),
+	}
+	if err := apierV1.CallCache(GetCacheOpt(args.Cache), argCache); err != nil {
+		return utils.APIErrorHandler(err)
 	}
 	*reply = utils.OK
 	return nil
@@ -102,7 +133,13 @@ func (splv1 *SupplierSv1) GetSuppliers(args *engine.ArgsGetSuppliers,
 	return splv1.splS.V1GetSuppliers(args, reply)
 }
 
-func (splv1 *SupplierSv1) Ping(ign *utils.CGREvent, reply *string) error {
+// GetSuppliersProfiles returns a list of suppliers profiles that match for Event
+func (splv1 *SupplierSv1) GetSupplierProfilesForEvent(args *utils.CGREventWithArgDispatcher,
+	reply *[]*engine.SupplierProfile) error {
+	return splv1.splS.V1GetSupplierProfilesForEvent(args, reply)
+}
+
+func (splv1 *SupplierSv1) Ping(ign *utils.CGREventWithArgDispatcher, reply *string) error {
 	*reply = utils.Pong
 	return nil
 }

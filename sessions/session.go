@@ -22,7 +22,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cgrates/cgrates/config"
 	"github.com/cgrates/cgrates/engine"
 	"github.com/cgrates/cgrates/utils"
 )
@@ -76,6 +75,7 @@ type Session struct {
 
 	debitStop   chan struct{}
 	sTerminator *sTerminator // automatic timeout for the session
+	*utils.ArgDispatcher
 }
 
 // CGRid is a thread-safe method to return the CGRID of a session
@@ -150,6 +150,39 @@ func (s *Session) AsActiveSessions(tmz, nodeID string) (aSs []*ActiveSession) {
 	s.RUnlock()
 	return
 }
+func (s *Session) asActiveSessions(sr *SRun, tmz, nodeID string) (aS *ActiveSession) {
+	s.RLock()
+	aS = &ActiveSession{
+		CGRID:       s.CGRID,
+		RunID:       sr.Event.GetStringIgnoreErrors(utils.RunID),
+		ToR:         sr.Event.GetStringIgnoreErrors(utils.ToR),
+		OriginID:    s.EventStart.GetStringIgnoreErrors(utils.OriginID),
+		OriginHost:  s.EventStart.GetStringIgnoreErrors(utils.OriginHost),
+		Source:      utils.SessionS + "_" + s.EventStart.GetStringIgnoreErrors(utils.EVENT_NAME),
+		RequestType: sr.Event.GetStringIgnoreErrors(utils.RequestType),
+		Tenant:      s.Tenant,
+		Category:    sr.Event.GetStringIgnoreErrors(utils.Category),
+		Account:     sr.Event.GetStringIgnoreErrors(utils.Account),
+		Subject:     sr.Event.GetStringIgnoreErrors(utils.Subject),
+		Destination: sr.Event.GetStringIgnoreErrors(utils.Destination),
+		SetupTime:   sr.Event.GetTimeIgnoreErrors(utils.SetupTime, tmz),
+		AnswerTime:  sr.Event.GetTimeIgnoreErrors(utils.AnswerTime, tmz),
+		Usage:       sr.TotalUsage,
+		ExtraFields: sr.Event.AsMapStringIgnoreErrors(
+			utils.NewStringMap(utils.MainCDRFields...)),
+		NodeID:        nodeID,
+		DebitInterval: s.DebitInterval,
+	}
+	if sr.CD != nil {
+		aS.LoopIndex = sr.CD.LoopIndex
+		aS.DurationIndex = sr.CD.DurationIndex
+		aS.MaxRate = sr.CD.MaxRate
+		aS.MaxRateUnit = sr.CD.MaxRateUnit
+		aS.MaxCostSoFar = sr.CD.MaxCostSoFar
+	}
+	s.RUnlock()
+	return
+}
 
 // TotalUsage returns the first session run total usage
 func (s *Session) TotalUsage() (tDur time.Duration) {
@@ -165,28 +198,25 @@ func (s *Session) TotalUsage() (tDur time.Duration) {
 	return
 }
 
-// AsCGREvents is a thread safe method to return the Session as CGREvents
-// there will be one CGREvent for each SRun
-func (s *Session) AsCGREvents(cgrCfg *config.CGRConfig) (cgrEvs []*utils.CGREvent, err error) {
-	if len(s.SRuns) == 0 {
-		return
+// AsCGREvents is a  method to return the Session as CGREvents
+// there will be one CGREvent for each SRun plus one *raw for EventStart
+// AsCGREvents is not thread safe since it is supposed to run by the time Session is closed
+func (s *Session) asCGREvents() (cgrEvs []*utils.CGREvent, err error) {
+	cgrEvs = make([]*utils.CGREvent, len(s.SRuns)+1) // so we can gather all cdr info while under lock
+	rawEv := s.EventStart.MapEvent()
+	rawEv[utils.RunID] = utils.MetaRaw
+	cgrEvs[0] = &utils.CGREvent{
+		Tenant: s.Tenant,
+		ID:     utils.UUIDSha1Prefix(),
+		Event:  rawEv,
 	}
-	s.RLock()
-	cgrEvs = make([]*utils.CGREvent, len(s.SRuns)) // so we can gather all cdr info while under lock
 	for i, sr := range s.SRuns {
-		var cdr *engine.CDR
-		if cdr, err = sr.Event.AsCDR(cgrCfg, s.Tenant,
-			cgrCfg.GeneralCfg().DefaultTimezone); err != nil {
-			break // will return with error
-		}
-		cdr.Usage = sr.TotalUsage
-		cgrEvs[i] = &utils.CGREvent{
+		cgrEvs[i+1] = &utils.CGREvent{
 			Tenant: s.Tenant,
 			ID:     utils.UUIDSha1Prefix(),
-			Event:  cdr.AsMapStringIface(),
+			Event:  sr.Event,
 		}
 	}
-	s.RUnlock()
 	return
 }
 
@@ -202,15 +232,20 @@ type SRun struct {
 }
 
 // Clone returns the cloned version of SRun
-func (sr *SRun) Clone() *SRun {
-	return &SRun{
+func (sr *SRun) Clone() (clsr *SRun) {
+	clsr = &SRun{
 		Event:         sr.Event.Clone(),
-		CD:            sr.CD.Clone(),
-		EventCost:     sr.EventCost.Clone(),
 		ExtraDuration: sr.ExtraDuration,
 		LastUsage:     sr.LastUsage,
 		TotalUsage:    sr.TotalUsage,
 	}
+	if sr.CD != nil {
+		clsr.CD = sr.CD.Clone()
+	}
+	if sr.EventCost != nil {
+		clsr.EventCost = sr.EventCost.Clone()
+	}
+	return
 }
 
 // debitReserve attempty to debit from ExtraDuration and returns remaining duration

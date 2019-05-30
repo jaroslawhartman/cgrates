@@ -23,27 +23,62 @@ import (
 	"github.com/cgrates/cgrates/utils"
 )
 
-func (dS *DispatcherService) SupplierSv1Ping(args *CGREvWithApiKey, reply *string) (err error) {
+func (dS *DispatcherService) SupplierSv1Ping(args *utils.CGREventWithArgDispatcher, reply *string) (err error) {
+	args.CGREvent.Tenant = utils.FirstNonEmpty(args.CGREvent.Tenant, dS.cfg.GeneralCfg().DefaultTenant)
 	if dS.attrS != nil {
+		if args.ArgDispatcher == nil {
+			return utils.NewErrMandatoryIeMissing(utils.ArgDispatcherField)
+		}
 		if err = dS.authorize(utils.SupplierSv1Ping,
 			args.CGREvent.Tenant,
 			args.APIKey, args.CGREvent.Time); err != nil {
 			return
 		}
 	}
-	return dS.Dispatch(&args.CGREvent, utils.MetaSuppliers, args.RouteID,
-		utils.SupplierSv1Ping, args.CGREvent, reply)
+	var routeID *string
+	if args.ArgDispatcher != nil {
+		routeID = args.ArgDispatcher.RouteID
+	}
+	return dS.Dispatch(args.CGREvent, utils.MetaSuppliers, routeID,
+		utils.SupplierSv1Ping, args, reply)
 }
 
-func (dS *DispatcherService) SupplierSv1GetSuppliers(args *ArgsGetSuppliersWithApiKey,
+func (dS *DispatcherService) SupplierSv1GetSuppliers(args *engine.ArgsGetSuppliers,
 	reply *engine.SortedSuppliers) (err error) {
 	if dS.attrS != nil {
+		if args.ArgDispatcher == nil {
+			return utils.NewErrMandatoryIeMissing(utils.ArgDispatcherField)
+		}
 		if err = dS.authorize(utils.SupplierSv1GetSuppliers,
-			args.ArgsGetSuppliers.CGREvent.Tenant,
-			args.APIKey, args.ArgsGetSuppliers.CGREvent.Time); err != nil {
+			args.CGREvent.Tenant,
+			args.APIKey, args.CGREvent.Time); err != nil {
 			return
 		}
 	}
-	return dS.Dispatch(&args.CGREvent, utils.MetaSuppliers, args.RouteID,
-		utils.SupplierSv1GetSuppliers, args.ArgsGetSuppliers, reply)
+	var routeID *string
+	if args.ArgDispatcher != nil {
+		routeID = args.ArgDispatcher.RouteID
+	}
+	return dS.Dispatch(args.CGREvent, utils.MetaSuppliers, routeID,
+		utils.SupplierSv1GetSuppliers, args, reply)
+}
+
+func (dS *DispatcherService) SupplierSv1GetSupplierProfilesForEvent(args *utils.CGREventWithArgDispatcher,
+	reply *[]*engine.SupplierProfile) (err error) {
+	if dS.attrS != nil {
+		if args.ArgDispatcher == nil {
+			return utils.NewErrMandatoryIeMissing(utils.ArgDispatcherField)
+		}
+		if err = dS.authorize(utils.SupplierSv1GetSupplierProfilesForEvent,
+			args.CGREvent.Tenant,
+			args.APIKey, args.CGREvent.Time); err != nil {
+			return
+		}
+	}
+	var routeID *string
+	if args.ArgDispatcher != nil {
+		routeID = args.ArgDispatcher.RouteID
+	}
+	return dS.Dispatch(args.CGREvent, utils.MetaSuppliers, routeID,
+		utils.SupplierSv1GetSupplierProfilesForEvent, args, reply)
 }

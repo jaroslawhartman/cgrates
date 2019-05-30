@@ -50,6 +50,14 @@ type ApierV1 struct {
 	ServManager *servmanager.ServiceManager   // Need to have them capitalize so we can export in V2
 	HTTPPoster  *engine.HTTPPoster
 	FilterS     *engine.FilterS //Used for CDR Exporter
+	CacheS      rpcclient.RpcClientConnection
+	SchedulerS  rpcclient.RpcClientConnection
+}
+
+// Call implements rpcclient.RpcClientConnection interface for internal RPC
+func (self *ApierV1) Call(serviceMethod string,
+	args interface{}, reply interface{}) error {
+	return utils.APIerRPCCall(self, serviceMethod, args, reply)
 }
 
 func (self *ApierV1) GetDestination(dstId string, reply *engine.Destination) error {
@@ -191,7 +199,8 @@ func (self *ApierV1) LoadDestination(attrs AttrLoadDestination, reply *string) e
 		return utils.NewErrMandatoryIeMissing("TPid")
 	}
 	dbReader := engine.NewTpReader(self.DataManager.DataDB(), self.StorDb,
-		attrs.TPid, self.Config.GeneralCfg().DefaultTimezone)
+		attrs.TPid, self.Config.GeneralCfg().DefaultTimezone,
+		self.CacheS, self.SchedulerS)
 	if loaded, err := dbReader.LoadDestinationsFiltered(attrs.ID); err != nil {
 		return utils.NewErrServerError(err)
 	} else if !loaded {
@@ -215,7 +224,8 @@ func (self *ApierV1) LoadRatingPlan(attrs AttrLoadRatingPlan, reply *string) err
 		return utils.NewErrMandatoryIeMissing("TPid")
 	}
 	dbReader := engine.NewTpReader(self.DataManager.DataDB(), self.StorDb,
-		attrs.TPid, self.Config.GeneralCfg().DefaultTimezone)
+		attrs.TPid, self.Config.GeneralCfg().DefaultTimezone,
+		self.CacheS, self.SchedulerS)
 	if loaded, err := dbReader.LoadRatingPlansFiltered(attrs.RatingPlanId); err != nil {
 		return utils.NewErrServerError(err)
 	} else if !loaded {
@@ -231,7 +241,8 @@ func (self *ApierV1) LoadRatingProfile(attrs utils.TPRatingProfile, reply *strin
 		return utils.NewErrMandatoryIeMissing("TPid")
 	}
 	dbReader := engine.NewTpReader(self.DataManager.DataDB(), self.StorDb,
-		attrs.TPid, self.Config.GeneralCfg().DefaultTimezone)
+		attrs.TPid, self.Config.GeneralCfg().DefaultTimezone,
+		self.CacheS, self.SchedulerS)
 	if err := dbReader.LoadRatingProfilesFiltered(&attrs); err != nil {
 		return utils.NewErrServerError(err)
 	}
@@ -250,7 +261,8 @@ func (self *ApierV1) LoadSharedGroup(attrs AttrLoadSharedGroup, reply *string) e
 		return utils.NewErrMandatoryIeMissing("TPid")
 	}
 	dbReader := engine.NewTpReader(self.DataManager.DataDB(), self.StorDb,
-		attrs.TPid, self.Config.GeneralCfg().DefaultTimezone)
+		attrs.TPid, self.Config.GeneralCfg().DefaultTimezone,
+		self.CacheS, self.SchedulerS)
 	if err := dbReader.LoadSharedGroupsFiltered(attrs.SharedGroupId, true); err != nil {
 		return utils.NewErrServerError(err)
 	}
@@ -259,10 +271,11 @@ func (self *ApierV1) LoadSharedGroup(attrs AttrLoadSharedGroup, reply *string) e
 }
 
 type AttrLoadTpFromStorDb struct {
-	TPid     string
-	FlushDb  bool // Flush dataDB before loading
-	DryRun   bool // Only simulate, no write
-	Validate bool // Run structural checks
+	TPid          string
+	FlushDb       bool // Flush dataDB before loading
+	DryRun        bool // Only simulate, no write
+	Validate      bool // Run structural checks
+	ArgDispatcher *utils.ArgDispatcher
 }
 
 // Loads complete data in a TP from storDb
@@ -271,7 +284,8 @@ func (self *ApierV1) LoadTariffPlanFromStorDb(attrs AttrLoadTpFromStorDb, reply 
 		return utils.NewErrMandatoryIeMissing("TPid")
 	}
 	dbReader := engine.NewTpReader(self.DataManager.DataDB(), self.StorDb,
-		attrs.TPid, self.Config.GeneralCfg().DefaultTimezone)
+		attrs.TPid, self.Config.GeneralCfg().DefaultTimezone,
+		self.CacheS, self.SchedulerS)
 	if err := dbReader.LoadAll(); err != nil {
 		return utils.NewErrServerError(err)
 	}
@@ -288,28 +302,10 @@ func (self *ApierV1) LoadTariffPlanFromStorDb(attrs AttrLoadTpFromStorDb, reply 
 	if err := dbReader.WriteToDatabase(attrs.FlushDb, false, false); err != nil {
 		return utils.NewErrServerError(err)
 	}
+	// reload cache
 	utils.Logger.Info("ApierV1.LoadTariffPlanFromStorDb, reloading cache.")
-	for _, prfx := range []string{
-		utils.DESTINATION_PREFIX,
-		utils.REVERSE_DESTINATION_PREFIX,
-		utils.ACTION_PLAN_PREFIX,
-		utils.AccountActionPlansPrefix,
-	} {
-		loadedIDs, _ := dbReader.GetLoadedIds(prfx)
-		if err := self.DataManager.CacheDataFromDB(prfx, loadedIDs, true); err != nil {
-			return utils.NewErrServerError(err)
-		}
-	}
-	aps, _ := dbReader.GetLoadedIds(utils.ACTION_PLAN_PREFIX)
-
-	// relase tp data
-	dbReader.Init()
-
-	if len(aps) != 0 {
-		sched := self.ServManager.GetScheduler()
-		if sched != nil {
-			sched.Reload()
-		}
+	if err := dbReader.ReloadCache(attrs.FlushDb, true, attrs.ArgDispatcher); err != nil {
+		return utils.NewErrServerError(err)
 	}
 
 	*reply = OK
@@ -390,7 +386,32 @@ func (self *ApierV1) SetRatingProfile(attrs utils.AttrSetRatingProfile, reply *s
 	if err := self.DataManager.SetRatingProfile(rpfl, utils.NonTransactional); err != nil {
 		return utils.NewErrServerError(err)
 	}
+	//generate a loadID for CacheRatingProfiles and store it in database
+	if err := self.DataManager.SetLoadIDs(map[string]int64{utils.CacheRatingProfiles: time.Now().UnixNano()}); err != nil {
+		return utils.APIErrorHandler(err)
+	}
 	*reply = OK
+	return nil
+}
+
+// GetRatingProfileIDs returns list of resourceProfile IDs registered for a tenant
+func (apierV1 *ApierV1) GetRatingProfileIDs(args utils.TenantArgWithPaginator, rsPrfIDs *[]string) error {
+	if missing := utils.MissingStructFields(&args, []string{utils.Tenant}); len(missing) != 0 { //Params missing
+		return utils.NewErrMandatoryIeMissing(missing...)
+	}
+	prfx := utils.RATING_PROFILE_PREFIX + "*out:" + args.Tenant + ":"
+	keys, err := apierV1.DataManager.DataDB().GetKeysForPrefix(prfx)
+	if err != nil {
+		return err
+	}
+	if len(keys) == 0 {
+		return utils.ErrNotFound
+	}
+	retIDs := make([]string, len(keys))
+	for i, key := range keys {
+		retIDs[i] = key[len(prfx):]
+	}
+	*rsPrfIDs = args.PaginateStringSlice(retIDs)
 	return nil
 }
 
@@ -462,6 +483,23 @@ func (self *ApierV1) SetActions(attrs V1AttrSetActions, reply *string) (err erro
 	}
 	storeActions := make(engine.Actions, len(attrs.Actions))
 	for idx, apiAct := range attrs.Actions {
+		var blocker *bool
+		if apiAct.BalanceBlocker != "" {
+			if x, err := strconv.ParseBool(apiAct.BalanceBlocker); err == nil {
+				blocker = &x
+			} else {
+				return err
+			}
+		}
+
+		var disabled *bool
+		if apiAct.BalanceDisabled != "" {
+			if x, err := strconv.ParseBool(apiAct.BalanceDisabled); err == nil {
+				disabled = &x
+			} else {
+				return err
+			}
+		}
 		a := &engine.Action{
 			Id:               attrs.ActionsId,
 			ActionType:       apiAct.Identifier,
@@ -478,12 +516,20 @@ func (self *ApierV1) SetActions(attrs V1AttrSetActions, reply *string) (err erro
 				DestinationIDs: utils.StringMapPointer(utils.ParseStringMap(apiAct.DestinationIds)),
 				RatingSubject:  utils.StringPointer(apiAct.RatingSubject),
 				SharedGroups:   utils.StringMapPointer(utils.ParseStringMap(apiAct.SharedGroups)),
+				Categories:     utils.StringMapPointer(utils.ParseStringMap(apiAct.Categories)),
+				TimingIDs:      utils.StringMapPointer(utils.ParseStringMap(apiAct.TimingTags)),
+				Blocker:        blocker,
+				Disabled:       disabled,
 			},
 		}
 		storeActions[idx] = a
 	}
 	if err := self.DataManager.SetActions(attrs.ActionsId, storeActions, utils.NonTransactional); err != nil {
 		return utils.NewErrServerError(err)
+	}
+	//generate a loadID for CacheActions and store it in database
+	if err := self.DataManager.SetLoadIDs(map[string]int64{utils.CacheActions: time.Now().UnixNano()}); err != nil {
+		return utils.APIErrorHandler(err)
 	}
 	*reply = OK
 	return nil
@@ -577,6 +623,9 @@ func (self *ApierV1) SetActionPlan(attrs AttrSetActionPlan, reply *string) (err 
 			timing.Months.Parse(apiAtm.Months, ";")
 			timing.MonthDays.Parse(apiAtm.MonthDays, ";")
 			timing.WeekDays.Parse(apiAtm.WeekDays, ";")
+			if !verifyFormat(apiAtm.Time) {
+				return 0, fmt.Errorf("%s:%s", utils.ErrUnsupportedFormat.Error(), apiAtm.Time)
+			}
 			timing.StartTime = apiAtm.Time
 			ap.ActionTimings = append(ap.ActionTimings, &engine.ActionTiming{
 				Uuid:      utils.GenUUID(),
@@ -614,8 +663,37 @@ func (self *ApierV1) SetActionPlan(attrs AttrSetActionPlan, reply *string) (err 
 		}
 		sched.Reload()
 	}
+	//generate a loadID for CacheActionPlans and store it in database
+	if err := self.DataManager.SetLoadIDs(map[string]int64{utils.CacheActionPlans: time.Now().UnixNano()}); err != nil {
+		return utils.APIErrorHandler(err)
+	}
 	*reply = OK
 	return nil
+}
+
+func verifyFormat(tStr string) bool {
+	if tStr == utils.EmptyString ||
+		tStr == utils.MetaEveryMinute ||
+		tStr == utils.MetaHourly ||
+		tStr == utils.ASAP {
+		return true
+	}
+
+	if len(tStr) > 8 { // hh:mm:ss
+		return false
+	}
+	if a := strings.Split(tStr, utils.InInFieldSep); len(a) != 3 {
+		return false
+	} else {
+		if _, err := strconv.Atoi(a[0]); err != nil {
+			return false
+		} else if _, err := strconv.Atoi(a[1]); err != nil {
+			return false
+		} else if _, err := strconv.Atoi(a[2]); err != nil {
+			return false
+		}
+	}
+	return true
 }
 
 type AttrGetActionPlan struct {
@@ -649,7 +727,8 @@ func (self *ApierV1) LoadAccountActions(attrs utils.TPAccountActions, reply *str
 		return utils.NewErrMandatoryIeMissing("TPid")
 	}
 	dbReader := engine.NewTpReader(self.DataManager.DataDB(), self.StorDb,
-		attrs.TPid, self.Config.GeneralCfg().DefaultTimezone)
+		attrs.TPid, self.Config.GeneralCfg().DefaultTimezone,
+		self.CacheS, self.SchedulerS)
 	if _, err := guardian.Guardian.Guard(func() (interface{}, error) {
 		return 0, dbReader.LoadAccountActionsFiltered(&attrs)
 	}, config.CgrConfig().GeneralCfg().LockingTimeout, attrs.LoadId); err != nil {
@@ -665,457 +744,12 @@ func (self *ApierV1) LoadAccountActions(attrs utils.TPAccountActions, reply *str
 	return nil
 }
 
-func (self *ApierV1) ReloadScheduler(ignore string, reply *string) error {
-	sched := self.ServManager.GetScheduler()
-	if sched == nil {
-		return errors.New(utils.SchedulerNotRunningCaps)
-	}
-	sched.Reload()
-	*reply = utils.OK
-	return nil
-}
-
-func (self *ApierV1) reloadCache(chID string, IDs *[]string) error {
-	var dataIDs []string
-	if IDs == nil {
-		dataIDs = nil // Reload all
-	} else if len(*IDs) > 0 {
-		dataIDs = make([]string, len(*IDs))
-		for idx, dId := range *IDs {
-			dataIDs[idx] = dId
-		}
-	}
-	return self.DataManager.CacheDataFromDB(chID, dataIDs, true)
-}
-
-func (self *ApierV1) ReloadCache(attrs utils.AttrReloadCache, reply *string) (err error) {
-	if attrs.FlushAll {
-		engine.Cache.Clear(nil)
-		return
-	}
-	// Reload Destinations
-	if err = self.reloadCache(utils.DESTINATION_PREFIX, attrs.DestinationIDs); err != nil {
-		return
-	}
-	// Reload ReverseDestinations
-	if err = self.reloadCache(utils.REVERSE_DESTINATION_PREFIX, attrs.ReverseDestinationIDs); err != nil {
-		return
-	}
-	// RatingPlans
-	if err = self.reloadCache(utils.RATING_PLAN_PREFIX, attrs.RatingPlanIDs); err != nil {
-		return
-	}
-	// RatingProfiles
-	if err = self.reloadCache(utils.RATING_PROFILE_PREFIX, attrs.RatingProfileIDs); err != nil {
-		return
-	}
-	// Actions
-	if err = self.reloadCache(utils.ACTION_PREFIX, attrs.ActionIDs); err != nil {
-		return
-	}
-	// ActionPlans
-	if err = self.reloadCache(utils.ACTION_PLAN_PREFIX, attrs.ActionPlanIDs); err != nil {
-		return
-	}
-	// AccountActionPlans
-	if err = self.reloadCache(utils.AccountActionPlansPrefix, attrs.AccountActionPlanIDs); err != nil {
-		return
-	}
-	// ActionTriggers
-	if err = self.reloadCache(utils.ACTION_TRIGGER_PREFIX, attrs.ActionTriggerIDs); err != nil {
-		return
-	}
-	// SharedGroups
-	if err = self.reloadCache(utils.SHARED_GROUP_PREFIX, attrs.SharedGroupIDs); err != nil {
-		return
-	}
-	// ResourceProfiles
-	if err = self.reloadCache(utils.ResourceProfilesPrefix, attrs.ResourceProfileIDs); err != nil {
-		return
-	}
-	// Resources
-	if err = self.reloadCache(utils.ResourcesPrefix, attrs.ResourceIDs); err != nil {
-		return
-	}
-	// StatQueues
-	if err = self.reloadCache(utils.StatQueuePrefix, attrs.StatsQueueIDs); err != nil {
-		return
-	}
-	// StatQueueProfiles
-	if err = self.reloadCache(utils.StatQueueProfilePrefix, attrs.StatsQueueProfileIDs); err != nil {
-		return
-	}
-	// Thresholds
-	if err = self.reloadCache(utils.ThresholdPrefix, attrs.ThresholdIDs); err != nil {
-		return
-	}
-	// ThresholdProfiles
-	if err = self.reloadCache(utils.ThresholdProfilePrefix, attrs.ThresholdProfileIDs); err != nil {
-		return
-	}
-	// Filters
-	if err = self.reloadCache(utils.FilterPrefix, attrs.FilterIDs); err != nil {
-		return
-	}
-	// SupplierProfile
-	if err = self.reloadCache(utils.SupplierProfilePrefix, attrs.SupplierProfileIDs); err != nil {
-		return
-	}
-	// AttributeProfile
-	if err = self.reloadCache(utils.AttributeProfilePrefix, attrs.AttributeProfileIDs); err != nil {
-		return
-	}
-	// ChargerProfiles
-	if err = self.reloadCache(utils.ChargerProfilePrefix, attrs.ChargerProfileIDs); err != nil {
-		return
-	}
-	// DispatcherProfile
-	if err = self.reloadCache(utils.DispatcherProfilePrefix, attrs.DispatcherProfileIDs); err != nil {
-		return
-	}
-
-	*reply = utils.OK
-	return nil
-}
-
-func (self *ApierV1) LoadCache(args utils.AttrReloadCache, reply *string) (err error) {
-	if args.FlushAll {
-		engine.Cache.Clear(nil)
-	}
-	var dstIDs, rvDstIDs, rplIDs, rpfIDs, actIDs, aplIDs, aapIDs, atrgIDs, sgIDs, lcrIDs, dcIDs, alsIDs, rvAlsIDs, rspIDs, resIDs, stqIDs, stqpIDs, thIDs, thpIDs, fltrIDs, splpIDs, alsPrfIDs, cppIDs, dppIDs []string
-	if args.DestinationIDs == nil {
-		dstIDs = nil
-	} else {
-		dstIDs = *args.DestinationIDs
-	}
-	if args.ReverseDestinationIDs == nil {
-		rvDstIDs = nil
-	} else {
-		rvDstIDs = *args.ReverseDestinationIDs
-	}
-	if args.RatingPlanIDs == nil {
-		rplIDs = nil
-	} else {
-		rplIDs = *args.RatingPlanIDs
-	}
-	if args.RatingProfileIDs == nil {
-		rpfIDs = nil
-	} else {
-		rpfIDs = *args.RatingProfileIDs
-	}
-	if args.ActionIDs == nil {
-		actIDs = nil
-	} else {
-		actIDs = *args.ActionIDs
-	}
-	if args.ActionPlanIDs == nil {
-		aplIDs = nil
-	} else {
-		aplIDs = *args.ActionPlanIDs
-	}
-	if args.AccountActionPlanIDs == nil {
-		aapIDs = nil
-	} else {
-		aapIDs = *args.AccountActionPlanIDs
-	}
-	if args.ActionTriggerIDs == nil {
-		atrgIDs = nil
-	} else {
-		atrgIDs = *args.ActionTriggerIDs
-	}
-	if args.SharedGroupIDs == nil {
-		sgIDs = nil
-	} else {
-		sgIDs = *args.SharedGroupIDs
-	}
-	if args.ResourceProfileIDs == nil {
-		rspIDs = nil
-	} else {
-		rspIDs = *args.ResourceProfileIDs
-	}
-	if args.ResourceIDs == nil {
-		resIDs = nil
-	} else {
-		resIDs = *args.ResourceIDs
-	}
-	if args.StatsQueueIDs == nil {
-		stqIDs = nil
-	} else {
-		stqIDs = *args.StatsQueueIDs
-	}
-	if args.StatsQueueProfileIDs == nil {
-		stqpIDs = nil
-	} else {
-		stqpIDs = *args.StatsQueueProfileIDs
-	}
-	if args.ThresholdIDs == nil {
-		thIDs = nil
-	} else {
-		thIDs = *args.ThresholdIDs
-	}
-	if args.ThresholdProfileIDs == nil {
-		thpIDs = nil
-	} else {
-		thpIDs = *args.ThresholdProfileIDs
-	}
-	if args.FilterIDs == nil {
-		fltrIDs = nil
-	} else {
-		fltrIDs = *args.FilterIDs
-	}
-	if args.SupplierProfileIDs == nil {
-		splpIDs = nil
-	} else {
-		splpIDs = *args.SupplierProfileIDs
-	}
-	if args.AttributeProfileIDs == nil {
-		alsPrfIDs = nil
-	} else {
-		alsPrfIDs = *args.AttributeProfileIDs
-	}
-	if args.ChargerProfileIDs == nil {
-		cppIDs = nil
-	} else {
-		cppIDs = *args.ChargerProfileIDs
-	}
-	if args.DispatcherProfileIDs == nil {
-		dppIDs = nil
-	} else {
-		dppIDs = *args.DispatcherProfileIDs
-	}
-	if err := self.DataManager.LoadDataDBCache(dstIDs, rvDstIDs, rplIDs,
-		rpfIDs, actIDs, aplIDs, aapIDs, atrgIDs, sgIDs, lcrIDs, dcIDs, alsIDs,
-		rvAlsIDs, rspIDs, resIDs, stqIDs, stqpIDs, thIDs, thpIDs,
-		fltrIDs, splpIDs, alsPrfIDs, cppIDs, dppIDs); err != nil {
-		return utils.NewErrServerError(err)
-	}
-	*reply = utils.OK
-	return nil
-}
-
-func flushCache(chID string, IDs *[]string) {
-	if IDs == nil {
-		engine.Cache.Clear([]string{chID})
-	} else if len(*IDs) != 0 {
-		for _, key := range *IDs {
-			engine.Cache.Remove(chID, key, true, utils.NonTransactional)
-		}
-	}
-}
-
-// FlushCache wipes out cache for a prefix or completely
-func (self *ApierV1) FlushCache(args utils.AttrReloadCache, reply *string) (err error) {
-	if args.FlushAll {
-		engine.Cache.Clear(nil)
-		*reply = utils.OK
-		return
-	}
-	flushCache(utils.CacheDestinations, args.DestinationIDs)
-	flushCache(utils.CacheReverseDestinations, args.ReverseDestinationIDs)
-	flushCache(utils.CacheRatingPlans, args.RatingPlanIDs)
-	flushCache(utils.CacheRatingProfiles, args.RatingProfileIDs)
-	flushCache(utils.CacheActions, args.ActionIDs)
-	flushCache(utils.CacheActionPlans, args.ActionPlanIDs)
-	flushCache(utils.CacheActionTriggers, args.ActionTriggerIDs)
-	flushCache(utils.CacheSharedGroups, args.SharedGroupIDs)
-	flushCache(utils.CacheResourceProfiles, args.ResourceProfileIDs)
-	flushCache(utils.CacheResources, args.ResourceIDs)
-	flushCache(utils.CacheStatQueues, args.StatsQueueIDs)
-	flushCache(utils.CacheThresholdProfiles, args.StatsQueueProfileIDs)
-	flushCache(utils.CacheThresholds, args.ThresholdIDs)
-	flushCache(utils.CacheThresholdProfiles, args.ThresholdProfileIDs)
-	flushCache(utils.CacheFilters, args.FilterIDs)
-	flushCache(utils.CacheSupplierProfiles, args.SupplierProfileIDs)
-	flushCache(utils.CacheAttributeProfiles, args.AttributeProfileIDs)
-	flushCache(utils.CacheChargerProfiles, args.ChargerProfileIDs)
-	flushCache(utils.CacheDispatcherProfiles, args.DispatcherProfileIDs)
-	flushCache(utils.CacheDispatcherRoutes, args.DispatcherRoutesIDs)
-
-	*reply = utils.OK
-	return
-}
-
-func (self *ApierV1) GetCacheStats(attrs utils.AttrCacheStats, reply *utils.CacheStats) error {
-	cs := new(utils.CacheStats)
-	cs.Destinations = len(engine.Cache.GetItemIDs(utils.CacheDestinations, ""))
-	cs.ReverseDestinations = len(engine.Cache.GetItemIDs(utils.CacheReverseDestinations, ""))
-	cs.RatingPlans = len(engine.Cache.GetItemIDs(utils.CacheRatingPlans, ""))
-	cs.RatingProfiles = len(engine.Cache.GetItemIDs(utils.CacheRatingProfiles, ""))
-	cs.Actions = len(engine.Cache.GetItemIDs(utils.CacheActions, ""))
-	cs.ActionPlans = len(engine.Cache.GetItemIDs(utils.CacheActionPlans, ""))
-	cs.AccountActionPlans = len(engine.Cache.GetItemIDs(utils.CacheAccountActionPlans, ""))
-	cs.SharedGroups = len(engine.Cache.GetItemIDs(utils.CacheSharedGroups, ""))
-	cs.ResourceProfiles = len(engine.Cache.GetItemIDs(utils.CacheResourceProfiles, ""))
-	cs.Resources = len(engine.Cache.GetItemIDs(utils.CacheResources, ""))
-	cs.StatQueues = len(engine.Cache.GetItemIDs(utils.CacheStatQueues, ""))
-	cs.StatQueueProfiles = len(engine.Cache.GetItemIDs(utils.CacheStatQueueProfiles, ""))
-	cs.Thresholds = len(engine.Cache.GetItemIDs(utils.CacheThresholds, ""))
-	cs.ThresholdProfiles = len(engine.Cache.GetItemIDs(utils.CacheThresholdProfiles, ""))
-	cs.Filters = len(engine.Cache.GetItemIDs(utils.CacheFilters, ""))
-	cs.SupplierProfiles = len(engine.Cache.GetItemIDs(utils.CacheSupplierProfiles, ""))
-	cs.AttributeProfiles = len(engine.Cache.GetItemIDs(utils.CacheAttributeProfiles, ""))
-	cs.ChargerProfiles = len(engine.Cache.GetItemIDs(utils.CacheChargerProfiles, ""))
-	cs.DispatcherProfiles = len(engine.Cache.GetItemIDs(utils.CacheDispatcherProfiles, ""))
-	cs.DispatcherRoutes = len(engine.Cache.GetItemIDs(utils.CacheDispatcherRoutes, ""))
-
-	*reply = *cs
-	return nil
-}
-
-func getCacheKeys(chID string, IDs *[]string, paginator utils.Paginator) (ids []string) {
-	if len(*IDs) != 0 {
-		for _, id := range *IDs {
-			if _, hasIt := engine.Cache.Get(chID, id); hasIt {
-				ids = append(ids, id)
-			}
-		}
-	} else {
-		for _, id := range engine.Cache.GetItemIDs(chID, "") {
-			ids = append(ids, id)
-		}
-	}
-	return paginator.PaginateStringSlice(ids)
-}
-
-// GetCacheKeys returns a list of keys available in cache based on query arguments
-// If keys are provided in arguments, they will be checked for existence
-func (v1 *ApierV1) GetCacheKeys(args utils.ArgsCacheKeys, reply *utils.ArgsCache) (err error) {
-	if args.DestinationIDs != nil {
-		ids := getCacheKeys(utils.CacheDestinations, args.DestinationIDs, args.Paginator)
-		if len(ids) != 0 {
-			reply.DestinationIDs = &ids
-		}
-	}
-	if args.ReverseDestinationIDs != nil {
-		ids := getCacheKeys(utils.CacheReverseDestinations, args.ReverseDestinationIDs, args.Paginator)
-		if len(ids) != 0 {
-			reply.ReverseDestinationIDs = &ids
-		}
-	}
-	if args.RatingPlanIDs != nil {
-		ids := getCacheKeys(utils.CacheRatingPlans, args.RatingPlanIDs, args.Paginator)
-		if len(ids) != 0 {
-			reply.RatingPlanIDs = &ids
-		}
-	}
-	if args.RatingProfileIDs != nil {
-		ids := getCacheKeys(utils.CacheRatingProfiles, args.RatingProfileIDs, args.Paginator)
-		if len(ids) != 0 {
-			reply.RatingProfileIDs = &ids
-		}
-	}
-	if args.ActionIDs != nil {
-		ids := getCacheKeys(utils.CacheActions, args.ActionIDs, args.Paginator)
-		if len(ids) != 0 {
-			reply.ActionIDs = &ids
-		}
-	}
-	if args.ActionPlanIDs != nil {
-		ids := getCacheKeys(utils.CacheActionPlans, args.ActionPlanIDs, args.Paginator)
-		if len(ids) != 0 {
-			reply.ActionPlanIDs = &ids
-		}
-	}
-	if args.AccountActionPlanIDs != nil {
-		ids := getCacheKeys(utils.CacheAccountActionPlans, args.AccountActionPlanIDs, args.Paginator)
-		if len(ids) != 0 {
-			reply.AccountActionPlanIDs = &ids
-		}
-	}
-	if args.ActionTriggerIDs != nil {
-		ids := getCacheKeys(utils.CacheActionTriggers, args.ActionTriggerIDs, args.Paginator)
-		if len(ids) != 0 {
-			reply.ActionTriggerIDs = &ids
-		}
-	}
-	if args.SharedGroupIDs != nil {
-		ids := getCacheKeys(utils.CacheSharedGroups, args.SharedGroupIDs, args.Paginator)
-		if len(ids) != 0 {
-			reply.SharedGroupIDs = &ids
-		}
-	}
-	if args.ResourceProfileIDs != nil {
-		ids := getCacheKeys(utils.CacheResourceProfiles, args.ResourceProfileIDs, args.Paginator)
-		if len(ids) != 0 {
-			reply.ResourceProfileIDs = &ids
-		}
-	}
-	if args.ResourceIDs != nil {
-		ids := getCacheKeys(utils.CacheResources, args.ResourceIDs, args.Paginator)
-		if len(ids) != 0 {
-			reply.ResourceIDs = &ids
-		}
-	}
-	if args.StatsQueueIDs != nil {
-		ids := getCacheKeys(utils.CacheStatQueues, args.StatsQueueIDs, args.Paginator)
-		if len(ids) != 0 {
-			reply.StatsQueueIDs = &ids
-		}
-	}
-	if args.StatsQueueProfileIDs != nil {
-		ids := getCacheKeys(utils.CacheStatQueueProfiles, args.StatsQueueProfileIDs, args.Paginator)
-		if len(ids) != 0 {
-			reply.StatsQueueProfileIDs = &ids
-		}
-	}
-
-	if args.ThresholdIDs != nil {
-		ids := getCacheKeys(utils.CacheThresholds, args.ThresholdIDs, args.Paginator)
-		if len(ids) != 0 {
-			reply.ThresholdIDs = &ids
-		}
-	}
-
-	if args.ThresholdProfileIDs != nil {
-		ids := getCacheKeys(utils.CacheThresholdProfiles, args.ThresholdProfileIDs, args.Paginator)
-		if len(ids) != 0 {
-			reply.ThresholdProfileIDs = &ids
-		}
-	}
-	if args.FilterIDs != nil {
-		ids := getCacheKeys(utils.CacheFilters, args.FilterIDs, args.Paginator)
-		if len(ids) != 0 {
-			reply.FilterIDs = &ids
-		}
-	}
-	if args.SupplierProfileIDs != nil {
-		ids := getCacheKeys(utils.CacheSupplierProfiles, args.SupplierProfileIDs, args.Paginator)
-		if len(ids) != 0 {
-			reply.SupplierProfileIDs = &ids
-		}
-	}
-	if args.AttributeProfileIDs != nil {
-		ids := getCacheKeys(utils.CacheAttributeProfiles, args.AttributeProfileIDs, args.Paginator)
-		if len(ids) != 0 {
-			reply.AttributeProfileIDs = &ids
-		}
-	}
-	if args.ChargerProfileIDs != nil {
-		ids := getCacheKeys(utils.CacheChargerProfiles, args.ChargerProfileIDs, args.Paginator)
-		if len(ids) != 0 {
-			reply.ChargerProfileIDs = &ids
-		}
-	}
-	if args.DispatcherProfileIDs != nil {
-		ids := getCacheKeys(utils.CacheDispatcherProfiles, args.DispatcherProfileIDs, args.Paginator)
-		if len(ids) != 0 {
-			reply.DispatcherProfileIDs = &ids
-		}
-	}
-	if args.DispatcherRoutesIDs != nil {
-		ids := getCacheKeys(utils.CacheDispatcherRoutes, args.DispatcherRoutesIDs, args.Paginator)
-		if len(ids) != 0 {
-			reply.DispatcherRoutesIDs = &ids
-		}
-	}
-
-	return
-}
-
 func (self *ApierV1) LoadTariffPlanFromFolder(attrs utils.AttrLoadTpFromFolder, reply *string) error {
+	// verify if FolderPath is present
 	if len(attrs.FolderPath) == 0 {
 		return fmt.Errorf("%s:%s", utils.ErrMandatoryIeMissing.Error(), "FolderPath")
 	}
+	// check if exists or is valid
 	if fi, err := os.Stat(attrs.FolderPath); err != nil {
 		if strings.HasSuffix(err.Error(), "no such file or directory") {
 			return utils.ErrInvalidPath
@@ -1124,6 +758,8 @@ func (self *ApierV1) LoadTariffPlanFromFolder(attrs utils.AttrLoadTpFromFolder, 
 	} else if !fi.IsDir() {
 		return utils.ErrInvalidPath
 	}
+
+	// create the TpReader
 	loader := engine.NewTpReader(self.DataManager.DataDB(),
 		engine.NewFileCSVStorage(utils.CSV_SEP,
 			path.Join(attrs.FolderPath, utils.DESTINATIONS_CSV),
@@ -1144,8 +780,11 @@ func (self *ApierV1) LoadTariffPlanFromFolder(attrs utils.AttrLoadTpFromFolder, 
 			path.Join(attrs.FolderPath, utils.SuppliersCsv),
 			path.Join(attrs.FolderPath, utils.AttributesCsv),
 			path.Join(attrs.FolderPath, utils.ChargersCsv),
-			path.Join(attrs.FolderPath, utils.DispatchersCsv),
-		), "", self.Config.GeneralCfg().DefaultTimezone)
+			path.Join(attrs.FolderPath, utils.DispatcherProfilesCsv),
+			path.Join(attrs.FolderPath, utils.DispatcherHostsCsv),
+		), "", self.Config.GeneralCfg().DefaultTimezone,
+		self.CacheS, self.SchedulerS)
+	//Load the data
 	if err := loader.LoadAll(); err != nil {
 		return utils.NewErrServerError(err)
 	}
@@ -1160,32 +799,14 @@ func (self *ApierV1) LoadTariffPlanFromFolder(attrs utils.AttrLoadTpFromFolder, 
 		}
 	}
 
+	// write data intro Database
 	if err := loader.WriteToDatabase(attrs.FlushDb, false, false); err != nil {
 		return utils.NewErrServerError(err)
 	}
+	// reload cache
 	utils.Logger.Info("ApierV1.LoadTariffPlanFromFolder, reloading cache.")
-	for _, prfx := range []string{
-		utils.DESTINATION_PREFIX,
-		utils.REVERSE_DESTINATION_PREFIX,
-		utils.ACTION_PLAN_PREFIX,
-		utils.AccountActionPlansPrefix,
-	} {
-		loadedIDs, _ := loader.GetLoadedIds(prfx)
-		if err := self.DataManager.CacheDataFromDB(prfx, loadedIDs, true); err != nil {
-			return utils.NewErrServerError(err)
-		}
-	}
-	aps, _ := loader.GetLoadedIds(utils.ACTION_PLAN_PREFIX)
-
-	// relase tp data
-	loader.Init()
-
-	if len(aps) != 0 {
-		sched := self.ServManager.GetScheduler()
-		if sched != nil {
-			utils.Logger.Info("ApierV1.LoadTariffPlanFromFolder, reloading scheduler.")
-			sched.Reload()
-		}
+	if err := loader.ReloadCache(attrs.FlushDb, true, attrs.ArgDispatcher); err != nil {
+		return utils.NewErrServerError(err)
 	}
 	*reply = utils.OK
 	return nil
@@ -1239,6 +860,10 @@ func (self *ApierV1) RemoveRatingProfile(attr AttrRemoveRatingProfile, reply *st
 	if err != nil {
 		*reply = err.Error()
 		return utils.NewErrServerError(err)
+	}
+	//generate a loadID for CacheActionPlans and store it in database
+	if err := self.DataManager.SetLoadIDs(map[string]int64{utils.CacheRatingProfiles: time.Now().UnixNano()}); err != nil {
+		return utils.APIErrorHandler(err)
 	}
 	*reply = utils.OK
 	return nil
@@ -1326,37 +951,12 @@ func (self *ApierV1) RemoveActions(attr AttrRemoveActions, reply *string) error 
 			return err
 		}
 	}
+	//generate a loadID for CacheActions and store it in database
+	if err := self.DataManager.SetLoadIDs(map[string]int64{utils.CacheActions: time.Now().UnixNano()}); err != nil {
+		return utils.APIErrorHandler(err)
+	}
 	*reply = utils.OK
 	return nil
-}
-
-type AttrRemoteLock struct {
-	LockIDs []string      // List of IDs to obtain lock for
-	Timeout time.Duration // Automatically unlock on timeout
-}
-
-func (self *ApierV1) RemoteLock(attr AttrRemoteLock, reply *string) error {
-	guardian.Guardian.GuardIDs(attr.Timeout, attr.LockIDs...)
-	*reply = utils.OK
-	return nil
-}
-
-func (self *ApierV1) RemoteUnlock(lockIDs []string, reply *string) error {
-	guardian.Guardian.UnguardIDs(lockIDs...)
-	*reply = utils.OK
-	return nil
-}
-
-func (v1 *ApierV1) StartService(args servmanager.ArgStartService, reply *string) (err error) {
-	return v1.ServManager.V1StartService(args, reply)
-}
-
-func (v1 *ApierV1) StopService(args servmanager.ArgStartService, reply *string) (err error) {
-	return v1.ServManager.V1StopService(args, reply)
-}
-
-func (v1 *ApierV1) ServiceStatus(args servmanager.ArgStartService, reply *string) (err error) {
-	return v1.ServManager.V1ServiceStatus(args, reply)
 }
 
 type ArgsReplyFailedPosts struct {
@@ -1455,4 +1055,66 @@ func (v1 *ApierV1) ReplayFailedPosts(args ArgsReplyFailedPosts, reply *string) (
 	}
 	*reply = utils.OK
 	return nil
+}
+
+// CallCache caching the item based on cacheopt
+// visible in ApierV2
+func (v1 *ApierV1) CallCache(cacheOpt string, args utils.ArgsGetCacheItem) (err error) {
+	var reply string
+	switch cacheOpt {
+	case utils.META_NONE:
+		return
+	case utils.MetaReload:
+		if err = v1.CacheS.Call(utils.CacheSv1ReloadCache, utils.AttrReloadCacheWithArgDispatcher{
+			AttrReloadCache: composeArgsReload(args)}, &reply); err != nil {
+			return err
+		}
+	case utils.MetaLoad:
+		if err = v1.CacheS.Call(utils.CacheSv1LoadCache, utils.AttrReloadCacheWithArgDispatcher{
+			AttrReloadCache: composeArgsReload(args)}, &reply); err != nil {
+			return err
+		}
+	case utils.MetaRemove:
+		if err = v1.CacheS.Call(utils.CacheSv1RemoveItem,
+			&utils.ArgsGetCacheItemWithArgDispatcher{ArgsGetCacheItem: args}, &reply); err != nil {
+			return err
+		}
+	case utils.MetaClear:
+		if err = v1.CacheS.Call(utils.CacheSv1FlushCache, utils.AttrReloadCacheWithArgDispatcher{
+			AttrReloadCache: composeArgsReload(args)}, &reply); err != nil {
+			return err
+		}
+	}
+	return
+}
+
+func (v1 *ApierV1) GetLoadIDs(args string, reply *map[string]int64) (err error) {
+	if loadIDs, err := v1.DataManager.GetItemLoadIDs(args, false); err != nil {
+		return err
+	} else {
+		*reply = loadIDs
+	}
+	return
+}
+
+type LoadTimeArgs struct {
+	Timezone string
+	Item     string
+}
+
+func (v1 *ApierV1) GetLoadTimes(args LoadTimeArgs, reply *map[string]string) (err error) {
+	if loadIDs, err := v1.DataManager.GetItemLoadIDs(args.Item, false); err != nil {
+		return err
+	} else {
+		provMp := make(map[string]string)
+		for key, val := range loadIDs {
+			timeVal, err := utils.ParseTimeDetectLayout(strconv.FormatInt(val, 10), args.Timezone)
+			if err != nil {
+				return err
+			}
+			provMp[key] = timeVal.String()
+		}
+		*reply = provMp
+	}
+	return
 }

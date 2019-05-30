@@ -1123,14 +1123,14 @@ func APItoModelAccountActions(aas []*utils.TPAccountActions) (result TpAccountAc
 
 type TpResources []*TpResource
 
-func (tps TpResources) AsTPResources() (result []*utils.TPResource) {
-	mrl := make(map[string]*utils.TPResource)
+func (tps TpResources) AsTPResources() (result []*utils.TPResourceProfile) {
+	mrl := make(map[string]*utils.TPResourceProfile)
 	filterMap := make(map[string]utils.StringMap)
 	thresholdMap := make(map[string]utils.StringMap)
 	for _, tp := range tps {
 		rl, found := mrl[(&utils.TenantID{Tenant: tp.Tenant, ID: tp.ID}).TenantID()]
 		if !found {
-			rl = &utils.TPResource{
+			rl = &utils.TPResourceProfile{
 				TPid:    tp.Tpid,
 				Tenant:  tp.Tenant,
 				ID:      tp.ID,
@@ -1188,7 +1188,7 @@ func (tps TpResources) AsTPResources() (result []*utils.TPResource) {
 		}
 		mrl[(&utils.TenantID{Tenant: tp.Tenant, ID: tp.ID}).TenantID()] = rl
 	}
-	result = make([]*utils.TPResource, len(mrl))
+	result = make([]*utils.TPResourceProfile, len(mrl))
 	i := 0
 	for tntID, rl := range mrl {
 		result[i] = rl
@@ -1203,11 +1203,11 @@ func (tps TpResources) AsTPResources() (result []*utils.TPResource) {
 	return
 }
 
-func APItoModelResource(rl *utils.TPResource) (mdls TpResources) {
+func APItoModelResource(rl *utils.TPResourceProfile) (mdls TpResources) {
 	if rl == nil {
 		return
 	}
-	// In case that TPResource don't have filter
+	// In case that TPResourceProfile don't have filter
 	if len(rl.FilterIDs) == 0 {
 		mdl := &TpResource{
 			Tpid:              rl.TPid,
@@ -1270,7 +1270,7 @@ func APItoModelResource(rl *utils.TPResource) (mdls TpResources) {
 	return
 }
 
-func APItoResource(tpRL *utils.TPResource, timezone string) (rp *ResourceProfile, err error) {
+func APItoResource(tpRL *utils.TPResourceProfile, timezone string) (rp *ResourceProfile, err error) {
 	rp = &ResourceProfile{
 		Tenant:            tpRL.Tenant,
 		ID:                tpRL.ID,
@@ -1305,66 +1305,59 @@ func APItoResource(tpRL *utils.TPResource, timezone string) (rp *ResourceProfile
 	return rp, nil
 }
 
-type TpStatsS []*TpStats
+type TpStats []*TpStat
 
-//to be modify
-func (tps TpStatsS) AsTPStats() (result []*utils.TPStats) {
+func (models TpStats) AsTPStats() (result []*utils.TPStatProfile) {
 	filterMap := make(map[string]utils.StringMap)
-	metricmap := make(map[string]utils.StringMap)
 	thresholdMap := make(map[string]utils.StringMap)
-	mst := make(map[string]*utils.TPStats)
-	for _, tp := range tps {
-		key := &utils.TenantID{Tenant: tp.Tenant, ID: tp.ID}
+	statMetricsMap := make(map[string]map[string]*utils.MetricWithFilters)
+	mst := make(map[string]*utils.TPStatProfile)
+	for _, model := range models {
+		key := &utils.TenantID{Tenant: model.Tenant, ID: model.ID}
 		st, found := mst[key.TenantID()]
 		if !found {
-			st = &utils.TPStats{
-				Tenant:   tp.Tenant,
-				TPid:     tp.Tpid,
-				ID:       tp.ID,
-				Blocker:  tp.Blocker,
-				Stored:   tp.Stored,
-				MinItems: tp.MinItems,
+			st = &utils.TPStatProfile{
+				Tenant:      model.Tenant,
+				TPid:        model.Tpid,
+				ID:          model.ID,
+				Blocker:     model.Blocker,
+				Stored:      model.Stored,
+				Weight:      model.Weight,
+				MinItems:    model.MinItems,
+				TTL:         model.TTL,
+				QueueLength: model.QueueLength,
 			}
 		}
-		if tp.Blocker == false || tp.Blocker == true {
-			st.Blocker = tp.Blocker
+		if model.Blocker {
+			st.Blocker = model.Blocker
 		}
-		if tp.Stored == false || tp.Stored == true {
-			st.Stored = tp.Stored
+		if model.Stored {
+			st.Stored = model.Stored
 		}
-		if tp.MinItems != 0 {
-			st.MinItems = tp.MinItems
+		if model.Weight != 0 {
+			st.Weight = model.Weight
 		}
-		if tp.QueueLength != 0 {
-			st.QueueLength = tp.QueueLength
+		if model.MinItems != 0 {
+			st.MinItems = model.MinItems
 		}
-		if tp.TTL != "" {
-			st.TTL = tp.TTL
+		if model.TTL != "" {
+			st.TTL = model.TTL
 		}
-		if tp.Metrics != "" {
-			if _, has := metricmap[key.TenantID()]; !has {
-				metricmap[key.TenantID()] = make(utils.StringMap)
-			}
-			metricSplit := strings.Split(tp.Metrics, utils.INFIELD_SEP)
-			for _, metric := range metricSplit {
-				metricmap[key.TenantID()][metric] = true
-			}
+		if model.QueueLength != 0 {
+			st.QueueLength = model.QueueLength
 		}
-		if tp.ThresholdIDs != "" {
+		if model.ThresholdIDs != "" {
 			if _, has := thresholdMap[key.TenantID()]; !has {
 				thresholdMap[key.TenantID()] = make(utils.StringMap)
 			}
-			trshSplt := strings.Split(tp.ThresholdIDs, utils.INFIELD_SEP)
+			trshSplt := strings.Split(model.ThresholdIDs, utils.INFIELD_SEP)
 			for _, trsh := range trshSplt {
 				thresholdMap[key.TenantID()][trsh] = true
 			}
 		}
-		if tp.Weight != 0 {
-			st.Weight = tp.Weight
-		}
-		if len(tp.ActivationInterval) != 0 {
+		if len(model.ActivationInterval) != 0 {
 			st.ActivationInterval = new(utils.TPActivationInterval)
-			aiSplt := strings.Split(tp.ActivationInterval, utils.INFIELD_SEP)
+			aiSplt := strings.Split(model.ActivationInterval, utils.INFIELD_SEP)
 			if len(aiSplt) == 2 {
 				st.ActivationInterval.ActivationTime = aiSplt[0]
 				st.ActivationInterval.ExpiryTime = aiSplt[1]
@@ -1372,18 +1365,37 @@ func (tps TpStatsS) AsTPStats() (result []*utils.TPStats) {
 				st.ActivationInterval.ActivationTime = aiSplt[0]
 			}
 		}
-		if tp.FilterIDs != "" {
+		if model.FilterIDs != "" {
 			if _, has := filterMap[key.TenantID()]; !has {
 				filterMap[key.TenantID()] = make(utils.StringMap)
 			}
-			filterSplit := strings.Split(tp.FilterIDs, utils.INFIELD_SEP)
+			filterSplit := strings.Split(model.FilterIDs, utils.INFIELD_SEP)
 			for _, filter := range filterSplit {
 				filterMap[key.TenantID()][filter] = true
 			}
 		}
+		if model.MetricIDs != "" {
+			if _, has := statMetricsMap[key.TenantID()]; !has {
+				statMetricsMap[key.TenantID()] = make(map[string]*utils.MetricWithFilters)
+			}
+			metricIDsSplit := strings.Split(model.MetricIDs, utils.INFIELD_SEP)
+			for _, metricID := range metricIDsSplit {
+				stsMetric, found := statMetricsMap[key.TenantID()][metricID]
+				if !found {
+					stsMetric = &utils.MetricWithFilters{
+						MetricID: metricID,
+					}
+				}
+				if model.MetricFilterIDs != "" {
+					filterIDs := strings.Split(model.MetricFilterIDs, utils.INFIELD_SEP)
+					stsMetric.FilterIDs = append(stsMetric.FilterIDs, filterIDs...)
+				}
+				statMetricsMap[key.TenantID()][metricID] = stsMetric
+			}
+		}
 		mst[key.TenantID()] = st
 	}
-	result = make([]*utils.TPStats, len(mst))
+	result = make([]*utils.TPStatProfile, len(mst))
 	i := 0
 	for tntID, st := range mst {
 		result[i] = st
@@ -1393,76 +1405,28 @@ func (tps TpStatsS) AsTPStats() (result []*utils.TPStats) {
 		for threshold := range thresholdMap[tntID] {
 			result[i].ThresholdIDs = append(result[i].ThresholdIDs, threshold)
 		}
-		for metricdata := range metricmap[tntID] {
-			result[i].Metrics = append(result[i].Metrics, metricdata)
+		for _, metric := range statMetricsMap[tntID] {
+			result[i].Metrics = append(result[i].Metrics, metric)
 		}
 		i++
 	}
 	return
 }
 
-func APItoModelStats(st *utils.TPStats) (mdls TpStatsS) {
-	if st != nil {
-		// In case that TPStats don't have filter
-		if len(st.FilterIDs) == 0 {
-			mdl := &TpStats{
-				Tenant:      st.Tenant,
-				Tpid:        st.TPid,
-				ID:          st.ID,
-				MinItems:    st.MinItems,
-				TTL:         st.TTL,
-				Blocker:     st.Blocker,
-				Stored:      st.Stored,
-				Weight:      st.Weight,
-				QueueLength: st.QueueLength,
-			}
-			for i, val := range st.Metrics {
-				if i != 0 {
-					mdl.Metrics += utils.INFIELD_SEP
-				}
-				mdl.Metrics += val
-			}
-			for i, val := range st.ThresholdIDs {
-				if i != 0 {
-					mdl.ThresholdIDs += utils.INFIELD_SEP
-				}
-				mdl.ThresholdIDs += val
-			}
-			if st.ActivationInterval != nil {
-				if st.ActivationInterval.ActivationTime != "" {
-					mdl.ActivationInterval = st.ActivationInterval.ActivationTime
-				}
-				if st.ActivationInterval.ExpiryTime != "" {
-					mdl.ActivationInterval += utils.INFIELD_SEP + st.ActivationInterval.ExpiryTime
-				}
-			}
-			mdls = append(mdls, mdl)
-		}
-		for i, fltr := range st.FilterIDs {
-			mdl := &TpStats{
-				Tenant:   st.Tenant,
-				Tpid:     st.TPid,
-				ID:       st.ID,
-				MinItems: st.MinItems,
+func APItoModelStats(st *utils.TPStatProfile) (mdls TpStats) {
+	if st != nil && len(st.Metrics) != 0 {
+		for i, metric := range st.Metrics {
+			mdl := &TpStat{
+				Tpid:   st.TPid,
+				Tenant: st.Tenant,
+				ID:     st.ID,
 			}
 			if i == 0 {
-				mdl.TTL = st.TTL
-				mdl.Blocker = st.Blocker
-				mdl.Stored = st.Stored
-				mdl.Weight = st.Weight
-				mdl.QueueLength = st.QueueLength
-				mdl.MinItems = st.MinItems
-				for i, val := range st.Metrics {
+				for i, val := range st.FilterIDs {
 					if i != 0 {
-						mdl.Metrics += utils.INFIELD_SEP
+						mdl.FilterIDs += utils.INFIELD_SEP
 					}
-					mdl.Metrics += val
-				}
-				for i, val := range st.ThresholdIDs {
-					if i != 0 {
-						mdl.ThresholdIDs += utils.INFIELD_SEP
-					}
-					mdl.ThresholdIDs += val
+					mdl.FilterIDs += val
 				}
 				if st.ActivationInterval != nil {
 					if st.ActivationInterval.ActivationTime != "" {
@@ -1472,30 +1436,54 @@ func APItoModelStats(st *utils.TPStats) (mdls TpStatsS) {
 						mdl.ActivationInterval += utils.INFIELD_SEP + st.ActivationInterval.ExpiryTime
 					}
 				}
+				mdl.QueueLength = st.QueueLength
+				mdl.TTL = st.TTL
+				mdl.MinItems = st.MinItems
+				mdl.Stored = st.Stored
+				mdl.Blocker = st.Blocker
+				mdl.Weight = st.Weight
+				for i, val := range st.ThresholdIDs {
+					if i != 0 {
+						mdl.ThresholdIDs += utils.INFIELD_SEP
+					}
+					mdl.ThresholdIDs += val
+				}
 			}
-			mdl.FilterIDs = fltr
+			for i, val := range metric.FilterIDs {
+				if i != 0 {
+					mdl.MetricFilterIDs += utils.INFIELD_SEP
+				}
+				mdl.MetricFilterIDs += val
+			}
+			mdl.MetricIDs = metric.MetricID
 			mdls = append(mdls, mdl)
 		}
 	}
 	return
 }
 
-func APItoStats(tpST *utils.TPStats, timezone string) (st *StatQueueProfile, err error) {
+func APItoStats(tpST *utils.TPStatProfile, timezone string) (st *StatQueueProfile, err error) {
 	st = &StatQueueProfile{
 		Tenant:       tpST.Tenant,
 		ID:           tpST.ID,
-		QueueLength:  tpST.QueueLength,
-		Metrics:      tpST.Metrics,
-		Weight:       tpST.Weight,
-		Blocker:      tpST.Blocker,
-		Stored:       tpST.Stored,
-		MinItems:     tpST.MinItems,
-		ThresholdIDs: make([]string, len(tpST.ThresholdIDs)),
 		FilterIDs:    make([]string, len(tpST.FilterIDs)),
+		QueueLength:  tpST.QueueLength,
+		MinItems:     tpST.MinItems,
+		Metrics:      make([]*MetricWithFilters, len(tpST.Metrics)),
+		Stored:       tpST.Stored,
+		Blocker:      tpST.Blocker,
+		Weight:       tpST.Weight,
+		ThresholdIDs: make([]string, len(tpST.ThresholdIDs)),
 	}
 	if tpST.TTL != "" {
 		if st.TTL, err = utils.ParseDurationWithNanosecs(tpST.TTL); err != nil {
 			return nil, err
+		}
+	}
+	for i, metric := range tpST.Metrics {
+		st.Metrics[i] = &MetricWithFilters{
+			MetricID:  metric.MetricID,
+			FilterIDs: metric.FilterIDs,
 		}
 	}
 	for i, trh := range tpST.ThresholdIDs {
@@ -1512,16 +1500,16 @@ func APItoStats(tpST *utils.TPStats, timezone string) (st *StatQueueProfile, err
 	return st, nil
 }
 
-type TpThresholdS []*TpThreshold
+type TpThresholds []*TpThreshold
 
-func (tps TpThresholdS) AsTPThreshold() (result []*utils.TPThreshold) {
-	mst := make(map[string]*utils.TPThreshold)
+func (tps TpThresholds) AsTPThreshold() (result []*utils.TPThresholdProfile) {
+	mst := make(map[string]*utils.TPThresholdProfile)
 	filterMap := make(map[string]utils.StringMap)
 	actionMap := make(map[string]utils.StringMap)
 	for _, tp := range tps {
 		th, found := mst[(&utils.TenantID{Tenant: tp.Tenant, ID: tp.ID}).TenantID()]
 		if !found {
-			th = &utils.TPThreshold{
+			th = &utils.TPThresholdProfile{
 				TPid:     tp.Tpid,
 				Tenant:   tp.Tenant,
 				ID:       tp.ID,
@@ -1566,7 +1554,7 @@ func (tps TpThresholdS) AsTPThreshold() (result []*utils.TPThreshold) {
 
 		mst[(&utils.TenantID{Tenant: tp.Tenant, ID: tp.ID}).TenantID()] = th
 	}
-	result = make([]*utils.TPThreshold, len(mst))
+	result = make([]*utils.TPThresholdProfile, len(mst))
 	i := 0
 	for tntID, th := range mst {
 		result[i] = th
@@ -1581,7 +1569,7 @@ func (tps TpThresholdS) AsTPThreshold() (result []*utils.TPThreshold) {
 	return
 }
 
-func APItoModelTPThreshold(th *utils.TPThreshold) (mdls TpThresholdS) {
+func APItoModelTPThreshold(th *utils.TPThresholdProfile) (mdls TpThresholds) {
 	if th != nil {
 		if len(th.ActionIDs) == 0 {
 			return
@@ -1659,7 +1647,7 @@ func APItoModelTPThreshold(th *utils.TPThreshold) (mdls TpThresholdS) {
 	return
 }
 
-func APItoThresholdProfile(tpTH *utils.TPThreshold, timezone string) (th *ThresholdProfile, err error) {
+func APItoThresholdProfile(tpTH *utils.TPThresholdProfile, timezone string) (th *ThresholdProfile, err error) {
 	th = &ThresholdProfile{
 		Tenant:    tpTH.Tenant,
 		ID:        tpTH.ID,
@@ -2081,9 +2069,10 @@ func (tps TPAttributes) AsTPAttributes() (result []*utils.TPAttributeProfile) {
 				}
 			}
 			th.Attributes = append(th.Attributes, &utils.TPAttribute{
-				FilterIDs:  filterIDs,
-				FieldName:  tp.FieldName,
-				Substitute: tp.Substitute,
+				FilterIDs: filterIDs,
+				Type:      tp.Type,
+				FieldName: tp.FieldName,
+				Value:     tp.Value,
 			})
 		}
 		mst[key.TenantID()] = th
@@ -2146,7 +2135,8 @@ func APItoModelTPAttribute(th *utils.TPAttributeProfile) (mdls TPAttributes) {
 			}
 		}
 		mdl.FieldName = reqAttribute.FieldName
-		mdl.Substitute = reqAttribute.Substitute
+		mdl.Value = reqAttribute.Value
+		mdl.Type = reqAttribute.Type
 		mdls = append(mdls, mdl)
 	}
 	return
@@ -2169,14 +2159,15 @@ func APItoAttributeProfile(tpAttr *utils.TPAttributeProfile, timezone string) (a
 		attrPrf.Contexts[i] = context
 	}
 	for i, reqAttr := range tpAttr.Attributes {
-		sbstPrsr, err := config.NewRSRParsers(reqAttr.Substitute, true, config.CgrConfig().GeneralCfg().RsrSepatarot)
+		sbstPrsr, err := config.NewRSRParsers(reqAttr.Value, true, config.CgrConfig().GeneralCfg().RsrSepatarot)
 		if err != nil {
 			return nil, err
 		}
 		attrPrf.Attributes[i] = &Attribute{
-			FilterIDs:  reqAttr.FilterIDs,
-			FieldName:  reqAttr.FieldName,
-			Substitute: sbstPrsr,
+			FilterIDs: reqAttr.FilterIDs,
+			FieldName: reqAttr.FieldName,
+			Type:      reqAttr.Type,
+			Value:     sbstPrsr,
 		}
 	}
 	if tpAttr.ActivationInterval != nil {
@@ -2358,13 +2349,13 @@ func APItoChargerProfile(tpCPP *utils.TPChargerProfile, timezone string) (cpp *C
 	return cpp, nil
 }
 
-type TPDispatchers []*TPDispatcher
+type TPDispatcherProfiles []*TPDispatcherProfile
 
-func (tps TPDispatchers) AsTPDispatchers() (result []*utils.TPDispatcherProfile) {
+func (tps TPDispatcherProfiles) AsTPDispatcherProfiles() (result []*utils.TPDispatcherProfile) {
 	mst := make(map[string]*utils.TPDispatcherProfile)
 	filterMap := make(map[string]utils.StringMap)
 	contextMap := make(map[string]utils.StringMap)
-	connsMap := make(map[string]map[string]utils.TPDispatcherConns)
+	connsMap := make(map[string]map[string]utils.TPDispatcherHostProfile)
 	connsFilterMap := make(map[string]map[string]utils.StringMap)
 	for _, tp := range tps {
 		tenantID := (&utils.TenantID{Tenant: tp.Tenant, ID: tp.ID}).TenantID()
@@ -2414,11 +2405,11 @@ func (tps TPDispatchers) AsTPDispatchers() (result []*utils.TPDispatcherProfile)
 		}
 		if tp.ConnID != "" {
 			if _, has := connsMap[tenantID]; !has {
-				connsMap[tenantID] = make(map[string]utils.TPDispatcherConns)
+				connsMap[tenantID] = make(map[string]utils.TPDispatcherHostProfile)
 			}
 			conn, has := connsMap[tenantID][tp.ConnID]
 			if !has {
-				conn = utils.TPDispatcherConns{
+				conn = utils.TPDispatcherHostProfile{
 					ID:      tp.ConnID,
 					Weight:  tp.ConnWeight,
 					Blocker: tp.ConnBlocker,
@@ -2466,13 +2457,14 @@ func (tps TPDispatchers) AsTPDispatchers() (result []*utils.TPDispatcherProfile)
 					conn.FilterIDs = append(conn.FilterIDs, filter)
 				}
 			}
-			result[i].Conns = append(result[i].Conns, &utils.TPDispatcherConns{
-				ID:        conn.ID,
-				FilterIDs: conn.FilterIDs,
-				Weight:    conn.Weight,
-				Params:    conn.Params,
-				Blocker:   conn.Blocker,
-			})
+			result[i].Hosts = append(result[i].Hosts,
+				&utils.TPDispatcherHostProfile{
+					ID:        conn.ID,
+					FilterIDs: conn.FilterIDs,
+					Weight:    conn.Weight,
+					Params:    conn.Params,
+					Blocker:   conn.Blocker,
+				})
 		}
 		i++
 	}
@@ -2489,7 +2481,7 @@ func paramsToString(sp []interface{}) (strategy string) {
 	return
 }
 
-func APItoModelTPDispatcher(tpDPP *utils.TPDispatcherProfile) (mdls TPDispatchers) {
+func APItoModelTPDispatcherProfile(tpDPP *utils.TPDispatcherProfile) (mdls TPDispatcherProfiles) {
 	if tpDPP == nil {
 		return
 	}
@@ -2509,8 +2501,8 @@ func APItoModelTPDispatcher(tpDPP *utils.TPDispatcherProfile) (mdls TPDispatcher
 
 	strategy := paramsToString(tpDPP.StrategyParams)
 
-	if len(tpDPP.Conns) == 0 {
-		return append(mdls, &TPDispatcher{
+	if len(tpDPP.Hosts) == 0 {
+		return append(mdls, &TPDispatcherProfile{
 			Tpid:               tpDPP.TPid,
 			Tenant:             tpDPP.Tenant,
 			ID:                 tpDPP.ID,
@@ -2523,10 +2515,10 @@ func APItoModelTPDispatcher(tpDPP *utils.TPDispatcherProfile) (mdls TPDispatcher
 		})
 	}
 
-	confilter := strings.Join(tpDPP.Conns[0].FilterIDs, utils.INFIELD_SEP)
-	conparam := paramsToString(tpDPP.Conns[0].Params)
+	confilter := strings.Join(tpDPP.Hosts[0].FilterIDs, utils.INFIELD_SEP)
+	conparam := paramsToString(tpDPP.Hosts[0].Params)
 
-	mdls = append(mdls, &TPDispatcher{
+	mdls = append(mdls, &TPDispatcherProfile{
 		Tpid:               tpDPP.TPid,
 		Tenant:             tpDPP.Tenant,
 		ID:                 tpDPP.ID,
@@ -2537,24 +2529,24 @@ func APItoModelTPDispatcher(tpDPP *utils.TPDispatcherProfile) (mdls TPDispatcher
 		StrategyParameters: strategy,
 		Weight:             tpDPP.Weight,
 
-		ConnID:         tpDPP.Conns[0].ID,
+		ConnID:         tpDPP.Hosts[0].ID,
 		ConnFilterIDs:  confilter,
-		ConnWeight:     tpDPP.Conns[0].Weight,
-		ConnBlocker:    tpDPP.Conns[0].Blocker,
+		ConnWeight:     tpDPP.Hosts[0].Weight,
+		ConnBlocker:    tpDPP.Hosts[0].Blocker,
 		ConnParameters: conparam,
 	})
-	for i := 1; i < len(tpDPP.Conns); i++ {
-		confilter = strings.Join(tpDPP.Conns[i].FilterIDs, utils.INFIELD_SEP)
-		conparam = paramsToString(tpDPP.Conns[i].Params)
-		mdls = append(mdls, &TPDispatcher{
+	for i := 1; i < len(tpDPP.Hosts); i++ {
+		confilter = strings.Join(tpDPP.Hosts[i].FilterIDs, utils.INFIELD_SEP)
+		conparam = paramsToString(tpDPP.Hosts[i].Params)
+		mdls = append(mdls, &TPDispatcherProfile{
 			Tpid:   tpDPP.TPid,
 			Tenant: tpDPP.Tenant,
 			ID:     tpDPP.ID,
 
-			ConnID:         tpDPP.Conns[i].ID,
+			ConnID:         tpDPP.Hosts[i].ID,
 			ConnFilterIDs:  confilter,
-			ConnWeight:     tpDPP.Conns[i].Weight,
-			ConnBlocker:    tpDPP.Conns[i].Blocker,
+			ConnWeight:     tpDPP.Hosts[i].Weight,
+			ConnBlocker:    tpDPP.Hosts[i].Blocker,
 			ConnParameters: conparam,
 		})
 	}
@@ -2570,7 +2562,7 @@ func APItoDispatcherProfile(tpDPP *utils.TPDispatcherProfile, timezone string) (
 		FilterIDs:      make([]string, len(tpDPP.FilterIDs)),
 		Subsystems:     make([]string, len(tpDPP.Subsystems)),
 		StrategyParams: make(map[string]interface{}),
-		Conns:          make(DispatcherConns, len(tpDPP.Conns)),
+		Hosts:          make(DispatcherHostProfiles, len(tpDPP.Hosts)),
 	}
 	for i, fli := range tpDPP.FilterIDs {
 		dpp.FilterIDs[i] = fli
@@ -2583,8 +2575,8 @@ func APItoDispatcherProfile(tpDPP *utils.TPDispatcherProfile, timezone string) (
 			dpp.StrategyParams[strconv.Itoa(i)] = param
 		}
 	}
-	for i, conn := range tpDPP.Conns {
-		dpp.Conns[i] = &DispatcherConn{
+	for i, conn := range tpDPP.Hosts {
+		dpp.Hosts[i] = &DispatcherHostProfile{
 			ID:        conn.ID,
 			Weight:    conn.Weight,
 			Blocker:   conn.Blocker,
@@ -2592,11 +2584,11 @@ func APItoDispatcherProfile(tpDPP *utils.TPDispatcherProfile, timezone string) (
 			Params:    make(map[string]interface{}),
 		}
 		for j, fltr := range conn.FilterIDs {
-			dpp.Conns[i].FilterIDs[j] = fltr
+			dpp.Hosts[i].FilterIDs[j] = fltr
 		}
 		for j, param := range conn.Params {
 			if param != "" {
-				dpp.Conns[i].Params[strconv.Itoa(j)] = param
+				dpp.Hosts[i].Params[strconv.Itoa(j)] = param
 			}
 		}
 	}
@@ -2606,4 +2598,81 @@ func APItoDispatcherProfile(tpDPP *utils.TPDispatcherProfile, timezone string) (
 		}
 	}
 	return dpp, nil
+}
+
+// TPHosts
+type TPDispatcherHosts []*TPDispatcherHost
+
+func (tps TPDispatcherHosts) AsTPDispatcherHosts() (result []*utils.TPDispatcherHost) {
+	hostsMap := make(map[string]*utils.TPDispatcherHost)
+	for _, tp := range tps {
+		if len(tp.Address) == 0 { // empty addres do not populate conns
+			continue
+		}
+		if len(tp.Transport) == 0 {
+			tp.Transport = utils.MetaJSONrpc
+		}
+		tenantID := utils.ConcatenatedKey(tp.Tenant, tp.ID)
+		if th, has := hostsMap[tenantID]; !has || th == nil {
+			hostsMap[tenantID] = &utils.TPDispatcherHost{
+				TPid:   tp.Tpid,
+				Tenant: tp.Tenant,
+				ID:     tp.ID,
+				Conns: []*utils.TPDispatcherHostConn{
+					{
+						Address:   tp.Address,
+						Transport: tp.Transport,
+						TLS:       tp.TLS,
+					},
+				},
+			}
+			continue
+		}
+		hostsMap[tenantID].Conns = append(hostsMap[tenantID].Conns, &utils.TPDispatcherHostConn{
+			Address:   tp.Address,
+			Transport: tp.Transport,
+			TLS:       tp.TLS,
+		})
+	}
+	for _, host := range hostsMap {
+		result = append(result, host)
+	}
+	return
+}
+
+func APItoModelTPDispatcherHost(tpDPH *utils.TPDispatcherHost) (mdls TPDispatcherHosts) {
+	if tpDPH == nil {
+		return
+	}
+	mdls = make(TPDispatcherHosts, len(tpDPH.Conns))
+	for i, conn := range tpDPH.Conns {
+		mdls[i] = &TPDispatcherHost{
+			Tpid:      tpDPH.TPid,
+			Tenant:    tpDPH.Tenant,
+			ID:        tpDPH.ID,
+			Address:   conn.Address,
+			Transport: conn.Transport,
+			TLS:       conn.TLS,
+		}
+	}
+	return
+}
+
+func APItoDispatcherHost(tpDPH *utils.TPDispatcherHost) (dpp *DispatcherHost) {
+	if tpDPH == nil {
+		return
+	}
+	dpp = &DispatcherHost{
+		Tenant: tpDPH.Tenant,
+		ID:     tpDPH.ID,
+		Conns:  make([]*config.RemoteHost, len(tpDPH.Conns)),
+	}
+	for i, conn := range tpDPH.Conns {
+		dpp.Conns[i] = &config.RemoteHost{
+			Address:   conn.Address,
+			Transport: conn.Transport,
+			TLS:       conn.TLS,
+		}
+	}
+	return
 }

@@ -25,116 +25,197 @@ import (
 	"github.com/cgrates/cgrates/utils"
 )
 
-func (dS *DispatcherService) ResponderStatus(args *TntWithApiKey,
-	reply *map[string]interface{}) (err error) {
+// ResponderPing interogates Responder server responsible to process the event
+func (dS *DispatcherService) ResponderPing(args *utils.CGREventWithArgDispatcher,
+	reply *string) (err error) {
 	if dS.attrS != nil {
-		if err = dS.authorize(utils.ResponderStatus, args.Tenant,
+		if args.ArgDispatcher == nil {
+			return utils.NewErrMandatoryIeMissing(utils.ArgDispatcherField)
+		}
+		if err = dS.authorize(utils.ResponderPing,
+			args.CGREvent.Tenant,
+			args.APIKey, args.CGREvent.Time); err != nil {
+			return
+		}
+	}
+	var routeID *string
+	if args.ArgDispatcher != nil {
+		routeID = args.ArgDispatcher.RouteID
+	}
+	return dS.Dispatch(args.CGREvent, utils.MetaResponder,
+		routeID, utils.ResponderPing, args, reply)
+}
+
+func (dS *DispatcherService) ResponderStatus(args *utils.TenantWithArgDispatcher,
+	reply *map[string]interface{}) (err error) {
+	tnt := utils.FirstNonEmpty(args.Tenant, dS.cfg.GeneralCfg().DefaultTenant)
+	if dS.attrS != nil {
+		if args.ArgDispatcher == nil {
+			return utils.NewErrMandatoryIeMissing(utils.ArgDispatcherField)
+		}
+		if err = dS.authorize(utils.ResponderStatus, tnt,
 			args.APIKey, utils.TimePointer(time.Now())); err != nil {
 			return
 		}
 	}
-	return dS.Dispatch(&utils.CGREvent{
-		Tenant: args.Tenant,
-	}, utils.MetaResponder, args.RouteID, utils.ResponderStatus,
-		"", reply)
+	var routeID *string
+	if args.ArgDispatcher != nil {
+		routeID = args.ArgDispatcher.RouteID
+	}
+	return dS.Dispatch(&utils.CGREvent{Tenant: tnt}, utils.MetaResponder,
+		routeID, utils.ResponderStatus, args, reply)
 }
 
-func (dS *DispatcherService) ResponderGetCost(args *CallDescriptorWithApiKey,
+func (dS *DispatcherService) ResponderGetCost(args *engine.CallDescriptorWithArgDispatcher,
 	reply *engine.CallCost) (err error) {
 	if dS.attrS != nil {
+		if args.ArgDispatcher == nil {
+			return utils.NewErrMandatoryIeMissing(utils.ArgDispatcherField)
+		}
 		if err = dS.authorize(utils.ResponderGetCost, args.Tenant,
 			args.APIKey, utils.TimePointer(time.Now())); err != nil {
 			return
 		}
 	}
-	return dS.Dispatch(args.CallDescriptor.AsCGREvent(), utils.MetaResponder,
-		args.RouteID, utils.ResponderGetCost, args.CallDescriptor, reply)
+	var routeID *string
+	if args.ArgDispatcher != nil {
+		routeID = args.ArgDispatcher.RouteID
+	}
+	return dS.Dispatch(args.AsCGREvent(), utils.MetaResponder,
+		routeID, utils.ResponderGetCost, args, reply)
 }
 
-func (dS *DispatcherService) ResponderDebit(args *CallDescriptorWithApiKey,
+func (dS *DispatcherService) ResponderDebit(args *engine.CallDescriptorWithArgDispatcher,
 	reply *engine.CallCost) (err error) {
 	if dS.attrS != nil {
+		if args.ArgDispatcher == nil {
+			return utils.NewErrMandatoryIeMissing(utils.ArgDispatcherField)
+		}
 		if err = dS.authorize(utils.ResponderDebit, args.Tenant,
 			args.APIKey, utils.TimePointer(time.Now())); err != nil {
 			return
 		}
 	}
-	return dS.Dispatch(args.CallDescriptor.AsCGREvent(), utils.MetaResponder,
-		args.RouteID, utils.ResponderDebit, args.CallDescriptor, reply)
+	var routeID *string
+	if args.ArgDispatcher != nil {
+		routeID = args.ArgDispatcher.RouteID
+	}
+	return dS.Dispatch(args.AsCGREvent(), utils.MetaResponder,
+		routeID, utils.ResponderDebit, args, reply)
 }
 
-func (dS *DispatcherService) ResponderMaxDebit(args *CallDescriptorWithApiKey,
+func (dS *DispatcherService) ResponderMaxDebit(args *engine.CallDescriptorWithArgDispatcher,
 	reply *engine.CallCost) (err error) {
 	if dS.attrS != nil {
+		if args.ArgDispatcher == nil {
+			return utils.NewErrMandatoryIeMissing(utils.ArgDispatcherField)
+		}
 		if err = dS.authorize(utils.ResponderMaxDebit, args.Tenant,
 			args.APIKey, utils.TimePointer(time.Now())); err != nil {
 			return
 		}
 	}
-	return dS.Dispatch(args.CallDescriptor.AsCGREvent(), utils.MetaResponder,
-		args.RouteID, utils.ResponderMaxDebit, args.CallDescriptor, reply)
+	var routeID *string
+	if args.ArgDispatcher != nil {
+		routeID = args.ArgDispatcher.RouteID
+	}
+	return dS.Dispatch(args.AsCGREvent(), utils.MetaResponder,
+		routeID, utils.ResponderMaxDebit, args, reply)
 }
 
-func (dS *DispatcherService) ResponderRefundIncrements(args *CallDescriptorWithApiKey,
+func (dS *DispatcherService) ResponderRefundIncrements(args *engine.CallDescriptorWithArgDispatcher,
 	reply *engine.Account) (err error) {
 	if dS.attrS != nil {
+		if args.ArgDispatcher == nil {
+			return utils.NewErrMandatoryIeMissing(utils.ArgDispatcherField)
+		}
 		if err = dS.authorize(utils.ResponderRefundIncrements, args.Tenant,
 			args.APIKey, utils.TimePointer(time.Now())); err != nil {
 			return
 		}
 	}
-	return dS.Dispatch(args.CallDescriptor.AsCGREvent(), utils.MetaResponder,
-		args.RouteID, utils.ResponderRefundIncrements, args.CallDescriptor, reply)
+	var routeID *string
+	if args.ArgDispatcher != nil {
+		routeID = args.ArgDispatcher.RouteID
+	}
+	return dS.Dispatch(args.AsCGREvent(), utils.MetaResponder,
+		routeID, utils.ResponderRefundIncrements, args, reply)
 }
 
-func (dS *DispatcherService) ResponderRefundRounding(args *CallDescriptorWithApiKey,
+func (dS *DispatcherService) ResponderRefundRounding(args *engine.CallDescriptorWithArgDispatcher,
 	reply *float64) (err error) {
 	if dS.attrS != nil {
+		if args.ArgDispatcher == nil {
+			return utils.NewErrMandatoryIeMissing(utils.ArgDispatcherField)
+		}
 		if err = dS.authorize(utils.ResponderRefundRounding, args.Tenant,
 			args.APIKey, utils.TimePointer(time.Now())); err != nil {
 			return
 		}
 	}
-	return dS.Dispatch(args.CallDescriptor.AsCGREvent(), utils.MetaResponder,
-		args.RouteID, utils.ResponderRefundRounding, args.CallDescriptor, reply)
+	var routeID *string
+	if args.ArgDispatcher != nil {
+		routeID = args.ArgDispatcher.RouteID
+	}
+	return dS.Dispatch(args.AsCGREvent(), utils.MetaResponder,
+		routeID, utils.ResponderRefundRounding, args, reply)
 }
 
-func (dS *DispatcherService) ResponderGetMaxSessionTime(args *CallDescriptorWithApiKey,
+func (dS *DispatcherService) ResponderGetMaxSessionTime(args *engine.CallDescriptorWithArgDispatcher,
 	reply *time.Duration) (err error) {
 	if dS.attrS != nil {
+		if args.ArgDispatcher == nil {
+			return utils.NewErrMandatoryIeMissing(utils.ArgDispatcherField)
+		}
 		if err = dS.authorize(utils.ResponderGetMaxSessionTime, args.Tenant,
 			args.APIKey, utils.TimePointer(time.Now())); err != nil {
 			return
 		}
 	}
-	return dS.Dispatch(args.CallDescriptor.AsCGREvent(), utils.MetaResponder,
-		args.RouteID, utils.ResponderGetMaxSessionTime, args.CallDescriptor, reply)
+	var routeID *string
+	if args.ArgDispatcher != nil {
+		routeID = args.ArgDispatcher.RouteID
+	}
+	return dS.Dispatch(args.AsCGREvent(), utils.MetaResponder,
+		routeID, utils.ResponderGetMaxSessionTime, args, reply)
 }
 
-func (dS *DispatcherService) ResponderShutdown(args *TntWithApiKey,
+func (dS *DispatcherService) ResponderShutdown(args *utils.TenantWithArgDispatcher,
 	reply *string) (err error) {
+	tnt := utils.FirstNonEmpty(args.Tenant, dS.cfg.GeneralCfg().DefaultTenant)
 	if dS.attrS != nil {
-		if err = dS.authorize(utils.ResponderShutdown, args.Tenant,
+		if args.ArgDispatcher == nil {
+			return utils.NewErrMandatoryIeMissing(utils.ArgDispatcherField)
+		}
+		if err = dS.authorize(utils.ResponderShutdown, tnt,
 			args.APIKey, utils.TimePointer(time.Now())); err != nil {
 			return
 		}
 	}
-	return dS.Dispatch(&utils.CGREvent{
-		Tenant: args.Tenant,
-	}, utils.MetaResponder, args.RouteID, utils.ResponderShutdown,
-		"", reply)
+	var routeID *string
+	if args.ArgDispatcher != nil {
+		routeID = args.ArgDispatcher.RouteID
+	}
+	return dS.Dispatch(&utils.CGREvent{Tenant: tnt}, utils.MetaResponder,
+		routeID, utils.ResponderShutdown, args, reply)
 }
 
-func (dS *DispatcherService) ResponderGetTimeout(args *TntWithApiKey,
+func (dS *DispatcherService) ResponderGetTimeout(args *utils.TenantWithArgDispatcher,
 	reply *time.Duration) (err error) {
+	tnt := utils.FirstNonEmpty(args.Tenant, dS.cfg.GeneralCfg().DefaultTenant)
 	if dS.attrS != nil {
-		if err = dS.authorize(utils.ResponderGetTimeout, args.Tenant,
+		if args.ArgDispatcher == nil {
+			return utils.NewErrMandatoryIeMissing(utils.ArgDispatcherField)
+		}
+		if err = dS.authorize(utils.ResponderGetTimeout, tnt,
 			args.APIKey, utils.TimePointer(time.Now())); err != nil {
 			return
 		}
 	}
-	return dS.Dispatch(&utils.CGREvent{
-		Tenant: args.Tenant,
-	}, utils.MetaResponder, args.RouteID, utils.ResponderGetTimeout,
-		0, reply)
+	var routeID *string
+	if args.ArgDispatcher != nil {
+		routeID = args.ArgDispatcher.RouteID
+	}
+	return dS.Dispatch(&utils.CGREvent{Tenant: tnt}, utils.MetaResponder,
+		routeID, utils.ResponderGetTimeout, 0, reply)
 }

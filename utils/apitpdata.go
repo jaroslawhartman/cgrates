@@ -32,11 +32,16 @@ func (tpdi TPDistinctIds) String() string {
 	return strings.Join(tpdi, ",")
 }
 
+type PaginatorWithSearch struct {
+	*Paginator
+	Search string // Global matching pattern in items returned, partially used in some APIs
+}
+
 // Paginate stuff around items returned
 type Paginator struct {
-	Limit      *int   // Limit the number of items returned
-	Offset     *int   // Offset of the first item returned (eg: use Limit*Page in case of PerPage items)
-	SearchTerm string // Global matching pattern in items returned, partially used in some APIs
+	Limit  *int // Limit the number of items returned
+	Offset *int // Offset of the first item returned (eg: use Limit*Page in case of PerPage items)
+
 }
 
 func (pgnt *Paginator) PaginateStringSlice(in []string) (out []string) {
@@ -473,6 +478,7 @@ type ArgsCache struct {
 	AttributeProfileIDs   *[]string
 	ChargerProfileIDs     *[]string
 	DispatcherProfileIDs  *[]string
+	DispatcherHostIDs     *[]string
 	DispatcherRoutesIDs   *[]string
 }
 
@@ -487,33 +493,34 @@ type ArgsCacheKeys struct {
 	Paginator
 }
 
+// InitAttrReloadCache initialize AttrReloadCache with empty string slice
+func InitAttrReloadCache() (rpl AttrReloadCache) {
+	rpl.DestinationIDs = &[]string{}
+	rpl.ReverseDestinationIDs = &[]string{}
+	rpl.RatingPlanIDs = &[]string{}
+	rpl.RatingProfileIDs = &[]string{}
+	rpl.ActionIDs = &[]string{}
+	rpl.ActionPlanIDs = &[]string{}
+	rpl.AccountActionPlanIDs = &[]string{}
+	rpl.ActionTriggerIDs = &[]string{}
+	rpl.SharedGroupIDs = &[]string{}
+	rpl.ResourceProfileIDs = &[]string{}
+	rpl.ResourceIDs = &[]string{}
+	rpl.StatsQueueIDs = &[]string{}
+	rpl.StatsQueueProfileIDs = &[]string{}
+	rpl.ThresholdIDs = &[]string{}
+	rpl.ThresholdProfileIDs = &[]string{}
+	rpl.FilterIDs = &[]string{}
+	rpl.SupplierProfileIDs = &[]string{}
+	rpl.AttributeProfileIDs = &[]string{}
+	rpl.ChargerProfileIDs = &[]string{}
+	rpl.DispatcherProfileIDs = &[]string{}
+	rpl.DispatcherHostIDs = &[]string{}
+	rpl.DispatcherRoutesIDs = &[]string{}
+	return
+}
+
 type CacheKeys struct {
-}
-
-type AttrCacheStats struct { // Add in the future filters here maybe so we avoid counting complete cache
-}
-
-type CacheStats struct {
-	Destinations        int
-	ReverseDestinations int
-	RatingPlans         int
-	RatingProfiles      int
-	Actions             int
-	ActionPlans         int
-	AccountActionPlans  int
-	SharedGroups        int
-	ResourceProfiles    int
-	Resources           int
-	StatQueues          int
-	StatQueueProfiles   int
-	Thresholds          int
-	ThresholdProfiles   int
-	Filters             int
-	SupplierProfiles    int
-	AttributeProfiles   int
-	ChargerProfiles     int
-	DispatcherProfiles  int
-	DispatcherRoutes    int
 }
 
 type AttrExpFileCdrs struct {
@@ -671,17 +678,19 @@ type AttrRemCdrs struct {
 }
 
 type AttrLoadTpFromFolder struct {
-	FolderPath string // Take files from folder absolute path
-	DryRun     bool   // Do not write to database but parse only
-	FlushDb    bool   // Flush previous data before loading new one
-	Validate   bool   // Run structural checks on data
+	FolderPath    string // Take files from folder absolute path
+	DryRun        bool   // Do not write to database but parse only
+	FlushDb       bool   // Flush previous data before loading new one
+	Validate      bool   // Run structural checks on data
+	ArgDispatcher *ArgDispatcher
 }
 
 type AttrImportTPFromFolder struct {
-	TPid         string
-	FolderPath   string
-	RunId        string
-	CsvSeparator string
+	TPid          string
+	FolderPath    string
+	RunId         string
+	CsvSeparator  string
+	ArgDispatcher *ArgDispatcher
 }
 
 type AttrGetDestination struct {
@@ -982,9 +991,11 @@ type AttrSetBalance struct {
 	Blocker        *bool
 	Disabled       *bool
 	Cdrlog         *bool
+	ExtraData      *map[string]interface{}
 }
 
-type TPResource struct {
+// TPResourceProfile is used in APIs to manage remotely offline ResourceProfile
+type TPResourceProfile struct {
 	TPid               string
 	Tenant             string
 	ID                 string // Identifier of this limit
@@ -1011,13 +1022,15 @@ type AttrRLsCache struct {
 }
 
 type ArgRSv1ResourceUsage struct {
-	CGREvent
+	*CGREvent
 	UsageID  string // ResourceUsage Identifier
 	UsageTTL *time.Duration
 	Units    float64
+	*ArgDispatcher
 }
 
-func (args *ArgRSv1ResourceUsage) TenantID() string {
+// TenantUsageID is used when caching events to resources
+func (args *ArgRSv1ResourceUsage) TenantUsageID() string {
 	return ConcatenatedKey(args.CGREvent.Tenant, args.UsageID)
 }
 
@@ -1060,8 +1073,14 @@ type AttrDisconnectSession struct {
 	Reason     string
 }
 
-// TPStats is used in APIs to manage remotely offline Stats config
-type TPStats struct {
+//MetricWithFilters is used in TPStatProfile
+type MetricWithFilters struct {
+	FilterIDs []string
+	MetricID  string
+}
+
+// TPStatProfile is used in APIs to manage remotely offline StatProfile
+type TPStatProfile struct {
 	TPid               string
 	Tenant             string
 	ID                 string
@@ -1069,7 +1088,7 @@ type TPStats struct {
 	ActivationInterval *TPActivationInterval
 	QueueLength        int
 	TTL                string
-	Metrics            []string
+	Metrics            []*MetricWithFilters
 	Blocker            bool // blocker flag to stop processing on filters matched
 	Stored             bool
 	Weight             float64
@@ -1077,7 +1096,8 @@ type TPStats struct {
 	ThresholdIDs       []string
 }
 
-type TPThreshold struct {
+// TPThresholdProfile is used in APIs to manage remotely offline ThresholdProfile
+type TPThresholdProfile struct {
 	TPid               string
 	Tenant             string
 	ID                 string
@@ -1092,6 +1112,7 @@ type TPThreshold struct {
 	Async              bool
 }
 
+// TPFilterProfile is used in APIs to manage remotely offline FilterProfile
 type TPFilterProfile struct {
 	TPid               string
 	Tenant             string
@@ -1100,12 +1121,14 @@ type TPFilterProfile struct {
 	ActivationInterval *TPActivationInterval // Time when this limit becomes active and expires
 }
 
+// TPFilterProfile is used in TPFilterProfile
 type TPFilter struct {
 	Type      string   // Filter type (*string, *timing, *rsr_filters, *cdr_stats)
 	FieldName string   // Name of the field providing us the Values to check (used in case of some )
 	Values    []string // Filter definition
 }
 
+// TPSupplier is used in TPSupplierProfile
 type TPSupplier struct {
 	ID                 string // SupplierID
 	FilterIDs          []string
@@ -1118,6 +1141,7 @@ type TPSupplier struct {
 	SupplierParameters string
 }
 
+// TPSupplierProfile is used in APIs to manage remotely offline SupplierProfile
 type TPSupplierProfile struct {
 	TPid               string
 	Tenant             string
@@ -1130,12 +1154,15 @@ type TPSupplierProfile struct {
 	Weight             float64
 }
 
+// TPAttribute is used in TPAttributeProfile
 type TPAttribute struct {
-	FilterIDs  []string
-	FieldName  string
-	Substitute string
+	FilterIDs []string
+	FieldName string
+	Type      string
+	Value     string
 }
 
+// TPAttributeProfile is used in APIs to manage remotely offline AttributeProfile
 type TPAttributeProfile struct {
 	TPid               string
 	Tenant             string
@@ -1148,6 +1175,7 @@ type TPAttributeProfile struct {
 	Weight             float64
 }
 
+// TPChargerProfile is used in APIs to manage remotely offline ChargerProfile
 type TPChargerProfile struct {
 	TPid               string
 	Tenant             string
@@ -1165,14 +1193,7 @@ type TPTntID struct {
 	ID     string
 }
 
-type TPDispatcherConns struct {
-	ID        string
-	FilterIDs []string
-	Weight    float64       // applied in case of multiple connections need to be ordered
-	Params    []interface{} // additional parameters stored for a session
-	Blocker   bool          // no connection after this one
-}
-
+// TPDispatcherProfile is used in APIs to manage remotely offline DispatcherProfile
 type TPDispatcherProfile struct {
 	TPid               string
 	Tenant             string
@@ -1183,5 +1204,222 @@ type TPDispatcherProfile struct {
 	Strategy           string
 	StrategyParams     []interface{} // ie for distribution, set here the pool weights
 	Weight             float64
-	Conns              []*TPDispatcherConns
+	Hosts              []*TPDispatcherHostProfile
+}
+
+// TPDispatcherHostProfile is used in TPDispatcherProfile
+type TPDispatcherHostProfile struct {
+	ID        string
+	FilterIDs []string
+	Weight    float64       // applied in case of multiple connections need to be ordered
+	Params    []interface{} // additional parameters stored for a session
+	Blocker   bool          // no connection after this one
+}
+
+// TPDispatcherHost is used in APIs to manage remotely offline DispatcherHost
+type TPDispatcherHost struct {
+	TPid   string
+	Tenant string
+	ID     string
+	Conns  []*TPDispatcherHostConn
+}
+
+// TPDispatcherHostConn is used in TPDispatcherHost
+type TPDispatcherHostConn struct {
+	Address   string
+	Transport string
+	TLS       bool
+}
+
+type UsageInterval struct {
+	Min *time.Duration
+	Max *time.Duration
+}
+
+type TimeInterval struct {
+	Begin *time.Time
+	End   *time.Time
+}
+
+type AttrRemoteLock struct {
+	ReferenceID string        // reference ID for this lock if available
+	LockIDs     []string      // List of IDs to obtain lock for
+	Timeout     time.Duration // Automatically unlock on timeout
+}
+
+type SMCostFilter struct { //id cu litere mare
+	CGRIDs         []string
+	NotCGRIDs      []string
+	RunIDs         []string
+	NotRunIDs      []string
+	OriginHosts    []string
+	NotOriginHosts []string
+	OriginIDs      []string
+	NotOriginIDs   []string
+	CostSources    []string
+	NotCostSources []string
+	Usage          UsageInterval
+	CreatedAt      TimeInterval
+}
+
+func AppendToSMCostFilter(smcFilter *SMCostFilter, fieldType, fieldName string, values []string, timezone string) (smcf *SMCostFilter, err error) {
+	const (
+		MetaString         = "*string"
+		MetaNotString      = "*notstring"
+		MetaLessThan       = "*lt"
+		MetaGreaterOrEqual = "*gte"
+	)
+	switch fieldName {
+	case DynamicDataPrefix + CGRID:
+		switch fieldType {
+		case MetaString:
+			smcFilter.CGRIDs = append(smcFilter.CGRIDs, values...)
+		case MetaNotString:
+			smcFilter.NotCGRIDs = append(smcFilter.NotCGRIDs, values...)
+		default:
+			err = fmt.Errorf("FilterType: %q not supported for FieldName: %q", fieldType, fieldName)
+		}
+	case DynamicDataPrefix + RunID:
+		switch fieldType {
+		case MetaString:
+			smcFilter.RunIDs = append(smcFilter.RunIDs, values...)
+		case MetaNotString:
+			smcFilter.NotRunIDs = append(smcFilter.NotRunIDs, values...)
+		default:
+			err = fmt.Errorf("FilterType: %q not supported for FieldName: %q", fieldType, fieldName)
+		}
+	case DynamicDataPrefix + OriginHost:
+		switch fieldType {
+		case MetaString:
+			smcFilter.OriginHosts = append(smcFilter.OriginHosts, values...)
+		case MetaNotString:
+			smcFilter.NotOriginHosts = append(smcFilter.NotOriginHosts, values...)
+		default:
+			err = fmt.Errorf("FilterType: %q not supported for FieldName: %q", fieldType, fieldName)
+		}
+	case DynamicDataPrefix + OriginID:
+		switch fieldType {
+		case MetaString:
+			smcFilter.OriginIDs = append(smcFilter.OriginIDs, values...)
+		case MetaNotString:
+			smcFilter.NotOriginIDs = append(smcFilter.NotOriginIDs, values...)
+		default:
+			err = fmt.Errorf("FilterType: %q not supported for FieldName: %q", fieldType, fieldName)
+		}
+	case DynamicDataPrefix + CostSource:
+		switch fieldType {
+		case MetaString:
+			smcFilter.CostSources = append(smcFilter.CostSources, values...)
+		case MetaNotString:
+			smcFilter.NotCostSources = append(smcFilter.NotCostSources, values...)
+		default:
+			err = fmt.Errorf("FilterType: %q not supported for FieldName: %q", fieldType, fieldName)
+		}
+	case DynamicDataPrefix + Usage:
+		switch fieldType {
+		case MetaGreaterOrEqual:
+			var minUsage time.Duration
+			minUsage, err = ParseDurationWithNanosecs(values[0])
+			if err != nil {
+				err = fmt.Errorf("Error when converting field: %q  value: %q in time.Duration ", fieldType, fieldName)
+				break
+			}
+			smcFilter.Usage.Min = &minUsage
+		case MetaLessThan:
+			var maxUsage time.Duration
+			maxUsage, err = ParseDurationWithNanosecs(values[0])
+			if err != nil {
+				err = fmt.Errorf("Error when converting field: %q  value: %q in time.Duration ", fieldType, fieldName)
+				break
+			}
+			smcFilter.Usage.Max = &maxUsage
+		default:
+			err = fmt.Errorf("FilterType: %q not supported for FieldName: %q", fieldType, fieldName)
+		}
+	case DynamicDataPrefix + CreatedAt:
+		switch fieldType {
+		case MetaGreaterOrEqual:
+			var start time.Time
+			start, err = ParseTimeDetectLayout(values[0], timezone)
+			if err != nil {
+				err = fmt.Errorf("Error when converting field: %q  value: %q in time.Time ", fieldType, fieldName)
+				break
+			}
+			if !start.IsZero() {
+				smcFilter.CreatedAt.Begin = &start
+			}
+		case MetaLessThan:
+			var end time.Time
+			end, err = ParseTimeDetectLayout(values[0], timezone)
+			if err != nil {
+				err = fmt.Errorf("Error when converting field: %q  value: %q in time.Time ", fieldType, fieldName)
+				break
+			}
+			if !end.IsZero() {
+				smcFilter.CreatedAt.End = &end
+			}
+		default:
+			err = fmt.Errorf("FilterType: %q not supported for FieldName: %q", fieldType, fieldName)
+		}
+	default:
+		err = fmt.Errorf("FieldName: %q not supported", fieldName)
+	}
+	return smcFilter, err
+}
+
+type RPCCDRsFilterWithArgDispatcher struct {
+	*RPCCDRsFilter
+	*TenantWithArgDispatcher
+}
+
+type ArgsGetCacheItemIDsWithArgDispatcher struct {
+	*ArgDispatcher
+	TenantArg
+	ArgsGetCacheItemIDs
+}
+
+type ArgsGetCacheItemWithArgDispatcher struct {
+	*ArgDispatcher
+	TenantArg
+	ArgsGetCacheItem
+}
+
+type AttrReloadCacheWithArgDispatcher struct {
+	*ArgDispatcher
+	TenantArg
+	AttrReloadCache
+}
+
+type AttrCacheIDsWithArgDispatcher struct {
+	*ArgDispatcher
+	TenantArg
+	CacheIDs []string
+}
+
+type ArgsGetGroupWithArgDispatcher struct {
+	*ArgDispatcher
+	TenantArg
+	ArgsGetGroup
+}
+
+type ArgsGetCacheItemIDs struct {
+	CacheID      string
+	ItemIDPrefix string
+}
+
+type ArgsGetCacheItem struct {
+	CacheID string
+	ItemID  string
+}
+
+type ArgsGetGroup struct {
+	CacheID string
+	GroupID string
+}
+
+type SessionFilter struct {
+	Limit   *int
+	Filters []string
+	Tenant  string
+	*ArgDispatcher
 }

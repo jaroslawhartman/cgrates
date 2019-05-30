@@ -36,7 +36,8 @@ func init() {
 type CmdApierPing struct {
 	name      string
 	rpcMethod string
-	rpcParams *StringWrapper
+	rpcParams interface{}
+	item      string
 	*CommandExecuter
 }
 
@@ -49,7 +50,7 @@ func (self *CmdApierPing) Name() string {
 }
 
 func (self *CmdApierPing) RpcMethod() string {
-	switch strings.ToLower(self.rpcParams.Item) {
+	switch strings.ToLower(self.item) {
 	case utils.SuppliersLow:
 		return utils.SupplierSv1Ping
 	case utils.AttributesLow:
@@ -70,6 +71,8 @@ func (self *CmdApierPing) RpcMethod() string {
 		return utils.DispatcherSv1Ping
 	case utils.AnalyzerSLow:
 		return utils.AnalyzerSv1Ping
+	case utils.SchedulerSLow:
+		return utils.SchedulerSv1Ping
 	default:
 	}
 	return self.rpcMethod
@@ -79,11 +82,14 @@ func (self *CmdApierPing) RpcParams(reset bool) interface{} {
 	if reset || self.rpcParams == nil {
 		self.rpcParams = &StringWrapper{}
 	}
-
-	return utils.CGREvent{}
+	return self.rpcParams
 }
 
 func (self *CmdApierPing) PostprocessRpcParams() error {
+	if val, can := self.rpcParams.(*StringWrapper); can {
+		self.item = val.Item
+	}
+	self.rpcParams = &utils.CGREventWithArgDispatcher{}
 	return nil
 }
 

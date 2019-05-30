@@ -50,7 +50,7 @@ func handleDisconnectSession(clnt *rpc2.Client,
 func TestSessionsBiRPCInitCfg(t *testing.T) {
 	sessionsBiRPCCfgPath = path.Join(*dataDir, "conf", "samples", "smg_automatic_debits")
 	// Init config first
-	sessionsBiRPCCfg, err = config.NewCGRConfigFromFolder(sessionsBiRPCCfgPath)
+	sessionsBiRPCCfg, err = config.NewCGRConfigFromPath(sessionsBiRPCCfgPath)
 	if err != nil {
 		t.Error(err)
 	}
@@ -105,21 +105,6 @@ func TestSessionsBiRPCTPFromFolder(t *testing.T) {
 		t.Error(err)
 	}
 	time.Sleep(time.Duration(*waitRater) * time.Millisecond) // Give time for scheduler to execute topups
-
-	//add a default charger
-	chargerProfile := &engine.ChargerProfile{
-		Tenant:       "cgrates.org",
-		ID:           "Default",
-		RunID:        "*default",
-		AttributeIDs: []string{"*none"},
-		Weight:       20,
-	}
-	var result string
-	if err := sessionsRPC.Call("ApierV1.SetChargerProfile", chargerProfile, &result); err != nil {
-		t.Error(err)
-	} else if result != utils.OK {
-		t.Error("Unexpected reply returned", result)
-	}
 }
 
 func TestSessionsBiRPCSessionAutomaticDisconnects(t *testing.T) {
@@ -149,7 +134,7 @@ func TestSessionsBiRPCSessionAutomaticDisconnects(t *testing.T) {
 
 	initArgs := &V1InitSessionArgs{
 		InitSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsBiRPCSessionAutomaticDisconnects",
 			Event: map[string]interface{}{
@@ -181,7 +166,7 @@ func TestSessionsBiRPCSessionAutomaticDisconnects(t *testing.T) {
 
 	// Make sure we are receiving a disconnect event
 	select {
-	case <-time.After(time.Duration(50 * time.Millisecond)):
+	case <-time.After(time.Duration(100 * time.Millisecond)):
 		t.Error("Did not receive disconnect event")
 	case disconnectEv := <-disconnectEvChan:
 		if engine.NewMapEvent(disconnectEv.EventStart).GetStringIgnoreErrors(utils.OriginID) != initArgs.CGREvent.Event[utils.OriginID] {
@@ -192,7 +177,7 @@ func TestSessionsBiRPCSessionAutomaticDisconnects(t *testing.T) {
 
 	termArgs := &V1TerminateSessionArgs{
 		TerminateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsDataLastUsedData",
 			Event: map[string]interface{}{
@@ -272,7 +257,7 @@ func TestSessionsBiRPCSessionOriginatorTerminate(t *testing.T) {
 
 	initArgs := &V1InitSessionArgs{
 		InitSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsBiRPCSessionOriginatorTerminate",
 			Event: map[string]interface{}{
@@ -307,7 +292,7 @@ func TestSessionsBiRPCSessionOriginatorTerminate(t *testing.T) {
 
 	termArgs := &V1TerminateSessionArgs{
 		TerminateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsBiRPCSessionOriginatorTerminate",
 			Event: map[string]interface{}{

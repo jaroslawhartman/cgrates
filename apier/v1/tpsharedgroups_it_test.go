@@ -1,4 +1,4 @@
-// +build offline_tp
+// +build integration
 
 /*
 Real-time Online/Offline Charging System (OCS) for Telecom & ISP environments
@@ -53,7 +53,7 @@ var sTestsTPSharedGroups = []func(t *testing.T){
 	testTPSharedGroupsGetTPSharedGroupIds,
 	testTPSharedGroupsUpdateTPShareGroups,
 	testTpSharedGroupsGetTPSharedGroupsAfterUpdate,
-	testTPSharedGroupsRemTPSharedGroups,
+	testTPSharedGroupsRemoveTPSharedGroups,
 	testTPSharedGroupsGetTPSharedGroupsAfterRemove,
 	testTPSharedGroupsKillEngine,
 }
@@ -83,7 +83,7 @@ func TestTPSharedGroupsITPG(t *testing.T) {
 func testTPSharedGroupsInitCfg(t *testing.T) {
 	var err error
 	tpSharedGroupCfgPath = path.Join(tpSharedGroupDataDir, "conf", "samples", tpSharedGroupConfigDIR)
-	tpSharedGroupCfg, err = config.NewCGRConfigFromFolder(tpSharedGroupCfgPath)
+	tpSharedGroupCfg, err = config.NewCGRConfigFromPath(tpSharedGroupCfgPath)
 	if err != nil {
 		t.Error(err)
 	}
@@ -168,7 +168,8 @@ func testTPSharedGroupsAfterSet(t *testing.T) {
 func testTPSharedGroupsGetTPSharedGroupIds(t *testing.T) {
 	var result []string
 	expectedTPID := []string{"Group1"}
-	if err := tpSharedGroupRPC.Call("ApierV1.GetTPSharedGroupIds", AttrGetTPSharedGroupIds{tpSharedGroups.TPid, utils.Paginator{}}, &result); err != nil {
+	if err := tpSharedGroupRPC.Call("ApierV1.GetTPSharedGroupIds",
+		AttrGetTPSharedGroupIds{tpSharedGroups.TPid, utils.PaginatorWithSearch{}}, &result); err != nil {
 		t.Error(err)
 	} else if !reflect.DeepEqual(result, expectedTPID) {
 		t.Errorf("Expecting: %+v, received: %+v", result, expectedTPID)
@@ -214,9 +215,9 @@ func testTpSharedGroupsGetTPSharedGroupsAfterUpdate(t *testing.T) {
 	}
 }
 
-func testTPSharedGroupsRemTPSharedGroups(t *testing.T) {
+func testTPSharedGroupsRemoveTPSharedGroups(t *testing.T) {
 	var resp string
-	if err := tpSharedGroupRPC.Call("ApierV1.RemTPSharedGroups", &AttrGetTPSharedGroups{TPid: tpSharedGroups.TPid, ID: tpSharedGroups.ID}, &resp); err != nil {
+	if err := tpSharedGroupRPC.Call("ApierV1.RemoveTPSharedGroups", &AttrGetTPSharedGroups{TPid: tpSharedGroups.TPid, ID: tpSharedGroups.ID}, &resp); err != nil {
 		t.Error(err)
 	} else if resp != utils.OK {
 		t.Error("Unexpected reply returned", resp)

@@ -78,7 +78,7 @@ func TestSuplSV1ITMongo(t *testing.T) {
 func testV1SplSLoadConfig(t *testing.T) {
 	var err error
 	splSv1CfgPath = path.Join(*dataDir, "conf", "samples", splSv1ConfDIR)
-	if splSv1Cfg, err = config.NewCGRConfigFromFolder(splSv1CfgPath); err != nil {
+	if splSv1Cfg, err = config.NewCGRConfigFromPath(splSv1CfgPath); err != nil {
 		t.Error(err)
 	}
 }
@@ -154,7 +154,7 @@ func testV1SplSSetSupplierProfilesWithoutRatingPlanIDs(t *testing.T) {
 		t.Errorf("Expecting: %+v, received: %+v", splPrf, reply)
 	}
 	ev := &engine.ArgsGetSuppliers{
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "testV1SplSGetLeastCostSuppliers",
 			Event: map[string]interface{}{
@@ -324,7 +324,7 @@ func testV1SplSPopulateResUsage(t *testing.T) {
 	var reply string
 	argsRU := utils.ArgRSv1ResourceUsage{
 		UsageID: "RandomID",
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "Event1",
 			Event: map[string]interface{}{
@@ -347,7 +347,7 @@ func testV1SplSPopulateResUsage(t *testing.T) {
 	argsRU = utils.ArgRSv1ResourceUsage{
 		UsageID: "RandomID2",
 
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "Event2",
 			Event: map[string]interface{}{
@@ -369,7 +369,7 @@ func testV1SplSPopulateResUsage(t *testing.T) {
 
 	argsRU = utils.ArgRSv1ResourceUsage{
 		UsageID: "RandomID3",
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "Event3",
 			Event: map[string]interface{}{
@@ -391,7 +391,7 @@ func testV1SplSPopulateResUsage(t *testing.T) {
 
 	argsRU = utils.ArgRSv1ResourceUsage{
 		UsageID: "RandomID4",
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "Event4",
 			Event: map[string]interface{}{
@@ -415,7 +415,7 @@ func testV1SplSPopulateResUsage(t *testing.T) {
 
 func testV1SplSGetSortedSuppliers(t *testing.T) {
 	ev := &engine.ArgsGetSuppliers{
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "testV1SplSGetSortedSuppliers",
 			Event: map[string]interface{}{
@@ -497,7 +497,7 @@ func testV1SplSAddNewSplPrf2(t *testing.T) {
 
 func testV1SplSGetSortedSuppliers2(t *testing.T) {
 	ev := &engine.ArgsGetSuppliers{
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "testV1SplSGetSortedSuppliers2",
 			Event: map[string]interface{}{

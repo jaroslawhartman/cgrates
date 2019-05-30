@@ -56,7 +56,7 @@ func TestDMitRedis(t *testing.T) {
 
 func TestDMitMongo(t *testing.T) {
 	cdrsMongoCfgPath := path.Join(*dataDir, "conf", "samples", "cdrsv2mongo")
-	mgoITCfg, err := config.NewCGRConfigFromFolder(cdrsMongoCfgPath)
+	mgoITCfg, err := config.NewCGRConfigFromPath(cdrsMongoCfgPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,20 +85,19 @@ func testDMitCRUDStatQueue(t *testing.T) {
 	sq := &StatQueue{
 		Tenant: "cgrates.org",
 		ID:     "testDMitCRUDStatQueue",
-		SQItems: []struct {
-			EventID    string     // Bounded to the original StatEvent
-			ExpiryTime *time.Time // Used to auto-expire events
-		}{{EventID: "cgrates.org:ev1", ExpiryTime: eTime},
+		SQItems: []SQItem{
+			{EventID: "cgrates.org:ev1", ExpiryTime: eTime},
 			{EventID: "cgrates.org:ev2", ExpiryTime: eTime},
-			{EventID: "cgrates.org:ev3", ExpiryTime: eTime}},
+			{EventID: "cgrates.org:ev3", ExpiryTime: eTime},
+		},
 		SQMetrics: map[string]StatMetric{
 			utils.MetaASR: &StatASR{
 				Answered: 2,
 				Count:    3,
-				Events: map[string]bool{
-					"cgrates.org:ev1": true,
-					"cgrates.org:ev2": true,
-					"cgrates.org:ev3": false,
+				Events: map[string]*StatWithCompress{
+					"cgrates.org:ev1": &StatWithCompress{Stat: 1},
+					"cgrates.org:ev2": &StatWithCompress{Stat: 1},
+					"cgrates.org:ev3": &StatWithCompress{Stat: 0},
 				},
 			},
 		},

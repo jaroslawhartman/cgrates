@@ -44,6 +44,9 @@ func (m *Migrator) migrateCurrentRatingProfiles() (err error) {
 		if err := m.dmOut.DataManager().SetRatingProfile(rp, utils.NonTransactional); err != nil {
 			return err
 		}
+		if err := m.dmIN.DataManager().RemoveRatingProfile(idg, utils.NonTransactional); err != nil {
+			return err
+		}
 		m.stats[utils.RatingProfile] += 1
 	}
 	return
@@ -67,9 +70,11 @@ func (m *Migrator) migrateRatingProfiles() (err error) {
 	switch vrs[utils.RatingProfile] {
 	case current[utils.RatingProfile]:
 		if m.sameDataDB {
-			return
+			break
 		}
-		return m.migrateCurrentRatingProfiles()
+		if err = m.migrateCurrentRatingProfiles(); err != nil {
+			return err
+		}
 	}
-	return
+	return m.ensureIndexesDataDB(engine.ColRpf)
 }

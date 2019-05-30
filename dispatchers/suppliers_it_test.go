@@ -22,6 +22,7 @@ package dispatchers
 
 import (
 	"reflect"
+	"sort"
 	"testing"
 	"time"
 
@@ -37,15 +38,16 @@ var sTestsDspSup = []func(t *testing.T){
 	testDspSupPing,
 	testDspSupTestAuthKey,
 	testDspSupTestAuthKey2,
+	testDspSupGetSupplierForEvent,
 }
 
 //Test start here
 func TestDspSupplierSTMySQL(t *testing.T) {
-	testDsp(t, sTestsDspSup, "TestDspSupplierS", "all", "all2", "attributes", "dispatchers", "tutorial", "oldtutorial", "dispatchers")
+	testDsp(t, sTestsDspSup, "TestDspSupplierS", "all", "all2", "dispatchers", "tutorial", "oldtutorial", "dispatchers")
 }
 
 func TestDspSupplierSMongo(t *testing.T) {
-	testDsp(t, sTestsDspSup, "TestDspSupplierS", "all", "all2", "attributes_mongo", "dispatchers_mongo", "tutorial", "oldtutorial", "dispatchers")
+	testDsp(t, sTestsDspSup, "TestDspSupplierS", "all", "all2", "dispatchers_mongo", "tutorial", "oldtutorial", "dispatchers")
 }
 
 func testDspSupPing(t *testing.T) {
@@ -55,12 +57,12 @@ func testDspSupPing(t *testing.T) {
 	} else if reply != utils.Pong {
 		t.Errorf("Received: %s", reply)
 	}
-	if err := dispEngine.RCP.Call(utils.SupplierSv1Ping, &CGREvWithApiKey{
-		CGREvent: utils.CGREvent{
+	if err := dispEngine.RCP.Call(utils.SupplierSv1Ping, &utils.CGREventWithArgDispatcher{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 		},
-		DispatcherResource: DispatcherResource{
-			APIKey: "sup12345",
+		ArgDispatcher: &utils.ArgDispatcher{
+			APIKey: utils.StringPointer("sup12345"),
 		},
 	}, &reply); err != nil {
 		t.Error(err)
@@ -76,12 +78,12 @@ func testDspSupPingFailover(t *testing.T) {
 	} else if reply != utils.Pong {
 		t.Errorf("Received: %s", reply)
 	}
-	ev := CGREvWithApiKey{
-		CGREvent: utils.CGREvent{
+	ev := utils.CGREventWithArgDispatcher{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 		},
-		DispatcherResource: DispatcherResource{
-			APIKey: "sup12345",
+		ArgDispatcher: &utils.ArgDispatcher{
+			APIKey: utils.StringPointer("sup12345"),
 		},
 	}
 	if err := dispEngine.RCP.Call(utils.SupplierSv1Ping, &ev, &reply); err != nil {
@@ -108,6 +110,7 @@ func testDspSupGetSupFailover(t *testing.T) {
 	eRpl1 := &engine.SortedSuppliers{
 		ProfileID: "SPL_WEIGHT_2",
 		Sorting:   utils.MetaWeight,
+		Count:     1,
 		SortedSuppliers: []*engine.SortedSupplier{
 			{
 				SupplierID:         "supplier1",
@@ -121,12 +124,13 @@ func testDspSupGetSupFailover(t *testing.T) {
 	eRpl := &engine.SortedSuppliers{
 		ProfileID: "SPL_ACNT_1002",
 		Sorting:   utils.MetaLeastCost,
+		Count:     2,
 		SortedSuppliers: []*engine.SortedSupplier{
 			{
 				SupplierID:         "supplier1",
 				SupplierParameters: "",
 				SortingData: map[string]interface{}{
-					utils.Cost:         0.1166,
+					utils.Cost:         0.3166,
 					utils.RatingPlanID: "RP_1002_LOW",
 					utils.Weight:       10.0,
 				},
@@ -135,31 +139,29 @@ func testDspSupGetSupFailover(t *testing.T) {
 				SupplierID:         "supplier2",
 				SupplierParameters: "",
 				SortingData: map[string]interface{}{
-					utils.Cost:         0.2334,
+					utils.Cost:         0.6334,
 					utils.RatingPlanID: "RP_1002",
 					utils.Weight:       20.0,
 				},
 			},
 		},
 	}
-	args := &ArgsGetSuppliersWithApiKey{
-		DispatcherResource: DispatcherResource{
-			APIKey: "sup12345",
-		},
-		ArgsGetSuppliers: engine.ArgsGetSuppliers{
-			CGREvent: utils.CGREvent{
-				Tenant: "cgrates.org",
-				ID:     utils.UUIDSha1Prefix(),
-				Time:   &nowTime,
-				Event: map[string]interface{}{
-					utils.EVENT_NAME:  "Event1",
-					utils.Account:     "1002",
-					utils.Subject:     "1002",
-					utils.Destination: "1001",
-					utils.SetupTime:   time.Date(2017, 12, 1, 14, 25, 0, 0, time.UTC),
-					utils.Usage:       "1m20s",
-				},
+	args := &engine.ArgsGetSuppliers{
+		CGREvent: &utils.CGREvent{
+			Tenant: "cgrates.org",
+			ID:     utils.UUIDSha1Prefix(),
+			Time:   &nowTime,
+			Event: map[string]interface{}{
+				utils.EVENT_NAME:  "Event1",
+				utils.Account:     "1002",
+				utils.Subject:     "1002",
+				utils.Destination: "1001",
+				utils.SetupTime:   time.Date(2017, 12, 1, 14, 25, 0, 0, time.UTC),
+				utils.Usage:       "1m20s",
 			},
+		},
+		ArgDispatcher: &utils.ArgDispatcher{
+			APIKey: utils.StringPointer("sup12345"),
 		},
 	}
 	if err := dispEngine.RCP.Call(utils.SupplierSv1GetSuppliers,
@@ -180,23 +182,21 @@ func testDspSupGetSupFailover(t *testing.T) {
 
 func testDspSupTestAuthKey(t *testing.T) {
 	var rpl *engine.SortedSuppliers
-	args := &ArgsGetSuppliersWithApiKey{
-		DispatcherResource: DispatcherResource{
-			APIKey: "12345",
-		},
-		ArgsGetSuppliers: engine.ArgsGetSuppliers{
-			CGREvent: utils.CGREvent{
-				Tenant: "cgrates.org",
-				ID:     utils.UUIDSha1Prefix(),
-				Time:   &nowTime,
-				Event: map[string]interface{}{
-					utils.Account:     "1002",
-					utils.Subject:     "1002",
-					utils.Destination: "1001",
-					utils.SetupTime:   time.Date(2017, 12, 1, 14, 25, 0, 0, time.UTC),
-					utils.Usage:       "1m20s",
-				},
+	args := &engine.ArgsGetSuppliers{
+		CGREvent: &utils.CGREvent{
+			Tenant: "cgrates.org",
+			ID:     utils.UUIDSha1Prefix(),
+			Time:   &nowTime,
+			Event: map[string]interface{}{
+				utils.Account:     "1002",
+				utils.Subject:     "1002",
+				utils.Destination: "1001",
+				utils.SetupTime:   time.Date(2017, 12, 1, 14, 25, 0, 0, time.UTC),
+				utils.Usage:       "1m20s",
 			},
+		},
+		ArgDispatcher: &utils.ArgDispatcher{
+			APIKey: utils.StringPointer("12345"),
 		},
 	}
 	if err := dispEngine.RCP.Call(utils.SupplierSv1GetSuppliers,
@@ -210,12 +210,13 @@ func testDspSupTestAuthKey2(t *testing.T) {
 	eRpl := &engine.SortedSuppliers{
 		ProfileID: "SPL_ACNT_1002",
 		Sorting:   utils.MetaLeastCost,
+		Count:     2,
 		SortedSuppliers: []*engine.SortedSupplier{
 			{
 				SupplierID:         "supplier1",
 				SupplierParameters: "",
 				SortingData: map[string]interface{}{
-					utils.Cost:         0.1166,
+					utils.Cost:         0.3166,
 					utils.RatingPlanID: "RP_1002_LOW",
 					utils.Weight:       10.0,
 				},
@@ -224,30 +225,28 @@ func testDspSupTestAuthKey2(t *testing.T) {
 				SupplierID:         "supplier2",
 				SupplierParameters: "",
 				SortingData: map[string]interface{}{
-					utils.Cost:         0.2334,
+					utils.Cost:         0.6334,
 					utils.RatingPlanID: "RP_1002",
 					utils.Weight:       20.0,
 				},
 			},
 		},
 	}
-	args := &ArgsGetSuppliersWithApiKey{
-		DispatcherResource: DispatcherResource{
-			APIKey: "sup12345",
-		},
-		ArgsGetSuppliers: engine.ArgsGetSuppliers{
-			CGREvent: utils.CGREvent{
-				Tenant: "cgrates.org",
-				ID:     utils.UUIDSha1Prefix(),
-				Time:   &nowTime,
-				Event: map[string]interface{}{
-					utils.Account:     "1002",
-					utils.Subject:     "1002",
-					utils.Destination: "1001",
-					utils.SetupTime:   time.Date(2017, 12, 1, 14, 25, 0, 0, time.UTC),
-					utils.Usage:       "1m20s",
-				},
+	args := &engine.ArgsGetSuppliers{
+		CGREvent: &utils.CGREvent{
+			Tenant: "cgrates.org",
+			ID:     utils.UUIDSha1Prefix(),
+			Time:   &nowTime,
+			Event: map[string]interface{}{
+				utils.Account:     "1002",
+				utils.Subject:     "1002",
+				utils.Destination: "1001",
+				utils.SetupTime:   time.Date(2017, 12, 1, 14, 25, 0, 0, time.UTC),
+				utils.Usage:       "1m20s",
 			},
+		},
+		ArgDispatcher: &utils.ArgDispatcher{
+			APIKey: utils.StringPointer("sup12345"),
 		},
 	}
 	if err := dispEngine.RCP.Call(utils.SupplierSv1GetSuppliers,
@@ -263,6 +262,7 @@ func testDspSupGetSupRoundRobin(t *testing.T) {
 	eRpl1 := &engine.SortedSuppliers{
 		ProfileID: "SPL_WEIGHT_2",
 		Sorting:   utils.MetaWeight,
+		Count:     1,
 		SortedSuppliers: []*engine.SortedSupplier{
 			{
 				SupplierID:         "supplier1",
@@ -276,12 +276,13 @@ func testDspSupGetSupRoundRobin(t *testing.T) {
 	eRpl := &engine.SortedSuppliers{
 		ProfileID: "SPL_ACNT_1002",
 		Sorting:   utils.MetaLeastCost,
+		Count:     2,
 		SortedSuppliers: []*engine.SortedSupplier{
 			{
 				SupplierID:         "supplier1",
 				SupplierParameters: "",
 				SortingData: map[string]interface{}{
-					utils.Cost:         0.1166,
+					utils.Cost:         0.3166,
 					utils.RatingPlanID: "RP_1002_LOW",
 					utils.Weight:       10.0,
 				},
@@ -290,31 +291,29 @@ func testDspSupGetSupRoundRobin(t *testing.T) {
 				SupplierID:         "supplier2",
 				SupplierParameters: "",
 				SortingData: map[string]interface{}{
-					utils.Cost:         0.2334,
+					utils.Cost:         0.6334,
 					utils.RatingPlanID: "RP_1002",
 					utils.Weight:       20.0,
 				},
 			},
 		},
 	}
-	args := &ArgsGetSuppliersWithApiKey{
-		DispatcherResource: DispatcherResource{
-			APIKey: "sup12345",
-		},
-		ArgsGetSuppliers: engine.ArgsGetSuppliers{
-			CGREvent: utils.CGREvent{
-				Tenant: "cgrates.org",
-				ID:     utils.UUIDSha1Prefix(),
-				Time:   &nowTime,
-				Event: map[string]interface{}{
-					utils.EVENT_NAME:  "RoundRobin",
-					utils.Account:     "1002",
-					utils.Subject:     "1002",
-					utils.Destination: "1001",
-					utils.SetupTime:   time.Date(2017, 12, 1, 14, 25, 0, 0, time.UTC),
-					utils.Usage:       "1m20s",
-				},
+	args := &engine.ArgsGetSuppliers{
+		CGREvent: &utils.CGREvent{
+			Tenant: "cgrates.org",
+			ID:     utils.UUIDSha1Prefix(),
+			Time:   &nowTime,
+			Event: map[string]interface{}{
+				utils.EVENT_NAME:  "RoundRobin",
+				utils.Account:     "1002",
+				utils.Subject:     "1002",
+				utils.Destination: "1001",
+				utils.SetupTime:   time.Date(2017, 12, 1, 14, 25, 0, 0, time.UTC),
+				utils.Usage:       "1m20s",
 			},
+		},
+		ArgDispatcher: &utils.ArgDispatcher{
+			APIKey: utils.StringPointer("sup12345"),
 		},
 	}
 	if err := dispEngine.RCP.Call(utils.SupplierSv1GetSuppliers,
@@ -328,5 +327,73 @@ func testDspSupGetSupRoundRobin(t *testing.T) {
 		t.Error(err)
 	} else if !reflect.DeepEqual(eRpl, rpl) {
 		t.Errorf("Expecting : %+v, received: %+v", utils.ToJSON(eRpl), utils.ToJSON(rpl))
+	}
+}
+
+func testDspSupGetSupplierForEvent(t *testing.T) {
+	ev := &utils.CGREventWithArgDispatcher{
+		CGREvent: &utils.CGREvent{
+			Tenant: "cgrates.org",
+			ID:     "testV1SplSGetHighestCostSuppliers",
+			Event: map[string]interface{}{
+				utils.Account:     "1002",
+				utils.Subject:     "1002",
+				utils.Destination: "1001",
+				utils.SetupTime:   time.Date(2017, 12, 1, 14, 25, 0, 0, time.UTC),
+				utils.Usage:       "1m20s",
+			},
+		},
+		ArgDispatcher: &utils.ArgDispatcher{
+			APIKey: utils.StringPointer("sup12345"),
+		},
+	}
+	expected := engine.SupplierProfile{
+		Tenant:    "cgrates.org",
+		ID:        "SPL_ACNT_1002",
+		FilterIDs: []string{"FLTR_ACNT_1002"},
+		ActivationInterval: &utils.ActivationInterval{
+			ActivationTime: time.Date(2017, 11, 27, 00, 00, 00, 00, time.UTC),
+		},
+		Sorting:           "*least_cost",
+		SortingParameters: []string{},
+		Suppliers: []*engine.Supplier{
+			&engine.Supplier{
+				ID:                 "supplier1",
+				FilterIDs:          nil,
+				AccountIDs:         nil,
+				RatingPlanIDs:      []string{"RP_1002_LOW"},
+				ResourceIDs:        nil,
+				StatIDs:            nil,
+				Weight:             10,
+				Blocker:            false,
+				SupplierParameters: "",
+			},
+			&engine.Supplier{
+				ID:                 "supplier2",
+				FilterIDs:          nil,
+				AccountIDs:         nil,
+				RatingPlanIDs:      []string{"RP_1002"},
+				ResourceIDs:        nil,
+				StatIDs:            nil,
+				Weight:             20,
+				Blocker:            false,
+				SupplierParameters: "",
+			},
+		},
+		Weight: 10,
+	}
+	var supProf []*engine.SupplierProfile
+	if err := dispEngine.RCP.Call(utils.SupplierSv1GetSupplierProfilesForEvent,
+		ev, &supProf); err != nil {
+		t.Fatal(err)
+	}
+	sort.Slice(expected.Suppliers, func(i, j int) bool {
+		return expected.Suppliers[i].Weight < expected.Suppliers[j].Weight
+	})
+	sort.Slice(supProf[0].Suppliers, func(i, j int) bool {
+		return supProf[0].Suppliers[i].Weight < supProf[0].Suppliers[j].Weight
+	})
+	if !reflect.DeepEqual(expected, *supProf[0]) {
+		t.Errorf("Expected: %s ,received: %s", utils.ToJSON(expected), utils.ToJSON(supProf))
 	}
 }

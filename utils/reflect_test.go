@@ -142,8 +142,10 @@ func TestReflectAsMapStringIface(t *testing.T) {
 }
 
 func TestGreaterThan(t *testing.T) {
-	if _, err := GreaterThan(1, 1.2, false); err == nil || err.Error() != "incomparable" {
+	if gte, err := GreaterThan(1, 1.2, false); err != nil {
 		t.Error(err)
+	} else if gte {
+		t.Error("should be not greater than")
 	}
 	if _, err := GreaterThan(struct{}{},
 		map[string]interface{}{"a": "a"}, false); err == nil || err.Error() != "incomparable" {
@@ -159,6 +161,11 @@ func TestGreaterThan(t *testing.T) {
 	} else if !gte {
 		t.Error("should be greater than")
 	}
+	if gte, err := GreaterThan(1.3, int(1), false); err != nil {
+		t.Error(err)
+	} else if !gte {
+		t.Error("should be greater than")
+	}
 	if gte, err := GreaterThan(1.2, 1.3, false); err != nil {
 		t.Error(err)
 	} else if gte {
@@ -169,8 +176,25 @@ func TestGreaterThan(t *testing.T) {
 	} else if !gte {
 		t.Error("should be greater than")
 	}
+	if gte, err := GreaterThan(2, float64(1.5), false); err != nil {
+		t.Error(err)
+	} else if !gte {
+		t.Error("should be greater than")
+	}
 	if gte, err := GreaterThan(time.Duration(2*time.Second),
 		time.Duration(1*time.Second), false); err != nil {
+		t.Error(err)
+	} else if !gte {
+		t.Error("should be greater than")
+	}
+	if gte, err := GreaterThan(time.Duration(2*time.Second),
+		20, false); err != nil {
+		t.Error(err)
+	} else if !gte {
+		t.Error("should be greater than")
+	}
+	if gte, err := GreaterThan(time.Duration(2*time.Second),
+		float64(1*time.Second), false); err != nil {
 		t.Error(err)
 	} else if !gte {
 		t.Error("should be greater than")
@@ -442,7 +466,7 @@ func TestSum(t *testing.T) {
 	if _, err := Sum(1); err == nil || err != ErrNotEnoughParameters {
 		t.Error(err)
 	}
-	if _, err := Sum(1, 1.2, false); err == nil || err.Error() != "incomparable" {
+	if _, err := Sum(1, 1.2, false); err == nil || err.Error() != "cannot convert field: 1.2 to int" {
 		t.Error(err)
 	}
 	if sum, err := Sum(1.2, 1.2, 1.2, 1.2); err != nil {
@@ -472,4 +496,112 @@ func TestSum(t *testing.T) {
 	} else if sum != time.Duration(2*time.Second+10*time.Millisecond) {
 		t.Errorf("Expecting: 2s10ms, received: %+v", sum)
 	}
+}
+
+func TestGetUniformType(t *testing.T) {
+	var arg, expected interface{}
+	arg = time.Second
+	expected = float64(time.Second)
+	if rply, err := GetUniformType(arg); err != nil {
+		t.Error(err)
+	} else if !reflect.DeepEqual(rply, expected) {
+		t.Errorf("Expected: %v of type %T, recived: %v of type %T", expected, expected, rply, rply)
+	}
+	arg = uint(10)
+	expected = float64(10)
+	if rply, err := GetUniformType(arg); err != nil {
+		t.Error(err)
+	} else if !reflect.DeepEqual(rply, expected) {
+		t.Errorf("Expected: %v of type %T, recived: %v of type %T", expected, expected, rply, rply)
+	}
+	arg = int64(10)
+	if rply, err := GetUniformType(arg); err != nil {
+		t.Error(err)
+	} else if !reflect.DeepEqual(rply, expected) {
+		t.Errorf("Expected: %v of type %T, recived: %v of type %T", expected, expected, rply, rply)
+	}
+
+	arg = time.Now()
+	expected = arg
+	if rply, err := GetUniformType(arg); err != nil {
+		t.Error(err)
+	} else if !reflect.DeepEqual(rply, expected) {
+		t.Errorf("Expected: %v of type %T, recived: %v of type %T", expected, expected, rply, rply)
+	}
+	arg = struct{ b int }{b: 10}
+	expected = arg
+	if rply, err := GetUniformType(arg); err != nil {
+		t.Error(err)
+	} else if !reflect.DeepEqual(rply, expected) {
+		t.Errorf("Expected: %v of type %T, recived: %v of type %T", expected, expected, rply, rply)
+	}
+
+	arg = time.Now()
+	if _, err := GetUniformType(&arg); err == nil || err.Error() != "incomparable" {
+		t.Errorf("Exppected \"incomparable\" error received:%v ", err)
+	}
+	arg = uint(10)
+	if _, err := GetUniformType(&arg); err == nil || err.Error() != "incomparable" {
+		t.Errorf("Exppected \"incomparable\" error received:%v ", err)
+	}
+	arg = true
+	if _, err := GetUniformType(arg); err == nil || err.Error() != "incomparable" {
+		t.Errorf("Exppected \"incomparable\" error received:%v ", err)
+	}
+	arg = "String"
+	if _, err := GetUniformType(arg); err == nil || err.Error() != "incomparable" {
+		t.Errorf("Exppected \"incomparable\" error received:%v ", err)
+	}
+}
+
+func TestDifference(t *testing.T) {
+	if _, err := Difference(10); err == nil || err != ErrNotEnoughParameters {
+		t.Error(err)
+	}
+	if _, err := Difference(10, 1.2, false); err == nil || err.Error() != "cannot convert field: 1.2 to int" {
+		t.Error(err)
+	}
+	if diff, err := Difference(12, 1, 2, 3); err != nil {
+		t.Error(err)
+	} else if diff != int64(6) {
+		t.Errorf("Expecting: 6, received: %+v", diff)
+	}
+	if diff, err := Difference(8.0, 4.0, 2.0, -1.0); err != nil {
+		t.Error(err)
+	} else if diff != 3.0 {
+		t.Errorf("Expecting: 3.0, received: %+v", diff)
+	}
+
+	if diff, err := Difference(8.0, 4, 2.0, -1.0); err != nil {
+		t.Error(err)
+	} else if diff != 3.0 {
+		t.Errorf("Expecting: 3.0, received: %+v", diff)
+	}
+	if diff, err := Difference(10*time.Second, 1*time.Second, 2*time.Second,
+		4*time.Millisecond); err != nil {
+		t.Error(err)
+	} else if diff != time.Duration(6*time.Second+996*time.Millisecond) {
+		t.Errorf("Expecting: 6.996ms, received: %+v", diff)
+	}
+	if diff, err := Difference(time.Duration(2*time.Second),
+		time.Duration(10*time.Millisecond)); err != nil {
+		t.Error(err)
+	} else if diff != time.Duration(1*time.Second+990*time.Millisecond) {
+		t.Errorf("Expecting: 1.99s, received: %+v", diff)
+	}
+
+	if diff, err := Difference(time.Date(2009, 11, 10, 23, 0, 0, 0, time.UTC),
+		time.Duration(10*time.Second)); err != nil {
+		t.Error(err)
+	} else if diff != time.Date(2009, 11, 10, 22, 59, 50, 0, time.UTC) {
+		t.Errorf("Expecting: %+v, received: %+v", time.Date(2009, 11, 10, 22, 59, 50, 0, time.UTC), diff)
+	}
+
+	if diff, err := Difference(time.Date(2009, 11, 10, 23, 0, 0, 0, time.UTC),
+		time.Duration(10*time.Second), 10000000000); err != nil {
+		t.Error(err)
+	} else if diff != time.Date(2009, 11, 10, 22, 59, 40, 0, time.UTC) {
+		t.Errorf("Expecting: %+v, received: %+v", time.Date(2009, 11, 10, 22, 59, 40, 0, time.UTC), diff)
+	}
+
 }

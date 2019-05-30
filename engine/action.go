@@ -84,6 +84,8 @@ const (
 	SetExpiry                 = "*set_expiry"
 	MetaPublishAccount        = "*publish_account"
 	MetaPublishBalance        = "*publish_balance"
+	MetaRemoveSessionCosts    = "*remove_session_costs"
+	MetaRemoveExpired         = "*remove_expired"
 )
 
 func (a *Action) Clone() *Action {
@@ -127,6 +129,8 @@ func getActionFunc(typ string) (actionTypeFunc, bool) {
 		utils.MetaAMQPjsonMap:     sendAMQP,
 		utils.MetaAWSjsonMap:      sendAWS,
 		utils.MetaSQSjsonMap:      sendSQS,
+		MetaRemoveSessionCosts:    removeSessionCosts,
+		MetaRemoveExpired:         removeExpired,
 	}
 	f, exists := actionFuncMap[typ]
 	return f, exists
@@ -136,10 +140,10 @@ func logAction(ub *Account, a *Action, acs Actions, extraData interface{}) (err 
 	switch {
 	case ub != nil:
 		body, _ := json.Marshal(ub)
-		utils.Logger.Info(fmt.Sprintf("Threshold hit, Balance: %s", body))
+		utils.Logger.Info(fmt.Sprintf("LOG Account: %s", body))
 	case extraData != nil:
 		body, _ := json.Marshal(extraData)
-		utils.Logger.Info(fmt.Sprintf("<CGRLog> extraData: %s", body))
+		utils.Logger.Info(fmt.Sprintf("LOG ExtraData: %s", body))
 	}
 	return
 }
@@ -151,7 +155,7 @@ func cdrLogAction(acc *Account, a *Action, acs Actions, extraData interface{}) (
 	defaultTemplate := map[string]config.RSRParsers{
 		utils.ToR:         config.NewRSRParsersMustCompile(utils.DynamicDataPrefix+"BalanceType", true, utils.INFIELD_SEP),
 		utils.OriginHost:  config.NewRSRParsersMustCompile("127.0.0.1", true, utils.INFIELD_SEP),
-		utils.RequestType: config.NewRSRParsersMustCompile(utils.META_PREPAID, true, utils.INFIELD_SEP),
+		utils.RequestType: config.NewRSRParsersMustCompile(utils.META_NONE, true, utils.INFIELD_SEP),
 		utils.Tenant:      config.NewRSRParsersMustCompile(utils.DynamicDataPrefix+utils.Tenant, true, utils.INFIELD_SEP),
 		utils.Account:     config.NewRSRParsersMustCompile(utils.DynamicDataPrefix+utils.Account, true, utils.INFIELD_SEP),
 		utils.Subject:     config.NewRSRParsersMustCompile(utils.DynamicDataPrefix+utils.Account, true, utils.INFIELD_SEP),
@@ -164,10 +168,25 @@ func cdrLogAction(acc *Account, a *Action, acs Actions, extraData interface{}) (
 			return
 		}
 		for field, rsr := range template {
-			defaultTemplate[field] = config.NewRSRParsersMustCompile(rsr,
-				true, config.CgrConfig().GeneralCfg().RsrSepatarot)
+			if defaultTemplate[field], err = config.NewRSRParsers(rsr,
+				true, config.CgrConfig().GeneralCfg().RsrSepatarot); err != nil {
+				return
+			}
 		}
 	}
+	//In case that we have extra data we populate default templates
+	mapExtraData, _ := extraData.(map[string]interface{})
+	var strVal string
+	for key, val := range mapExtraData {
+		if strVal, err = utils.IfaceAsString(val); err != nil {
+			return
+		}
+		if defaultTemplate[key], err = config.NewRSRParsers(strVal,
+			true, config.CgrConfig().GeneralCfg().RsrSepatarot); err != nil {
+			return
+		}
+	}
+
 	// set stored cdr values
 	var cdrs []*CDR
 	for _, action := range acs {
@@ -188,10 +207,10 @@ func cdrLogAction(acc *Account, a *Action, acs Actions, extraData interface{}) (
 		elem := reflect.ValueOf(cdr).Elem()
 		for key, rsrFlds := range defaultTemplate {
 			parsedValue, err := rsrFlds.ParseDataProvider(newCdrLogProvider(acc, action), utils.NestingSep)
-			field := elem.FieldByName(key)
 			if err != nil {
 				return err
 			}
+			field := elem.FieldByName(key)
 			if field.IsValid() && field.CanSet() {
 				switch field.Kind() {
 				case reflect.Float64:
@@ -210,8 +229,8 @@ func cdrLogAction(acc *Account, a *Action, acs Actions, extraData interface{}) (
 		cdrs = append(cdrs, cdr)
 		var rply string
 		// After compute the CDR send it to CDR Server to be processed
-		if err := schedCdrsConns.Call(utils.CDRsV2ProcessCDR,
-			&ArgV2ProcessCDR{CGREvent: *cdr.AsCGREvent()}, &rply); err != nil {
+		if err := schedCdrsConns.Call(utils.CDRsV1ProcessEvent,
+			&ArgV1ProcessEvent{CGREvent: *cdr.AsCGREvent()}, &rply); err != nil {
 			return err
 		}
 	}
@@ -959,4 +978,52 @@ func (cdrP *cdrLogProvider) AsNavigableMap([]*config.FCTemplate) (
 // RemoteHost is part of engine.DataProvider interface
 func (cdrP *cdrLogProvider) RemoteHost() net.Addr {
 	return utils.LocalAddr()
+}
+
+func removeSessionCosts(_ *Account, action *Action, _ Actions, _ interface{}) error { // FiltersID;inlineFilter
+	tenant := config.CgrConfig().GeneralCfg().DefaultTenant
+	smcFilter := new(utils.SMCostFilter)
+	for _, fltrID := range strings.Split(action.ExtraParameters, utils.INFIELD_SEP) {
+		if len(fltrID) == 0 {
+			continue
+		}
+		fltr, err := dm.GetFilter(tenant, fltrID, true, true, utils.NonTransactional)
+		if err != nil {
+			utils.Logger.Warning(fmt.Sprintf("<%s>  Error: %s for filter: %s in action: <%s>",
+				utils.Actions, err.Error(), fltrID, MetaRemoveSessionCosts))
+			continue
+		}
+		for _, rule := range fltr.Rules {
+			smcFilter, err = utils.AppendToSMCostFilter(smcFilter, rule.Type, rule.FieldName, rule.Values, config.CgrConfig().GeneralCfg().DefaultTimezone)
+			if err != nil {
+				utils.Logger.Warning(fmt.Sprintf("<%s> %s in action: <%s>", utils.Actions, err.Error(), MetaRemoveSessionCosts))
+			}
+		}
+	}
+	return cdrStorage.RemoveSMCosts(smcFilter)
+}
+
+func removeExpired(acc *Account, action *Action, _ Actions, extraData interface{}) error {
+	if acc == nil {
+		return fmt.Errorf("nil account for %s action", utils.ToJSON(action))
+	}
+	if _, exists := acc.BalanceMap[action.Balance.GetType()]; !exists {
+		return utils.ErrNotFound
+	}
+	bChain := acc.BalanceMap[action.Balance.GetType()]
+	found := false
+	for i := 0; i < len(bChain); i++ {
+		if bChain[i].IsExpired() {
+			// delete without preserving order
+			bChain[i] = bChain[len(bChain)-1]
+			bChain = bChain[:len(bChain)-1]
+			i -= 1
+			found = true
+		}
+	}
+	acc.BalanceMap[action.Balance.GetType()] = bChain
+	if !found {
+		return utils.ErrNotFound
+	}
+	return nil
 }

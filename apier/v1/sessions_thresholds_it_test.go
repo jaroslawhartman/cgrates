@@ -54,7 +54,7 @@ func TestSessionSv1ItInitCfg(t *testing.T) {
 	var err error
 	sSv1CfgPath2 = path.Join(*dataDir, "conf", "samples", "sessions")
 	// Init config first
-	sSv1Cfg2, err = config.NewCGRConfigFromFolder(sSv1CfgPath2)
+	sSv1Cfg2, err = config.NewCGRConfigFromPath(sSv1CfgPath2)
 	if err != nil {
 		t.Error(err)
 	}
@@ -170,7 +170,7 @@ func TestSessionSv1ItAuth(t *testing.T) {
 	args := &sessions.V1AuthorizeArgs{
 		AuthorizeResources: true,
 		ProcessThresholds:  true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSSv1ItAuth",
 			Event: map[string]interface{}{
@@ -231,7 +231,7 @@ func TestSessionSv1ItInitiateSession(t *testing.T) {
 		InitSession:       true,
 		AllocateResources: true,
 		ProcessThresholds: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSSv1ItInitiateSession",
 			Event: map[string]interface{}{
@@ -293,7 +293,7 @@ func TestSessionSv1ItTerminateSession(t *testing.T) {
 		TerminateSession:  true,
 		ReleaseResources:  true,
 		ProcessThresholds: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSSv1ItTerminateSession",
 			Event: map[string]interface{}{

@@ -26,12 +26,13 @@ import (
 
 // Rater config section
 type RalsCfg struct {
-	RALsEnabled             bool            // start standalone server (no balancer)
-	RALsThresholdSConns     []*HaPoolConfig // address where to reach ThresholdS config
-	RALsStatSConns          []*HaPoolConfig
-	RpSubjectPrefixMatching bool // enables prefix matching for the rating profile subject
-	RemoveExpired           bool
-	RALsMaxComputedUsage    map[string]time.Duration
+	RALsEnabled              bool          // start standalone server (no balancer)
+	RALsThresholdSConns      []*RemoteHost // address where to reach ThresholdS config
+	RALsStatSConns           []*RemoteHost
+	RpSubjectPrefixMatching  bool // enables prefix matching for the rating profile subject
+	RemoveExpired            bool
+	RALsMaxComputedUsage     map[string]time.Duration
+	RALsBalanceRatingSubject map[string]string
 }
 
 //loadFromJsonCfg loads Rals config from JsonCfg
@@ -43,16 +44,16 @@ func (ralsCfg *RalsCfg) loadFromJsonCfg(jsnRALsCfg *RalsJsonCfg) (err error) {
 		ralsCfg.RALsEnabled = *jsnRALsCfg.Enabled
 	}
 	if jsnRALsCfg.Thresholds_conns != nil {
-		ralsCfg.RALsThresholdSConns = make([]*HaPoolConfig, len(*jsnRALsCfg.Thresholds_conns))
+		ralsCfg.RALsThresholdSConns = make([]*RemoteHost, len(*jsnRALsCfg.Thresholds_conns))
 		for idx, jsnHaCfg := range *jsnRALsCfg.Thresholds_conns {
-			ralsCfg.RALsThresholdSConns[idx] = NewDfltHaPoolConfig()
+			ralsCfg.RALsThresholdSConns[idx] = NewDfltRemoteHost()
 			ralsCfg.RALsThresholdSConns[idx].loadFromJsonCfg(jsnHaCfg)
 		}
 	}
 	if jsnRALsCfg.Stats_conns != nil {
-		ralsCfg.RALsStatSConns = make([]*HaPoolConfig, len(*jsnRALsCfg.Stats_conns))
+		ralsCfg.RALsStatSConns = make([]*RemoteHost, len(*jsnRALsCfg.Stats_conns))
 		for idx, jsnHaCfg := range *jsnRALsCfg.Stats_conns {
-			ralsCfg.RALsStatSConns[idx] = NewDfltHaPoolConfig()
+			ralsCfg.RALsStatSConns[idx] = NewDfltRemoteHost()
 			ralsCfg.RALsStatSConns[idx].loadFromJsonCfg(jsnHaCfg)
 		}
 	}
@@ -67,6 +68,11 @@ func (ralsCfg *RalsCfg) loadFromJsonCfg(jsnRALsCfg *RalsJsonCfg) (err error) {
 			if ralsCfg.RALsMaxComputedUsage[k], err = utils.ParseDurationWithNanosecs(v); err != nil {
 				return
 			}
+		}
+	}
+	if jsnRALsCfg.Balance_rating_subject != nil {
+		for k, v := range *jsnRALsCfg.Balance_rating_subject {
+			ralsCfg.RALsBalanceRatingSubject[k] = v
 		}
 	}
 

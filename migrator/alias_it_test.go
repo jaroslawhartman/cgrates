@@ -62,10 +62,10 @@ func TestAliasITMigrateMongo2Redis(t *testing.T) {
 
 func testStart(testName, inPath, outPath string, t *testing.T) {
 	var err error
-	if alsCfgIn, err = config.NewCGRConfigFromFolder(inPath); err != nil {
+	if alsCfgIn, err = config.NewCGRConfigFromPath(inPath); err != nil {
 		t.Fatal(err)
 	}
-	if alsCfgOut, err = config.NewCGRConfigFromFolder(outPath); err != nil {
+	if alsCfgOut, err = config.NewCGRConfigFromPath(outPath); err != nil {
 		t.Fatal(err)
 	}
 	for _, stest := range sTestsAlsIT {
@@ -143,13 +143,15 @@ func testAlsITMigrateAndMove(t *testing.T) {
 		ActivationInterval: nil,
 		Attributes: []*engine.Attribute{
 			{
-				FieldName:  "Account",
-				Substitute: config.NewRSRParsersMustCompile("1002", true, utils.INFIELD_SEP),
+				FieldName: "Account",
+				Type:      utils.MetaVariable,
+				Value:     config.NewRSRParsersMustCompile("1002", true, utils.INFIELD_SEP),
 			},
 			{
-				FilterIDs:  []string{"*string:~Category:call_1001"},
-				FieldName:  "Category",
-				Substitute: config.NewRSRParsersMustCompile("call_1002", true, utils.INFIELD_SEP),
+				FilterIDs: []string{"*string:~Category:call_1001"},
+				FieldName: "Category",
+				Type:      utils.MetaVariable,
+				Value:     config.NewRSRParsersMustCompile("call_1002", true, utils.INFIELD_SEP),
 			},
 		},
 		Blocker: false,

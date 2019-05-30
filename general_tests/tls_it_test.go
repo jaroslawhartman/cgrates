@@ -61,7 +61,7 @@ func TestTLS(t *testing.T) {
 func testTLSLoadConfig(t *testing.T) {
 	var err error
 	tlsCfgPath = path.Join(*dataDir, "conf", "samples", tlsConfDIR)
-	if tlsCfg, err = config.NewCGRConfigFromFolder(tlsCfgPath); err != nil {
+	if tlsCfg, err = config.NewCGRConfigFromPath(tlsCfgPath); err != nil {
 		t.Error(err)
 	}
 	tlsDelay = 2000
@@ -136,7 +136,7 @@ func testTLSPing(t *testing.T) {
 		InitSession:       true,
 		AllocateResources: true,
 		GetAttributes:     true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSSv1ItInitiateSession",
 			Event: map[string]interface{}{

@@ -48,7 +48,7 @@ var sTestsCdrIT = []func(t *testing.T){
 func TestCdrITMongo(t *testing.T) {
 	var err error
 	cdrPathIn = path.Join(*dataDir, "conf", "samples", "tutmongo")
-	cdrCfgIn, err = config.NewCGRConfigFromFolder(cdrPathIn)
+	cdrCfgIn, err = config.NewCGRConfigFromPath(cdrPathIn)
 	if err != nil {
 		t.Error(err)
 	}
@@ -60,7 +60,7 @@ func TestCdrITMongo(t *testing.T) {
 func TestCdrITMySql(t *testing.T) {
 	var err error
 	cdrPathIn = path.Join(*dataDir, "conf", "samples", "tutmysql")
-	cdrCfgIn, err = config.NewCGRConfigFromFolder(cdrPathIn)
+	cdrCfgIn, err = config.NewCGRConfigFromPath(cdrPathIn)
 	if err != nil {
 		t.Error(err)
 	}
@@ -133,15 +133,25 @@ func testCdrITMigrateAndMove(t *testing.T) {
 		TOR: utils.VOICE,
 	}
 	v1Cdr := &v1Cdrs{
-		CGRID:   utils.Sha1("dsafdsaf", time.Date(2013, 11, 7, 8, 42, 20, 0, time.UTC).String()),
-		OrderID: 123, ToR: utils.VOICE, OriginID: "dsafdsaf", OriginHost: "192.168.1.1",
-		Source: utils.UNIT_TEST, RequestType: utils.META_RATED, Tenant: "cgrates.org",
-		Category: "call", Account: "1001", Subject: "1001", Destination: "1002",
-		SetupTime:  time.Date(2013, 11, 7, 8, 42, 20, 0, time.UTC),
-		AnswerTime: time.Date(2013, 11, 7, 8, 42, 26, 0, time.UTC),
-		RunID:      utils.DEFAULT_RUNID, Usage: time.Duration(10),
+		CGRID:       utils.Sha1("dsafdsaf", time.Date(2013, 11, 7, 8, 42, 20, 0, time.UTC).String()),
+		OrderID:     123,
+		ToR:         utils.VOICE,
+		OriginID:    "dsafdsaf",
+		OriginHost:  "192.168.1.1",
+		Source:      utils.UNIT_TEST,
+		RequestType: utils.META_RATED,
+		Tenant:      "cgrates.org",
+		Category:    "call",
+		Account:     "1001",
+		Subject:     "1001",
+		Destination: "1002",
+		SetupTime:   time.Date(2013, 11, 7, 8, 42, 20, 0, time.UTC),
+		AnswerTime:  time.Date(2013, 11, 7, 8, 42, 26, 0, time.UTC),
+		RunID:       utils.DEFAULT_RUNID,
+		Usage:       time.Duration(10),
 		ExtraFields: map[string]string{"field_extr1": "val_extr1", "fieldextr2": "valextr2"},
-		Cost:        1.01, Rated: true,
+		Cost:        1.01,
+		Rated:       true,
 		CostDetails: cc,
 	}
 	var err error

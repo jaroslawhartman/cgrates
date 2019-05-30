@@ -154,7 +154,7 @@ type TpActionTrigger struct {
 	UniqueId               string  `index:"1" re:"\w+"`
 	ThresholdType          string  `index:"2" re:"\*\w+"`
 	ThresholdValue         float64 `index:"3" re:"\d+\.?\d*"`
-	Recurrent              bool    `index:"4" re:"true|false"`
+	Recurrent              bool    `index:"4" re:"true|false|"`
 	MinSleep               string  `index:"5" re:"\d+[smh]?"`
 	ExpiryTime             string  `index:"6" re:""`
 	ActivationTime         string  `index:"7" re:""`
@@ -229,7 +229,7 @@ type TpResource struct {
 	CreatedAt          time.Time
 }
 
-type TpStats struct {
+type TpStat struct {
 	PK                 uint `gorm:"primary_key"`
 	Tpid               string
 	Tenant             string  `index:"0" re:""`
@@ -238,12 +238,13 @@ type TpStats struct {
 	ActivationInterval string  `index:"3" re:""`
 	QueueLength        int     `index:"4" re:""`
 	TTL                string  `index:"5" re:""`
-	Metrics            string  `index:"6" re:""`
-	Blocker            bool    `index:"7" re:""`
-	Stored             bool    `index:"8" re:""`
-	Weight             float64 `index:"9" re:"\d+\.?\d*"`
-	MinItems           int     `index:"10" re:""`
-	ThresholdIDs       string  `index:"11" re:""`
+	MinItems           int     `index:"6" re:""`
+	MetricIDs          string  `index:"7" re:""`
+	MetricFilterIDs    string  `index:"8" re:""`
+	Stored             bool    `index:"9" re:""`
+	Blocker            bool    `index:"10" re:""`
+	Weight             float64 `index:"11" re:"\d+\.?\d*"`
+	ThresholdIDs       string  `index:"12" re:""`
 	CreatedAt          time.Time
 }
 
@@ -366,9 +367,10 @@ type TPAttribute struct {
 	ActivationInterval string  `index:"4" re:""`
 	AttributeFilterIDs string  `index:"5" re:""`
 	FieldName          string  `index:"6" re:""`
-	Substitute         string  `index:"7" re:""`
-	Blocker            bool    `index:"8" re:""`
-	Weight             float64 `index:"9" re:"\d+\.?\d*"`
+	Type               string  `index:"7" re:""`
+	Value              string  `index:"8" re:""`
+	Blocker            bool    `index:"9" re:""`
+	Weight             float64 `index:"10" re:"\d+\.?\d*"`
 	CreatedAt          time.Time
 }
 
@@ -385,7 +387,7 @@ type TPCharger struct {
 	CreatedAt          time.Time
 }
 
-type TPDispatcher struct {
+type TPDispatcherProfile struct {
 	PK                 uint    `gorm:"primary_key"`
 	Tpid               string  //
 	Tenant             string  `index:"0" re:""`
@@ -402,4 +404,15 @@ type TPDispatcher struct {
 	ConnParameters     string  `index:"11" re:""`
 	Weight             float64 `index:"12" re:"\d+\.?\d*"`
 	CreatedAt          time.Time
+}
+
+type TPDispatcherHost struct {
+	PK        uint   `gorm:"primary_key"`
+	Tpid      string //
+	Tenant    string `index:"0" re:""`
+	ID        string `index:"1" re:""`
+	Address   string `index:"2" re:""`
+	Transport string `index:"3" re:""`
+	TLS       bool   `index:"4" re:""`
+	CreatedAt time.Time
 }

@@ -1,4 +1,4 @@
-// +build offline_tp
+// +build integration
 
 /*
 Real-time Online/Offline Charging System (OCS) for Telecom & ISP environments
@@ -76,7 +76,7 @@ func TestTPDispatcherITMongo(t *testing.T) {
 func testTPDispatcherInitCfg(t *testing.T) {
 	var err error
 	tpDispatcherCfgPath = path.Join(tpDispatcherDataDir, "conf", "samples", tpDispatcherConfigDIR)
-	tpDispatcherCfg, err = config.NewCGRConfigFromFolder(tpDispatcherCfgPath)
+	tpDispatcherCfg, err = config.NewCGRConfigFromPath(tpDispatcherCfgPath)
 	if err != nil {
 		t.Error(err)
 	}
@@ -111,7 +111,7 @@ func testTPDispatcherRpcConn(t *testing.T) {
 
 func ttestTPDispatcherGetTPDispatcherBeforeSet(t *testing.T) {
 	var reply *utils.TPDispatcherProfile
-	if err := tpDispatcherRPC.Call("ApierV1.GetTPDispatcher",
+	if err := tpDispatcherRPC.Call("ApierV1.GetTPDispatcherProfile",
 		&utils.TPTntID{TPid: "TP1", Tenant: "cgrates.org", ID: "Dsp1"},
 		&reply); err == nil || err.Error() != utils.ErrNotFound.Error() {
 		t.Error(err)
@@ -129,12 +129,11 @@ func testTPDispatcherSetTPDispatcher(t *testing.T) {
 			ExpiryTime:     "",
 		},
 		Strategy: utils.MetaFirst,
-		Hosts:    []string{"localhost"},
 		Weight:   10,
 	}
 
 	var result string
-	if err := tpDispatcherRPC.Call("ApierV1.SetTPDispatcher", tpDispatcher, &result); err != nil {
+	if err := tpDispatcherRPC.Call("ApierV1.SetTPDispatcherProfile", tpDispatcher, &result); err != nil {
 		t.Error(err)
 	} else if result != utils.OK {
 		t.Error("Unexpected reply returned", result)
@@ -143,7 +142,7 @@ func testTPDispatcherSetTPDispatcher(t *testing.T) {
 
 func testTPDispatcherGetTPDispatcherAfterSet(t *testing.T) {
 	var reply *utils.TPDispatcherProfile
-	if err := tpDispatcherRPC.Call("ApierV1.GetTPDispatcher",
+	if err := tpDispatcherRPC.Call("ApierV1.GetTPDispatcherProfile",
 		&utils.TPTntID{TPid: "TP1", Tenant: "cgrates.org", ID: "Dsp1"}, &reply); err != nil {
 		t.Error(err)
 	} else if !reflect.DeepEqual(tpDispatcher, reply) {
@@ -154,7 +153,7 @@ func testTPDispatcherGetTPDispatcherAfterSet(t *testing.T) {
 func testTPDispatcherGetFilterIds(t *testing.T) {
 	var result []string
 	expectedTPID := []string{"Dsp1"}
-	if err := tpDispatcherRPC.Call("ApierV1.GetTPDispatcherIDs",
+	if err := tpDispatcherRPC.Call("ApierV1.GetTPDispatcherProfileIDs",
 		&AttrGetTPDispatcherIds{TPid: "TP1"}, &result); err != nil {
 		t.Error(err)
 	} else if !reflect.DeepEqual(expectedTPID, result) {
@@ -163,9 +162,8 @@ func testTPDispatcherGetFilterIds(t *testing.T) {
 }
 
 func testTPDispatcherUpdateTPDispatcher(t *testing.T) {
-	tpDispatcher.Hosts = []string{"localhost", "192.168.56.203"}
 	var result string
-	if err := tpDispatcherRPC.Call("ApierV1.SetTPDispatcher", tpDispatcher, &result); err != nil {
+	if err := tpDispatcherRPC.Call("ApierV1.SetTPDispatcherProfile", tpDispatcher, &result); err != nil {
 		t.Error(err)
 	} else if result != utils.OK {
 		t.Error("Unexpected reply returned", result)
@@ -184,10 +182,9 @@ func testTPDispatcherGetTPDispatcherAfterUpdate(t *testing.T) {
 			ExpiryTime:     "",
 		},
 		Strategy: utils.MetaFirst,
-		Hosts:    []string{"192.168.56.203", "localhost"},
 		Weight:   10,
 	}
-	if err := tpDispatcherRPC.Call("ApierV1.GetTPDispatcher",
+	if err := tpDispatcherRPC.Call("ApierV1.GetTPDispatcherProfile",
 		&utils.TPTntID{TPid: "TP1", Tenant: "cgrates.org", ID: "Dsp1"}, &reply); err != nil {
 		t.Error(err)
 	} else if !reflect.DeepEqual(tpDispatcher, reply) && !reflect.DeepEqual(revHosts, reply) {
@@ -197,7 +194,7 @@ func testTPDispatcherGetTPDispatcherAfterUpdate(t *testing.T) {
 
 func testTPDispatcherRemTPDispatcher(t *testing.T) {
 	var resp string
-	if err := tpDispatcherRPC.Call("ApierV1.RemTPDispatcher",
+	if err := tpDispatcherRPC.Call("ApierV1.RemoveTPDispatcherProfile",
 		&utils.TPTntID{TPid: "TP1", Tenant: "cgrates.org", ID: "Dsp1"}, &resp); err != nil {
 		t.Error(err)
 	} else if resp != utils.OK {
@@ -207,7 +204,7 @@ func testTPDispatcherRemTPDispatcher(t *testing.T) {
 
 func testTPDispatcherGetTPDispatcherAfterRemove(t *testing.T) {
 	var reply *utils.TPDispatcherProfile
-	if err := tpDispatcherRPC.Call("ApierV1.GetTPDispatcher",
+	if err := tpDispatcherRPC.Call("ApierV1.GetTPDispatcherProfile",
 		&utils.TPTntID{TPid: "TP1", Tenant: "cgrates.org", ID: "Dsp1"},
 		&reply); err == nil || err.Error() != utils.ErrNotFound.Error() {
 		t.Error(err)

@@ -138,7 +138,7 @@ func (ra *RadiusAgent) handleAcct(req *radigo.Packet) (rpl *radigo.Packet, err e
 }
 
 // processRequest represents one processor processing the request
-func (ra *RadiusAgent) processRequest(reqProcessor *config.RARequestProcessor,
+func (ra *RadiusAgent) processRequest(reqProcessor *config.RequestProcessor,
 	agReq *AgentRequest, rply *radigo.Packet) (processed bool, err error) {
 	if pass, err := ra.filterS.Pass(agReq.tenant,
 		reqProcessor.Filters, agReq); err != nil || !pass {
@@ -159,10 +159,11 @@ func (ra *RadiusAgent) processRequest(reqProcessor *config.RARequestProcessor,
 			break
 		}
 	}
+	cgrArgs := cgrEv.ConsumeArgs(reqProcessor.Flags.HasKey(utils.MetaDispatchers), reqType == utils.MetaAuth || reqType == utils.MetaEvent)
 	if reqProcessor.Flags.HasKey(utils.MetaLog) {
 		utils.Logger.Info(
 			fmt.Sprintf("<%s> LOG, processorID: %s, radius message: %s",
-				utils.RadiusAgent, reqProcessor.Id, agReq.Request.String()))
+				utils.RadiusAgent, reqProcessor.ID, agReq.Request.String()))
 	}
 	switch reqType {
 	default:
@@ -170,7 +171,7 @@ func (ra *RadiusAgent) processRequest(reqProcessor *config.RARequestProcessor,
 	case utils.MetaDryRun:
 		utils.Logger.Info(
 			fmt.Sprintf("<%s> DRY_RUN, processorID: %s, CGREvent: %s",
-				utils.RadiusAgent, reqProcessor.Id, utils.ToJSON(cgrEv)))
+				utils.RadiusAgent, reqProcessor.ID, utils.ToJSON(cgrEv)))
 	case utils.MetaAuth:
 		authArgs := sessions.NewV1AuthorizeArgs(
 			reqProcessor.Flags.HasKey(utils.MetaAttributes),
@@ -181,7 +182,7 @@ func (ra *RadiusAgent) processRequest(reqProcessor *config.RARequestProcessor,
 			reqProcessor.Flags.HasKey(utils.MetaSuppliers),
 			reqProcessor.Flags.HasKey(utils.MetaSuppliersIgnoreErrors),
 			reqProcessor.Flags.HasKey(utils.MetaSuppliersEventCost),
-			*cgrEv)
+			cgrEv, cgrArgs.ArgDispatcher, *cgrArgs.SupplierPaginator)
 		var authReply sessions.V1AuthorizeReply
 		err = ra.sessionS.Call(utils.SessionSv1AuthorizeEvent,
 			authArgs, &authReply)
@@ -194,7 +195,8 @@ func (ra *RadiusAgent) processRequest(reqProcessor *config.RARequestProcessor,
 			reqProcessor.Flags.HasKey(utils.MetaResources),
 			reqProcessor.Flags.HasKey(utils.MetaAccounts),
 			reqProcessor.Flags.HasKey(utils.MetaThresholds),
-			reqProcessor.Flags.HasKey(utils.MetaStats), *cgrEv)
+			reqProcessor.Flags.HasKey(utils.MetaStats),
+			cgrEv, cgrArgs.ArgDispatcher)
 		var initReply sessions.V1InitSessionReply
 		err = ra.sessionS.Call(utils.SessionSv1InitiateSession,
 			initArgs, &initReply)
@@ -204,7 +206,8 @@ func (ra *RadiusAgent) processRequest(reqProcessor *config.RARequestProcessor,
 	case utils.MetaUpdate:
 		updateArgs := sessions.NewV1UpdateSessionArgs(
 			reqProcessor.Flags.HasKey(utils.MetaAttributes),
-			reqProcessor.Flags.HasKey(utils.MetaAccounts), *cgrEv)
+			reqProcessor.Flags.HasKey(utils.MetaAccounts),
+			cgrEv, cgrArgs.ArgDispatcher)
 		var updateReply sessions.V1UpdateSessionReply
 		err = ra.sessionS.Call(utils.SessionSv1UpdateSession,
 			updateArgs, &updateReply)
@@ -216,7 +219,8 @@ func (ra *RadiusAgent) processRequest(reqProcessor *config.RARequestProcessor,
 			reqProcessor.Flags.HasKey(utils.MetaAccounts),
 			reqProcessor.Flags.HasKey(utils.MetaResources),
 			reqProcessor.Flags.HasKey(utils.MetaThresholds),
-			reqProcessor.Flags.HasKey(utils.MetaStats), *cgrEv)
+			reqProcessor.Flags.HasKey(utils.MetaStats),
+			cgrEv, cgrArgs.ArgDispatcher)
 		var tRply string
 		err = ra.sessionS.Call(utils.SessionSv1TerminateSession,
 			terminateArgs, &tRply)
@@ -230,7 +234,10 @@ func (ra *RadiusAgent) processRequest(reqProcessor *config.RARequestProcessor,
 			reqProcessor.Flags.HasKey(utils.MetaAttributes),
 			reqProcessor.Flags.HasKey(utils.MetaThresholds),
 			reqProcessor.Flags.HasKey(utils.MetaStats),
-			*cgrEv)
+			reqProcessor.Flags.HasKey(utils.MetaSuppliers),
+			reqProcessor.Flags.HasKey(utils.MetaSuppliersIgnoreErrors),
+			reqProcessor.Flags.HasKey(utils.MetaSuppliersEventCost),
+			cgrEv, cgrArgs.ArgDispatcher, *cgrArgs.SupplierPaginator)
 		var eventRply sessions.V1ProcessEventReply
 		err = ra.sessionS.Call(utils.SessionSv1ProcessEvent,
 			evArgs, &eventRply)
@@ -248,7 +255,7 @@ func (ra *RadiusAgent) processRequest(reqProcessor *config.RARequestProcessor,
 	if reqProcessor.Flags.HasKey(utils.MetaCDRs) {
 		var rplyCDRs string
 		if err = ra.sessionS.Call(utils.SessionSv1ProcessCDR,
-			cgrEv, &rplyCDRs); err != nil {
+			&utils.CGREventWithArgDispatcher{CGREvent: cgrEv, ArgDispatcher: cgrArgs.ArgDispatcher}, &rplyCDRs); err != nil {
 			agReq.CGRReply.Set([]string{utils.Error}, err.Error(), false, false)
 		}
 	}

@@ -24,9 +24,12 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/cgrates/cgrates/config"
 	"github.com/cgrates/cgrates/structmatcher"
 	"github.com/cgrates/cgrates/utils"
+	"github.com/cgrates/rpcclient"
 )
 
 type TpReader struct {
@@ -45,31 +48,33 @@ type TpReader struct {
 	ratingPlans        map[string]*RatingPlan
 	ratingProfiles     map[string]*RatingProfile
 	sharedGroups       map[string]*SharedGroup
-	resProfiles        map[utils.TenantID]*utils.TPResource
-	sqProfiles         map[utils.TenantID]*utils.TPStats
-	thProfiles         map[utils.TenantID]*utils.TPThreshold
+	resProfiles        map[utils.TenantID]*utils.TPResourceProfile
+	sqProfiles         map[utils.TenantID]*utils.TPStatProfile
+	thProfiles         map[utils.TenantID]*utils.TPThresholdProfile
 	filters            map[utils.TenantID]*utils.TPFilterProfile
 	sppProfiles        map[utils.TenantID]*utils.TPSupplierProfile
 	attributeProfiles  map[utils.TenantID]*utils.TPAttributeProfile
 	chargerProfiles    map[utils.TenantID]*utils.TPChargerProfile
 	dispatcherProfiles map[utils.TenantID]*utils.TPDispatcherProfile
+	dispatcherHosts    map[utils.TenantID]*utils.TPDispatcherHost
 	resources          []*utils.TenantID // IDs of resources which need creation based on resourceProfiles
 	statQueues         []*utils.TenantID // IDs of statQueues which need creation based on statQueueProfiles
 	thresholds         []*utils.TenantID // IDs of thresholds which need creation based on thresholdProfiles
-	suppliers          []*utils.TenantID // IDs of suppliers which need creation based on sppProfiles
-	attrTntID          []*utils.TenantID // IDs of suppliers which need creation based on attributeProfiles
-	chargers           []*utils.TenantID // IDs of chargers which need creation based on chargerProfiles
-	dpps               []*utils.TenantID // IDs of chargers which need creation based on dispatcherProfiles
 	revDests,
 	acntActionPlans map[string][]string
+	cacheS     rpcclient.RpcClientConnection
+	schedulerS rpcclient.RpcClientConnection
 }
 
-func NewTpReader(db DataDB, lr LoadReader, tpid, timezone string) *TpReader {
+func NewTpReader(db DataDB, lr LoadReader, tpid, timezone string,
+	cacheS rpcclient.RpcClientConnection, schedulerS rpcclient.RpcClientConnection) *TpReader {
 	tpr := &TpReader{
-		tpid:     tpid,
-		timezone: timezone,
-		dm:       NewDataManager(db),
-		lr:       lr,
+		tpid:       tpid,
+		timezone:   timezone,
+		dm:         NewDataManager(db),
+		lr:         lr,
+		cacheS:     cacheS,
+		schedulerS: schedulerS,
 	}
 	tpr.Init()
 	//add *any and *asap timing tag (in case of no timings file)
@@ -124,13 +129,14 @@ func (tpr *TpReader) Init() {
 	tpr.ratingProfiles = make(map[string]*RatingProfile)
 	tpr.sharedGroups = make(map[string]*SharedGroup)
 	tpr.accountActions = make(map[string]*Account)
-	tpr.resProfiles = make(map[utils.TenantID]*utils.TPResource)
-	tpr.sqProfiles = make(map[utils.TenantID]*utils.TPStats)
-	tpr.thProfiles = make(map[utils.TenantID]*utils.TPThreshold)
+	tpr.resProfiles = make(map[utils.TenantID]*utils.TPResourceProfile)
+	tpr.sqProfiles = make(map[utils.TenantID]*utils.TPStatProfile)
+	tpr.thProfiles = make(map[utils.TenantID]*utils.TPThresholdProfile)
 	tpr.sppProfiles = make(map[utils.TenantID]*utils.TPSupplierProfile)
 	tpr.attributeProfiles = make(map[utils.TenantID]*utils.TPAttributeProfile)
 	tpr.chargerProfiles = make(map[utils.TenantID]*utils.TPChargerProfile)
 	tpr.dispatcherProfiles = make(map[utils.TenantID]*utils.TPDispatcherProfile)
+	tpr.dispatcherHosts = make(map[utils.TenantID]*utils.TPDispatcherHost)
 	tpr.filters = make(map[utils.TenantID]*utils.TPFilterProfile)
 	tpr.revDests = make(map[string][]string)
 	tpr.acntActionPlans = make(map[string][]string)
@@ -1103,7 +1109,7 @@ func (tpr *TpReader) LoadResourceProfilesFiltered(tag string) (err error) {
 	if err != nil {
 		return err
 	}
-	mapRsPfls := make(map[utils.TenantID]*utils.TPResource)
+	mapRsPfls := make(map[utils.TenantID]*utils.TPResourceProfile)
 	for _, rl := range rls {
 		mapRsPfls[utils.TenantID{Tenant: rl.Tenant, ID: rl.ID}] = rl
 	}
@@ -1127,7 +1133,7 @@ func (tpr *TpReader) LoadStatsFiltered(tag string) (err error) {
 	if err != nil {
 		return err
 	}
-	mapSTs := make(map[utils.TenantID]*utils.TPStats)
+	mapSTs := make(map[utils.TenantID]*utils.TPStatProfile)
 	for _, st := range tps {
 		mapSTs[utils.TenantID{Tenant: st.Tenant, ID: st.ID}] = st
 	}
@@ -1151,7 +1157,7 @@ func (tpr *TpReader) LoadThresholdsFiltered(tag string) (err error) {
 	if err != nil {
 		return err
 	}
-	mapTHs := make(map[utils.TenantID]*utils.TPThreshold)
+	mapTHs := make(map[utils.TenantID]*utils.TPThresholdProfile)
 	for _, th := range tps {
 		mapTHs[utils.TenantID{Tenant: th.Tenant, ID: th.ID}] = th
 	}
@@ -1197,13 +1203,6 @@ func (tpr *TpReader) LoadSupplierProfilesFiltered(tag string) (err error) {
 		mapRsPfls[utils.TenantID{Tenant: rl.Tenant, ID: rl.ID}] = rl
 	}
 	tpr.sppProfiles = mapRsPfls
-	for tntID := range mapRsPfls {
-		if has, err := tpr.dm.HasData(utils.SupplierProfilePrefix, tntID.ID, tntID.Tenant); err != nil {
-			return err
-		} else if !has {
-			tpr.suppliers = append(tpr.suppliers, &utils.TenantID{Tenant: tntID.Tenant, ID: tntID.ID})
-		}
-	}
 	return nil
 }
 
@@ -1221,13 +1220,6 @@ func (tpr *TpReader) LoadAttributeProfilesFiltered(tag string) (err error) {
 		mapAttrPfls[utils.TenantID{Tenant: attr.Tenant, ID: attr.ID}] = attr
 	}
 	tpr.attributeProfiles = mapAttrPfls
-	for tntID := range mapAttrPfls {
-		if has, err := tpr.dm.HasData(utils.AttributeProfilePrefix, tntID.ID, tntID.Tenant); err != nil {
-			return err
-		} else if !has {
-			tpr.attrTntID = append(tpr.attrTntID, &utils.TenantID{Tenant: tntID.Tenant, ID: tntID.ID})
-		}
-	}
 	return nil
 }
 
@@ -1245,13 +1237,6 @@ func (tpr *TpReader) LoadChargerProfilesFiltered(tag string) (err error) {
 		mapChargerProfile[utils.TenantID{Tenant: rl.Tenant, ID: rl.ID}] = rl
 	}
 	tpr.chargerProfiles = mapChargerProfile
-	for tntID := range mapChargerProfile {
-		if has, err := tpr.dm.HasData(utils.ChargerProfilePrefix, tntID.ID, tntID.Tenant); err != nil {
-			return err
-		} else if !has {
-			tpr.chargers = append(tpr.chargers, &utils.TenantID{Tenant: tntID.Tenant, ID: tntID.ID})
-		}
-	}
 	return nil
 }
 
@@ -1260,7 +1245,7 @@ func (tpr *TpReader) LoadChargerProfiles() error {
 }
 
 func (tpr *TpReader) LoadDispatcherProfilesFiltered(tag string) (err error) {
-	rls, err := tpr.lr.GetTPDispatchers(tpr.tpid, "", tag)
+	rls, err := tpr.lr.GetTPDispatcherProfiles(tpr.tpid, "", tag)
 	if err != nil {
 		return err
 	}
@@ -1269,18 +1254,28 @@ func (tpr *TpReader) LoadDispatcherProfilesFiltered(tag string) (err error) {
 		mapDispatcherProfile[utils.TenantID{Tenant: rl.Tenant, ID: rl.ID}] = rl
 	}
 	tpr.dispatcherProfiles = mapDispatcherProfile
-	for tntID := range mapDispatcherProfile {
-		if has, err := tpr.dm.HasData(utils.DispatcherProfilePrefix, tntID.ID, tntID.Tenant); err != nil {
-			return err
-		} else if !has {
-			tpr.dpps = append(tpr.dpps, &utils.TenantID{Tenant: tntID.Tenant, ID: tntID.ID})
-		}
-	}
 	return nil
 }
 
 func (tpr *TpReader) LoadDispatcherProfiles() error {
 	return tpr.LoadDispatcherProfilesFiltered("")
+}
+
+func (tpr *TpReader) LoadDispatcherHostsFiltered(tag string) (err error) {
+	rls, err := tpr.lr.GetTPDispatcherHosts(tpr.tpid, "", tag)
+	if err != nil {
+		return err
+	}
+	mapDispatcherHost := make(map[utils.TenantID]*utils.TPDispatcherHost)
+	for _, rl := range rls {
+		mapDispatcherHost[utils.TenantID{Tenant: rl.Tenant, ID: rl.ID}] = rl
+	}
+	tpr.dispatcherHosts = mapDispatcherHost
+	return nil
+}
+
+func (tpr *TpReader) LoadDispatcherHosts() error {
+	return tpr.LoadDispatcherHostsFiltered("")
 }
 
 func (tpr *TpReader) LoadAll() (err error) {
@@ -1341,6 +1336,9 @@ func (tpr *TpReader) LoadAll() (err error) {
 	if err = tpr.LoadDispatcherProfiles(); err != nil && err.Error() != utils.NotFoundCaps {
 		return
 	}
+	if err = tpr.LoadDispatcherHosts(); err != nil && err.Error() != utils.NotFoundCaps {
+		return
+	}
 	return nil
 }
 
@@ -1375,6 +1373,9 @@ func (tpr *TpReader) WriteToDatabase(flush, verbose, disable_reverse bool) (err 
 		// 	return
 		// }
 	}
+	//generate a loadID
+	loadID := time.Now().UnixNano()
+	loadIDs := make(map[string]int64)
 	if verbose {
 		log.Print("Destinations:")
 	}
@@ -1386,6 +1387,12 @@ func (tpr *TpReader) WriteToDatabase(flush, verbose, disable_reverse bool) (err 
 		if verbose {
 			log.Print("\t", d.Id, " : ", d.Prefixes)
 		}
+	}
+	if len(tpr.destinations) != 0 {
+		loadIDs[utils.CacheDestinations] = loadID
+	}
+	if len(tpr.revDests) != 0 {
+		loadIDs[utils.CacheReverseDestinations] = loadID
 	}
 	if verbose {
 		log.Print("Reverse Destinations:")
@@ -1403,6 +1410,9 @@ func (tpr *TpReader) WriteToDatabase(flush, verbose, disable_reverse bool) (err 
 			log.Print("\t", rp.Id)
 		}
 	}
+	if len(tpr.ratingPlans) != 0 {
+		loadIDs[utils.CacheRatingPlans] = loadID
+	}
 	if verbose {
 		log.Print("Rating Profiles:")
 	}
@@ -1414,6 +1424,9 @@ func (tpr *TpReader) WriteToDatabase(flush, verbose, disable_reverse bool) (err 
 		if verbose {
 			log.Print("\t", rp.Id)
 		}
+	}
+	if len(tpr.ratingProfiles) != 0 {
+		loadIDs[utils.CacheRatingProfiles] = loadID
 	}
 	if verbose {
 		log.Print("Action Plans:")
@@ -1456,6 +1469,12 @@ func (tpr *TpReader) WriteToDatabase(flush, verbose, disable_reverse bool) (err 
 			log.Println("\t", k)
 		}
 	}
+	if len(tpr.actionPlans) != 0 {
+		loadIDs[utils.CacheActionPlans] = loadID
+	}
+	if len(tpr.acntActionPlans) != 0 {
+		loadIDs[utils.CacheAccountActionPlans] = loadID
+	}
 	if verbose {
 		log.Print("Account Action Plans:")
 		for id, vals := range tpr.acntActionPlans {
@@ -1474,6 +1493,9 @@ func (tpr *TpReader) WriteToDatabase(flush, verbose, disable_reverse bool) (err 
 			log.Println("\t", k)
 		}
 	}
+	if len(tpr.actionsTriggers) != 0 {
+		loadIDs[utils.CacheActionTriggers] = loadID
+	}
 	if verbose {
 		log.Print("Shared Groups:")
 	}
@@ -1486,6 +1508,9 @@ func (tpr *TpReader) WriteToDatabase(flush, verbose, disable_reverse bool) (err 
 			log.Println("\t", k)
 		}
 	}
+	if len(tpr.sharedGroups) != 0 {
+		loadIDs[utils.CacheSharedGroups] = loadID
+	}
 	if verbose {
 		log.Print("Actions:")
 	}
@@ -1497,6 +1522,9 @@ func (tpr *TpReader) WriteToDatabase(flush, verbose, disable_reverse bool) (err 
 		if verbose {
 			log.Println("\t", k)
 		}
+	}
+	if len(tpr.actions) != 0 {
+		loadIDs[utils.CacheActions] = loadID
 	}
 	if verbose {
 		log.Print("Account Actions:")
@@ -1525,6 +1553,9 @@ func (tpr *TpReader) WriteToDatabase(flush, verbose, disable_reverse bool) (err 
 			log.Print("\t", th.TenantID())
 		}
 	}
+	if len(tpr.filters) != 0 {
+		loadIDs[utils.CacheFilters] = loadID
+	}
 	if verbose {
 		log.Print("ResourceProfiles:")
 	}
@@ -1540,6 +1571,9 @@ func (tpr *TpReader) WriteToDatabase(flush, verbose, disable_reverse bool) (err 
 			log.Print("\t", rsp.TenantID())
 		}
 	}
+	if len(tpr.resProfiles) != 0 {
+		loadIDs[utils.CacheResourceProfiles] = loadID
+	}
 	if verbose {
 		log.Print("Resources:")
 	}
@@ -1550,6 +1584,9 @@ func (tpr *TpReader) WriteToDatabase(flush, verbose, disable_reverse bool) (err 
 		if verbose {
 			log.Print("\t", rTid.TenantID())
 		}
+	}
+	if len(tpr.resources) != 0 {
+		loadIDs[utils.CacheResources] = loadID
 	}
 	if verbose {
 		log.Print("StatQueueProfiles:")
@@ -1566,17 +1603,21 @@ func (tpr *TpReader) WriteToDatabase(flush, verbose, disable_reverse bool) (err 
 			log.Print("\t", st.TenantID())
 		}
 	}
+	if len(tpr.sqProfiles) != 0 {
+		loadIDs[utils.CacheStatQueueProfiles] = loadID
+	}
 	if verbose {
 		log.Print("StatQueues:")
 	}
 	for _, sqTntID := range tpr.statQueues {
 		metrics := make(map[string]StatMetric)
-		for _, metricID := range tpr.sqProfiles[utils.TenantID{Tenant: sqTntID.Tenant, ID: sqTntID.ID}].Metrics {
-			if metric, err := NewStatMetric(metricID,
-				tpr.sqProfiles[utils.TenantID{Tenant: sqTntID.Tenant, ID: sqTntID.ID}].MinItems); err != nil {
+		for _, metric := range tpr.sqProfiles[utils.TenantID{Tenant: sqTntID.Tenant, ID: sqTntID.ID}].Metrics {
+			if stsMetric, err := NewStatMetric(metric.MetricID,
+				tpr.sqProfiles[utils.TenantID{Tenant: sqTntID.Tenant, ID: sqTntID.ID}].MinItems,
+				metric.FilterIDs); err != nil {
 				return err
 			} else {
-				metrics[metricID] = metric
+				metrics[metric.MetricID] = stsMetric
 			}
 		}
 		sq := &StatQueue{Tenant: sqTntID.Tenant, ID: sqTntID.ID, SQMetrics: metrics}
@@ -1586,6 +1627,9 @@ func (tpr *TpReader) WriteToDatabase(flush, verbose, disable_reverse bool) (err 
 		if verbose {
 			log.Print("\t", sqTntID.TenantID())
 		}
+	}
+	if len(tpr.statQueues) != 0 {
+		loadIDs[utils.CacheStatQueues] = loadID
 	}
 	if verbose {
 		log.Print("ThresholdProfiles:")
@@ -1602,6 +1646,9 @@ func (tpr *TpReader) WriteToDatabase(flush, verbose, disable_reverse bool) (err 
 			log.Print("\t", th.TenantID())
 		}
 	}
+	if len(tpr.thProfiles) != 0 {
+		loadIDs[utils.CacheThresholdProfiles] = loadID
+	}
 	if verbose {
 		log.Print("Thresholds:")
 	}
@@ -1613,7 +1660,9 @@ func (tpr *TpReader) WriteToDatabase(flush, verbose, disable_reverse bool) (err 
 			log.Print("\t", thd.TenantID())
 		}
 	}
-
+	if len(tpr.thresholds) != 0 {
+		loadIDs[utils.CacheThresholds] = loadID
+	}
 	if verbose {
 		log.Print("SupplierProfiles:")
 	}
@@ -1629,7 +1678,9 @@ func (tpr *TpReader) WriteToDatabase(flush, verbose, disable_reverse bool) (err 
 			log.Print("\t", th.TenantID())
 		}
 	}
-
+	if len(tpr.sppProfiles) != 0 {
+		loadIDs[utils.CacheSupplierProfiles] = loadID
+	}
 	if verbose {
 		log.Print("AttributeProfiles:")
 	}
@@ -1645,7 +1696,9 @@ func (tpr *TpReader) WriteToDatabase(flush, verbose, disable_reverse bool) (err 
 			log.Print("\t", th.TenantID())
 		}
 	}
-
+	if len(tpr.attributeProfiles) != 0 {
+		loadIDs[utils.CacheAttributeProfiles] = loadID
+	}
 	if verbose {
 		log.Print("ChargerProfiles:")
 	}
@@ -1662,7 +1715,9 @@ func (tpr *TpReader) WriteToDatabase(flush, verbose, disable_reverse bool) (err 
 			log.Print("\t", th.TenantID())
 		}
 	}
-
+	if len(tpr.chargerProfiles) != 0 {
+		loadIDs[utils.CacheChargerProfiles] = loadID
+	}
 	if verbose {
 		log.Print("DispatcherProfiles:")
 	}
@@ -1678,6 +1733,24 @@ func (tpr *TpReader) WriteToDatabase(flush, verbose, disable_reverse bool) (err 
 			log.Print("\t", th.TenantID())
 		}
 	}
+	if len(tpr.dispatcherProfiles) != 0 {
+		loadIDs[utils.CacheDispatcherProfiles] = loadID
+	}
+	if verbose {
+		log.Print("DispatcherHosts:")
+	}
+	for _, tpTH := range tpr.dispatcherHosts {
+		th := APItoDispatcherHost(tpTH)
+		if err = tpr.dm.SetDispatcherHost(th); err != nil {
+			return err
+		}
+		if verbose {
+			log.Print("\t", th.TenantID())
+		}
+	}
+	if len(tpr.dispatcherHosts) != 0 {
+		loadIDs[utils.CacheDispatcherHosts] = loadID
+	}
 
 	if verbose {
 		log.Print("Timings:")
@@ -1689,6 +1762,9 @@ func (tpr *TpReader) WriteToDatabase(flush, verbose, disable_reverse bool) (err 
 		if verbose {
 			log.Print("\t", t.ID)
 		}
+	}
+	if len(tpr.timings) != 0 {
+		loadIDs[utils.CacheTimings] = loadID
 	}
 	if !disable_reverse {
 		if len(tpr.destinations) > 0 {
@@ -1707,6 +1783,9 @@ func (tpr *TpReader) WriteToDatabase(flush, verbose, disable_reverse bool) (err 
 				return err
 			}
 		}
+	}
+	if err = tpr.dm.SetLoadIDs(loadIDs); err != nil {
+		return err
 	}
 	return
 }
@@ -1778,6 +1857,8 @@ func (tpr *TpReader) ShowStatistics() {
 	log.Print("ChargerProfiles: ", len(tpr.chargerProfiles))
 	// Dispatcher profiles
 	log.Print("DispatcherProfiles: ", len(tpr.dispatcherProfiles))
+	// Dispatcher Hosts
+	log.Print("DispatcherHosts: ", len(tpr.dispatcherHosts))
 }
 
 // Returns the identities loaded for a specific category, useful for cache reloads
@@ -1919,11 +2000,22 @@ func (tpr *TpReader) GetLoadedIds(categ string) ([]string, error) {
 			i++
 		}
 		return keys, nil
+
+	case utils.DispatcherHostPrefix:
+		keys := make([]string, len(tpr.dispatcherHosts))
+		i := 0
+		for k := range tpr.dispatcherHosts {
+			keys[i] = k.TenantID()
+			i++
+		}
+		return keys, nil
 	}
 	return nil, errors.New("Unsupported load category")
 }
 
 func (tpr *TpReader) RemoveFromDatabase(verbose, disable_reverse bool) (err error) {
+	loadID := time.Now().UnixNano()
+	loadIDs := make(map[string]int64)
 	for _, d := range tpr.destinations {
 		err = tpr.dm.DataDB().RemoveDestination(d.Id, utils.NonTransactional)
 		if err != nil {
@@ -2030,21 +2122,10 @@ func (tpr *TpReader) RemoveFromDatabase(verbose, disable_reverse bool) (err erro
 		}
 	}
 	if verbose {
-		log.Print("Filters:")
-	}
-	for _, tpTH := range tpr.filters {
-		if err = tpr.dm.RemoveFilter(tpTH.Tenant, tpTH.ID, utils.NonTransactional); err != nil {
-			return err
-		}
-		if verbose {
-			log.Print("\t", tpTH.Tenant)
-		}
-	}
-	if verbose {
 		log.Print("ResourceProfiles:")
 	}
 	for _, tpRsp := range tpr.resProfiles {
-		if err = tpr.dm.RemoveResourceProfile(tpRsp.Tenant, tpRsp.ID, utils.NonTransactional, false); err != nil {
+		if err = tpr.dm.RemoveResourceProfile(tpRsp.Tenant, tpRsp.ID, utils.NonTransactional, true); err != nil {
 			return err
 		}
 		if verbose {
@@ -2066,7 +2147,7 @@ func (tpr *TpReader) RemoveFromDatabase(verbose, disable_reverse bool) (err erro
 		log.Print("StatQueueProfiles:")
 	}
 	for _, tpST := range tpr.sqProfiles {
-		if err = tpr.dm.RemoveStatQueueProfile(tpST.Tenant, tpST.ID, utils.NonTransactional, false); err != nil {
+		if err = tpr.dm.RemoveStatQueueProfile(tpST.Tenant, tpST.ID, utils.NonTransactional, true); err != nil {
 			return err
 		}
 		if verbose {
@@ -2088,7 +2169,7 @@ func (tpr *TpReader) RemoveFromDatabase(verbose, disable_reverse bool) (err erro
 		log.Print("ThresholdProfiles:")
 	}
 	for _, tpTH := range tpr.thProfiles {
-		if err = tpr.dm.RemoveThresholdProfile(tpTH.Tenant, tpTH.ID, utils.NonTransactional, false); err != nil {
+		if err = tpr.dm.RemoveThresholdProfile(tpTH.Tenant, tpTH.ID, utils.NonTransactional, true); err != nil {
 			return err
 		}
 		if verbose {
@@ -2111,7 +2192,7 @@ func (tpr *TpReader) RemoveFromDatabase(verbose, disable_reverse bool) (err erro
 		log.Print("SupplierProfiles:")
 	}
 	for _, tpTH := range tpr.sppProfiles {
-		if err = tpr.dm.RemoveSupplierProfile(tpTH.Tenant, tpTH.ID, utils.NonTransactional, false); err != nil {
+		if err = tpr.dm.RemoveSupplierProfile(tpTH.Tenant, tpTH.ID, utils.NonTransactional, true); err != nil {
 			return err
 		}
 		if verbose {
@@ -2124,7 +2205,7 @@ func (tpr *TpReader) RemoveFromDatabase(verbose, disable_reverse bool) (err erro
 	}
 	for _, tpTH := range tpr.attributeProfiles {
 		if err = tpr.dm.RemoveAttributeProfile(tpTH.Tenant, tpTH.ID,
-			utils.NonTransactional, false); err != nil && err.Error() != utils.ErrNotFound.Error() {
+			utils.NonTransactional, true); err != nil {
 			return err
 		}
 		if verbose {
@@ -2136,7 +2217,7 @@ func (tpr *TpReader) RemoveFromDatabase(verbose, disable_reverse bool) (err erro
 		log.Print("ChargerProfiles:")
 	}
 	for _, tpTH := range tpr.chargerProfiles {
-		if err = tpr.dm.RemoveChargerProfile(tpTH.Tenant, tpTH.ID, utils.NonTransactional, false); err != nil {
+		if err = tpr.dm.RemoveChargerProfile(tpTH.Tenant, tpTH.ID, utils.NonTransactional, true); err != nil {
 			return err
 		}
 		if verbose {
@@ -2148,7 +2229,18 @@ func (tpr *TpReader) RemoveFromDatabase(verbose, disable_reverse bool) (err erro
 		log.Print("DispatcherProfiles:")
 	}
 	for _, tpTH := range tpr.dispatcherProfiles {
-		if err = tpr.dm.RemoveDispatcherProfile(tpTH.Tenant, tpTH.ID, utils.NonTransactional, false); err != nil {
+		if err = tpr.dm.RemoveDispatcherProfile(tpTH.Tenant, tpTH.ID, utils.NonTransactional, true); err != nil {
+			return err
+		}
+		if verbose {
+			log.Print("\t", tpTH.Tenant)
+		}
+	}
+	if verbose {
+		log.Print("DispatcherHosts:")
+	}
+	for _, tpTH := range tpr.dispatcherHosts {
+		if err = tpr.dm.RemoveDispatcherHost(tpTH.Tenant, tpTH.ID, utils.NonTransactional); err != nil {
 			return err
 		}
 		if verbose {
@@ -2185,5 +2277,228 @@ func (tpr *TpReader) RemoveFromDatabase(verbose, disable_reverse bool) (err erro
 			}
 		}
 	}
+	//We remove the filters at the end because of indexes
+	if verbose {
+		log.Print("Filters:")
+	}
+	for _, tpTH := range tpr.filters {
+		if err = tpr.dm.RemoveFilter(tpTH.Tenant, tpTH.ID, utils.NonTransactional); err != nil {
+			return err
+		}
+		if verbose {
+			log.Print("\t", tpTH.Tenant)
+		}
+	}
+	if len(tpr.destinations) != 0 {
+		loadIDs[utils.CacheDestinations] = loadID
+	}
+	if len(tpr.revDests) != 0 {
+		loadIDs[utils.CacheReverseDestinations] = loadID
+	}
+	if len(tpr.ratingPlans) != 0 {
+		loadIDs[utils.CacheRatingPlans] = loadID
+	}
+	if len(tpr.ratingProfiles) != 0 {
+		loadIDs[utils.CacheRatingProfiles] = loadID
+	}
+	if len(tpr.actionPlans) != 0 {
+		loadIDs[utils.CacheActionPlans] = loadID
+	}
+	if len(tpr.acntActionPlans) != 0 {
+		loadIDs[utils.CacheAccountActionPlans] = loadID
+	}
+	if len(tpr.actionsTriggers) != 0 {
+		loadIDs[utils.CacheActionTriggers] = loadID
+	}
+	if len(tpr.sharedGroups) != 0 {
+		loadIDs[utils.CacheSharedGroups] = loadID
+	}
+	if len(tpr.actions) != 0 {
+		loadIDs[utils.CacheActions] = loadID
+	}
+	if len(tpr.filters) != 0 {
+		loadIDs[utils.CacheFilters] = loadID
+	}
+	if len(tpr.resProfiles) != 0 {
+		loadIDs[utils.CacheResourceProfiles] = loadID
+	}
+	if len(tpr.resources) != 0 {
+		loadIDs[utils.CacheResources] = loadID
+	}
+	if len(tpr.sqProfiles) != 0 {
+		loadIDs[utils.CacheStatQueueProfiles] = loadID
+	}
+	if len(tpr.statQueues) != 0 {
+		loadIDs[utils.CacheStatQueues] = loadID
+	}
+	if len(tpr.thProfiles) != 0 {
+		loadIDs[utils.CacheThresholdProfiles] = loadID
+	}
+	if len(tpr.thresholds) != 0 {
+		loadIDs[utils.CacheThresholds] = loadID
+	}
+	if len(tpr.sppProfiles) != 0 {
+		loadIDs[utils.CacheSupplierProfiles] = loadID
+	}
+	if len(tpr.attributeProfiles) != 0 {
+		loadIDs[utils.CacheAttributeProfiles] = loadID
+	}
+	if len(tpr.chargerProfiles) != 0 {
+		loadIDs[utils.CacheChargerProfiles] = loadID
+	}
+	if len(tpr.dispatcherProfiles) != 0 {
+		loadIDs[utils.CacheDispatcherProfiles] = loadID
+	}
+	if len(tpr.dispatcherHosts) != 0 {
+		loadIDs[utils.CacheDispatcherHosts] = loadID
+	}
+	if len(tpr.timings) != 0 {
+		loadIDs[utils.CacheTimings] = loadID
+	}
+	if err = tpr.dm.SetLoadIDs(loadIDs); err != nil {
+		return err
+	}
+	return
+}
+
+func (tpr *TpReader) ReloadCache(flush, verbose bool, argDispatcher *utils.ArgDispatcher) (err error) {
+	if tpr.cacheS == nil {
+		log.Print("Disabled automatic reload")
+		return
+	}
+	// take IDs for each type
+	dstIds, _ := tpr.GetLoadedIds(utils.DESTINATION_PREFIX)
+	revDstIDs, _ := tpr.GetLoadedIds(utils.REVERSE_DESTINATION_PREFIX)
+	rplIds, _ := tpr.GetLoadedIds(utils.RATING_PLAN_PREFIX)
+	rpfIds, _ := tpr.GetLoadedIds(utils.RATING_PROFILE_PREFIX)
+	actIds, _ := tpr.GetLoadedIds(utils.ACTION_PREFIX)
+	aapIDs, _ := tpr.GetLoadedIds(utils.AccountActionPlansPrefix)
+	shgIds, _ := tpr.GetLoadedIds(utils.SHARED_GROUP_PREFIX)
+	rspIDs, _ := tpr.GetLoadedIds(utils.ResourceProfilesPrefix)
+	resIDs, _ := tpr.GetLoadedIds(utils.ResourcesPrefix)
+	aatIDs, _ := tpr.GetLoadedIds(utils.ACTION_TRIGGER_PREFIX)
+	stqIDs, _ := tpr.GetLoadedIds(utils.StatQueuePrefix)
+	stqpIDs, _ := tpr.GetLoadedIds(utils.StatQueueProfilePrefix)
+	trsIDs, _ := tpr.GetLoadedIds(utils.ThresholdPrefix)
+	trspfIDs, _ := tpr.GetLoadedIds(utils.ThresholdProfilePrefix)
+	flrIDs, _ := tpr.GetLoadedIds(utils.FilterPrefix)
+	spfIDs, _ := tpr.GetLoadedIds(utils.SupplierProfilePrefix)
+	apfIDs, _ := tpr.GetLoadedIds(utils.AttributeProfilePrefix)
+	chargerIDs, _ := tpr.GetLoadedIds(utils.ChargerProfilePrefix)
+	dppIDs, _ := tpr.GetLoadedIds(utils.DispatcherProfilePrefix)
+	dphIDs, _ := tpr.GetLoadedIds(utils.DispatcherHostPrefix)
+	aps, _ := tpr.GetLoadedIds(utils.ACTION_PLAN_PREFIX)
+
+	//compose Reload Cache argument
+	cacheArgs := utils.AttrReloadCacheWithArgDispatcher{
+		ArgDispatcher: argDispatcher,
+		AttrReloadCache: utils.AttrReloadCache{
+			ArgsCache: utils.ArgsCache{
+				DestinationIDs:        &dstIds,
+				ReverseDestinationIDs: &revDstIDs,
+				RatingPlanIDs:         &rplIds,
+				RatingProfileIDs:      &rpfIds,
+				ActionIDs:             &actIds,
+				ActionPlanIDs:         &aps,
+				AccountActionPlanIDs:  &aapIDs,
+				SharedGroupIDs:        &shgIds,
+				ResourceProfileIDs:    &rspIDs,
+				ResourceIDs:           &resIDs,
+				ActionTriggerIDs:      &aatIDs,
+				StatsQueueIDs:         &stqIDs,
+				StatsQueueProfileIDs:  &stqpIDs,
+				ThresholdIDs:          &trsIDs,
+				ThresholdProfileIDs:   &trspfIDs,
+				FilterIDs:             &flrIDs,
+				SupplierProfileIDs:    &spfIDs,
+				AttributeProfileIDs:   &apfIDs,
+				ChargerProfileIDs:     &chargerIDs,
+				DispatcherProfileIDs:  &dppIDs,
+				DispatcherHostIDs:     &dphIDs,
+			},
+			FlushAll: flush,
+		},
+	}
+
+	if verbose {
+		log.Print("Reloading cache")
+	}
+	var reply string
+	switch config.CgrConfig().GeneralCfg().DefaultCaching {
+	case utils.META_NONE:
+		return
+	case utils.MetaReload:
+		if err = tpr.cacheS.Call(utils.CacheSv1ReloadCache, cacheArgs, &reply); err != nil {
+			return
+		}
+	case utils.MetaLoad:
+		if err = tpr.cacheS.Call(utils.CacheSv1LoadCache, cacheArgs, &reply); err != nil {
+			return
+		}
+	case utils.MetaRemove:
+		//
+	case utils.MetaClear:
+		if err = tpr.cacheS.Call(utils.CacheSv1FlushCache, cacheArgs, &reply); err != nil {
+			return
+		}
+	}
+
+	// verify if we need to clear indexes
+	var cacheIDs []string
+	if len(apfIDs) != 0 {
+		cacheIDs = append(cacheIDs, utils.CacheAttributeFilterIndexes)
+	}
+	if len(spfIDs) != 0 {
+		cacheIDs = append(cacheIDs, utils.CacheSupplierFilterIndexes)
+	}
+	if len(trspfIDs) != 0 {
+		cacheIDs = append(cacheIDs, utils.CacheThresholdFilterIndexes)
+	}
+	if len(stqpIDs) != 0 {
+		cacheIDs = append(cacheIDs, utils.CacheStatFilterIndexes)
+	}
+	if len(rspIDs) != 0 {
+		cacheIDs = append(cacheIDs, utils.CacheResourceFilterIndexes)
+	}
+	if len(chargerIDs) != 0 {
+		cacheIDs = append(cacheIDs, utils.CacheChargerFilterIndexes)
+	}
+	if len(dppIDs) != 0 {
+		cacheIDs = append(cacheIDs, utils.CacheDispatcherFilterIndexes)
+	}
+	if verbose {
+		log.Print("Clearing indexes")
+	}
+	clearArgs := &utils.AttrCacheIDsWithArgDispatcher{
+		ArgDispatcher: argDispatcher,
+		CacheIDs:      cacheIDs,
+	}
+	if err = tpr.cacheS.Call(utils.CacheSv1Clear, clearArgs, &reply); err != nil {
+		log.Printf("WARNING: Got error on cache clear: %s\n", err.Error())
+	}
+
+	// in case we have action plans reload the scheduler
+	if len(aps) != 0 {
+		if verbose {
+			log.Print("Reloading scheduler")
+		}
+		if err = tpr.schedulerS.Call(utils.SchedulerSv1Reload,
+			new(utils.CGREventWithArgDispatcher), &reply); err != nil {
+			log.Printf("WARNING: Got error on scheduler reload: %s\n", err.Error())
+		}
+	}
+
+	//get loadIDs for all types
+	loadIDs, err := tpr.dm.GetItemLoadIDs(utils.EmptyString, false)
+	if err != nil {
+		return err
+	}
+	cacheLoadIDs := populateCacheLoadIDs(loadIDs, cacheArgs.AttrReloadCache)
+	for key, val := range cacheLoadIDs {
+		Cache.Set(utils.CacheLoadIDs, key, val, nil,
+			cacheCommit(utils.NonTransactional), utils.NonTransactional)
+	}
+	// release the reader with it's structures
+	tpr.Init()
 	return
 }

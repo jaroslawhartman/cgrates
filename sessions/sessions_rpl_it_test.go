@@ -37,13 +37,13 @@ var smgRplcMstrRPC, smgRplcSlvRPC *rpc.Client
 
 func TestSessionSRplInitCfg(t *testing.T) {
 	smgRplcMasterCfgPath = path.Join(*dataDir, "conf", "samples", "smgreplcmaster")
-	if smgRplcMasterCfg, err = config.NewCGRConfigFromFolder(smgRplcMasterCfgPath); err != nil {
+	if smgRplcMasterCfg, err = config.NewCGRConfigFromPath(smgRplcMasterCfgPath); err != nil {
 		t.Fatal(err)
 	}
 	smgRplcMasterCfg.DataFolderPath = *dataDir // Share DataFolderPath through config towards StoreDb for Flush()
 	config.SetCgrConfig(smgRplcMasterCfg)
 	smgRplcSlaveCfgPath = path.Join(*dataDir, "conf", "samples", "smgreplcslave")
-	if smgRplcSlaveCfg, err = config.NewCGRConfigFromFolder(smgRplcSlaveCfgPath); err != nil {
+	if smgRplcSlaveCfg, err = config.NewCGRConfigFromPath(smgRplcSlaveCfgPath); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -86,21 +86,6 @@ func TestSessionSRplTPFromFolder(t *testing.T) {
 		t.Error(err)
 	}
 	time.Sleep(time.Duration(*waitRater) * time.Millisecond) // Give time for scheduler to execute topups
-
-	//add a default charger
-	chargerProfile := &engine.ChargerProfile{
-		Tenant:       "cgrates.org",
-		ID:           "Default",
-		RunID:        "*default",
-		AttributeIDs: []string{"*none"},
-		Weight:       20,
-	}
-	var result string
-	if err := smgRplcMstrRPC.Call("ApierV1.SetChargerProfile", chargerProfile, &result); err != nil {
-		t.Error(err)
-	} else if result != utils.OK {
-		t.Error("Unexpected reply returned", result)
-	}
 }
 
 func TestSessionSRplInitiate(t *testing.T) {
@@ -118,7 +103,7 @@ func TestSessionSRplInitiate(t *testing.T) {
 	usage := time.Duration(1*time.Minute + 30*time.Second)
 	argsInit := &V1InitSessionArgs{
 		InitSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionSRplInitiate",
 			Event: map[string]interface{}{
@@ -176,7 +161,7 @@ func TestSessionSRplUpdate(t *testing.T) {
 	usage := time.Duration(1 * time.Minute)
 	argsUpdate := &V1UpdateSessionArgs{
 		UpdateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionSRplUpdate",
 			Event: map[string]interface{}{
@@ -246,7 +231,7 @@ func TestSessionSRplUpdate(t *testing.T) {
 func TestSessionSRplTerminate(t *testing.T) {
 	args := &V1TerminateSessionArgs{
 		TerminateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionSRplTerminate",
 			Event: map[string]interface{}{
@@ -305,7 +290,7 @@ func TestSessionSRplManualReplicate(t *testing.T) {
 	// create two sessions
 	argsInit1 := &V1InitSessionArgs{
 		InitSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSSv1ItAuth",
 			Event: map[string]interface{}{
@@ -327,7 +312,7 @@ func TestSessionSRplManualReplicate(t *testing.T) {
 
 	argsInit2 := &V1InitSessionArgs{
 		InitSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSSv1ItAuth2",
 			Event: map[string]interface{}{
@@ -385,7 +370,7 @@ func TestSessionSRplManualReplicate(t *testing.T) {
 		t.Error(err, aSessions)
 	}
 	argsRepl := ArgsReplicateSessions{
-		Connections: []*config.HaPoolConfig{
+		Connections: []*config.RemoteHost{
 			{
 				Address:     smgRplcSlaveCfg.ListenCfg().RPCJSONListen,
 				Transport:   utils.MetaJSONrpc,
@@ -410,10 +395,10 @@ func TestSessionSRplManualReplicate(t *testing.T) {
 		t.Errorf("Failed to kill process, error: %v", err.Error())
 	}
 	var status map[string]interface{}
-	if err := smgRplcMstrRPC.Call("Responder.Status", "", &status); err == nil { // master should not longer be reachable
+	if err := smgRplcMstrRPC.Call("Responder.Status", utils.TenantWithArgDispatcher{}, &status); err == nil { // master should not longer be reachable
 		t.Error(err, status)
 	}
-	if err := smgRplcSlvRPC.Call("Responder.Status", "", &status); err != nil { // slave should be still operational
+	if err := smgRplcSlvRPC.Call("Responder.Status", utils.TenantWithArgDispatcher{}, &status); err != nil { // slave should be still operational
 		t.Error(err)
 	}
 	// start master
@@ -433,7 +418,7 @@ func TestSessionSRplManualReplicate(t *testing.T) {
 	// recover passive sessions from slave
 	argsRepl = ArgsReplicateSessions{
 		Passive: true,
-		Connections: []*config.HaPoolConfig{
+		Connections: []*config.RemoteHost{
 			{
 				Address:     smgRplcMasterCfg.ListenCfg().RPCJSONListen,
 				Transport:   utils.MetaJSONrpc,

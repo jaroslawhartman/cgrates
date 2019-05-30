@@ -27,7 +27,7 @@ func (ms *MapStorage) GetTpIds(colName string) (ids []string, err error) {
 	return nil, utils.ErrNotImplemented
 }
 func (ms *MapStorage) GetTpTableIds(tpid, table string, distinct utils.TPDistinctIds,
-	filters map[string]string, paginator *utils.Paginator) (ids []string, err error) {
+	filters map[string]string, paginator *utils.PaginatorWithSearch) (ids []string, err error) {
 	return nil, utils.ErrNotImplemented
 }
 func (ms *MapStorage) GetTPTimings(tpid, id string) (timings []*utils.ApierTPTiming, err error) {
@@ -64,13 +64,13 @@ func (ms *MapStorage) GetTPActionTriggers(tpid, id string) (aTriggers []*utils.T
 func (ms *MapStorage) GetTPAccountActions(filter *utils.TPAccountActions) (accounts []*utils.TPAccountActions, err error) {
 	return nil, utils.ErrNotImplemented
 }
-func (ms *MapStorage) GetTPResources(tpid, tenant, id string) (resources []*utils.TPResource, err error) {
+func (ms *MapStorage) GetTPResources(tpid, tenant, id string) (resources []*utils.TPResourceProfile, err error) {
 	return nil, utils.ErrNotImplemented
 }
-func (ms *MapStorage) GetTPStats(tpid, tenant, id string) (stats []*utils.TPStats, err error) {
+func (ms *MapStorage) GetTPStats(tpid, tenant, id string) (stats []*utils.TPStatProfile, err error) {
 	return nil, utils.ErrNotImplemented
 }
-func (ms *MapStorage) GetTPThresholds(tpid, tenant, id string) (ths []*utils.TPThreshold, err error) {
+func (ms *MapStorage) GetTPThresholds(tpid, tenant, id string) (ths []*utils.TPThresholdProfile, err error) {
 	return nil, utils.ErrNotImplemented
 }
 func (ms *MapStorage) GetTPFilters(tpid, tenant, id string) (fltrs []*utils.TPFilterProfile, err error) {
@@ -85,7 +85,10 @@ func (ms *MapStorage) GetTPAttributes(tpid, tenant, id string) (attrs []*utils.T
 func (ms *MapStorage) GetTPChargers(tpid, tenant, id string) (attrs []*utils.TPChargerProfile, err error) {
 	return nil, utils.ErrNotImplemented
 }
-func (ms *MapStorage) GetTPDispatchers(tpid, tenant, id string) (attrs []*utils.TPDispatcherProfile, err error) {
+func (ms *MapStorage) GetTPDispatcherProfiles(tpid, tenant, id string) (attrs []*utils.TPDispatcherProfile, err error) {
+	return nil, utils.ErrNotImplemented
+}
+func (ms *MapStorage) GetTPDispatcherHosts(tpid, tenant, id string) (attrs []*utils.TPDispatcherHost, err error) {
 	return nil, utils.ErrNotImplemented
 }
 
@@ -126,17 +129,15 @@ func (ms *MapStorage) SetTPActionTriggers(aTriggers []*utils.TPActionTriggers) (
 func (ms *MapStorage) SetTPAccountActions(accActions []*utils.TPAccountActions) (err error) {
 	return utils.ErrNotImplemented
 }
-func (ms *MapStorage) SetTPResources(resources []*utils.TPResource) (err error) {
+func (ms *MapStorage) SetTPResources(resources []*utils.TPResourceProfile) (err error) {
 	return utils.ErrNotImplemented
 }
-func (ms *MapStorage) SetTPStats(stats []*utils.TPStats) (err error) {
+func (ms *MapStorage) SetTPStats(stats []*utils.TPStatProfile) (err error) {
 	return utils.ErrNotImplemented
 }
-
-func (ms *MapStorage) SetTPThresholds(thresholds []*utils.TPThreshold) (err error) {
+func (ms *MapStorage) SetTPThresholds(thresholds []*utils.TPThresholdProfile) (err error) {
 	return utils.ErrNotImplemented
 }
-
 func (ms *MapStorage) SetTPFilters(filters []*utils.TPFilterProfile) (err error) {
 	return utils.ErrNotImplemented
 }
@@ -149,7 +150,10 @@ func (ms *MapStorage) SetTPAttributes(attributes []*utils.TPAttributeProfile) (e
 func (ms *MapStorage) SetTPChargers(cpps []*utils.TPChargerProfile) (err error) {
 	return utils.ErrNotImplemented
 }
-func (ms *MapStorage) SetTPDispatchers(dpps []*utils.TPDispatcherProfile) (err error) {
+func (ms *MapStorage) SetTPDispatcherProfiles(dpps []*utils.TPDispatcherProfile) (err error) {
+	return utils.ErrNotImplemented
+}
+func (ms *MapStorage) SetTPDispatcherHosts(dpps []*utils.TPDispatcherHost) (err error) {
 	return utils.ErrNotImplemented
 }
 
@@ -158,6 +162,9 @@ func (ms *MapStorage) SetCDR(cdr *CDR, allowUpdate bool) (err error) {
 	return utils.ErrNotImplemented
 }
 func (ms *MapStorage) RemoveSMCost(smc *SMCost) (err error) {
+	return utils.ErrNotImplemented
+}
+func (ms *MapStorage) RemoveSMCosts(qryFltr *utils.SMCostFilter) error {
 	return utils.ErrNotImplemented
 }
 func (ms *MapStorage) GetCDRs(filter *utils.CDRsFilter, remove bool) (cdrs []*CDR, count int64, err error) {

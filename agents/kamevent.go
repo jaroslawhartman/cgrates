@@ -175,7 +175,7 @@ func (kev KamEvent) V1AuthorizeArgs() (args *sessions.V1AuthorizeArgs) {
 	}
 	args = &sessions.V1AuthorizeArgs{
 		GetMaxUsage: true,
-		CGREvent:    *cgrEv,
+		CGREvent:    cgrEv,
 	}
 	subsystems, has := kev[utils.CGRSubsystems]
 	if !has {
@@ -191,6 +191,9 @@ func (kev KamEvent) V1AuthorizeArgs() (args *sessions.V1AuthorizeArgs) {
 	args.GetAttributes = strings.Index(subsystems, utils.MetaAttributes) != -1
 	args.ProcessThresholds = strings.Index(subsystems, utils.MetaThresholds) != -1
 	args.ProcessStats = strings.Index(subsystems, utils.MetaStats) != -1
+	cgrArgs := cgrEv.ConsumeArgs(strings.Index(subsystems, utils.MetaDispatchers) != -1, true)
+	args.ArgDispatcher = cgrArgs.ArgDispatcher
+	args.Paginator = *cgrArgs.SupplierPaginator
 	return
 }
 
@@ -243,7 +246,7 @@ func (kev KamEvent) V1InitSessionArgs() (args *sessions.V1InitSessionArgs) {
 	}
 	args = &sessions.V1InitSessionArgs{ // defaults
 		InitSession: true,
-		CGREvent:    *cgrEv,
+		CGREvent:    cgrEv,
 	}
 	subsystems, has := kev[utils.CGRSubsystems]
 	if !has {
@@ -254,6 +257,8 @@ func (kev KamEvent) V1InitSessionArgs() (args *sessions.V1InitSessionArgs) {
 	args.GetAttributes = strings.Index(subsystems, utils.MetaAttributes) != -1
 	args.ProcessThresholds = strings.Index(subsystems, utils.MetaThresholds) != -1
 	args.ProcessStats = strings.Index(subsystems, utils.MetaStats) != -1
+	cgrArgs := cgrEv.ConsumeArgs(strings.Index(subsystems, utils.MetaDispatchers) != -1, false)
+	args.ArgDispatcher = cgrArgs.ArgDispatcher
 	return
 }
 
@@ -265,7 +270,7 @@ func (kev KamEvent) V1TerminateSessionArgs() (args *sessions.V1TerminateSessionA
 	}
 	args = &sessions.V1TerminateSessionArgs{ // defaults
 		TerminateSession: true,
-		CGREvent:         *cgrEv,
+		CGREvent:         cgrEv,
 	}
 	subsystems, has := kev[utils.CGRSubsystems]
 	if !has {
@@ -275,6 +280,8 @@ func (kev KamEvent) V1TerminateSessionArgs() (args *sessions.V1TerminateSessionA
 	args.ReleaseResources = strings.Index(subsystems, utils.MetaResources) != -1
 	args.ProcessThresholds = strings.Index(subsystems, utils.MetaThresholds) != -1
 	args.ProcessStats = strings.Index(subsystems, utils.MetaStats) != -1
+	cgrArgs := cgrEv.ConsumeArgs(strings.Index(subsystems, utils.MetaDispatchers) != -1, false)
+	args.ArgDispatcher = cgrArgs.ArgDispatcher
 	return
 }
 

@@ -67,11 +67,11 @@ func TestHttpAgentCfgsloadFromJsonCfg(t *testing.T) {
 	expected = HttpAgentCfgs{&HttpAgentCfg{
 		ID:             "conecto1",
 		Url:            "/conecto",
-		SessionSConns:  []*HaPoolConfig{{Address: "127.0.0.1:2012", Transport: "*json"}},
+		SessionSConns:  []*RemoteHost{{Address: "127.0.0.1:2012", Transport: "*json"}},
 		RequestPayload: "*url",
 		ReplyPayload:   "*xml",
-		RequestProcessors: []*HttpAgntProcCfg{{
-			Id:            "OutboundAUTHDryRun",
+		RequestProcessors: []*RequestProcessor{{
+			ID:            "OutboundAUTHDryRun",
 			Filters:       []string{"*string:*req.request_type:OutboundAUTH", "*string:*req.Msisdn:497700056231"},
 			Tenant:        NewRSRParsersMustCompile("cgrates.org", true, utils.INFIELD_SEP),
 			Flags:         utils.StringMap{"*dryrun": true},
@@ -146,11 +146,11 @@ func TestHttpAgentCfgsloadFromJsonCfg(t *testing.T) {
 		&HttpAgentCfg{
 			ID:             "conecto1",
 			Url:            "/conecto",
-			SessionSConns:  []*HaPoolConfig{{Address: "127.0.0.1:2012", Transport: "*json"}},
+			SessionSConns:  []*RemoteHost{{Address: "127.0.0.1:2012", Transport: "*json"}},
 			RequestPayload: "*url",
 			ReplyPayload:   "*xml",
-			RequestProcessors: []*HttpAgntProcCfg{{
-				Id:            "OutboundAUTHDryRun",
+			RequestProcessors: []*RequestProcessor{{
+				ID:            "OutboundAUTHDryRun",
 				Filters:       []string{"*string:*req.request_type:OutboundAUTH", "*string:*req.Msisdn:497700056231"},
 				Tenant:        NewRSRParsersMustCompile("cgrates.org", true, utils.INFIELD_SEP),
 				Flags:         utils.StringMap{"*dryrun": true},
@@ -163,7 +163,7 @@ func TestHttpAgentCfgsloadFromJsonCfg(t *testing.T) {
 					Mandatory: true,
 				}}},
 				{
-					Id:      "mtcall_cdr",
+					ID:      "mtcall_cdr",
 					Filters: []string{"*string:*req.request_type:MTCALL_CDR"},
 					Tenant:  NewRSRParsersMustCompile("cgrates.org", true, utils.INFIELD_SEP),
 					Flags:   utils.StringMap{"*cdrs": true},
@@ -185,11 +185,11 @@ func TestHttpAgentCfgsloadFromJsonCfg(t *testing.T) {
 		}, &HttpAgentCfg{
 			ID:             "conecto_xml",
 			Url:            "/conecto_xml",
-			SessionSConns:  []*HaPoolConfig{{Address: "127.0.0.1:2012", Transport: "*json"}},
+			SessionSConns:  []*RemoteHost{{Address: "127.0.0.1:2012", Transport: "*json"}},
 			RequestPayload: "*xml",
 			ReplyPayload:   "*xml",
-			RequestProcessors: []*HttpAgntProcCfg{{
-				Id:            "cdr_from_xml",
+			RequestProcessors: []*RequestProcessor{{
+				ID:            "cdr_from_xml",
 				Tenant:        NewRSRParsersMustCompile("cgrates.org", true, utils.INFIELD_SEP),
 				Flags:         utils.StringMap{"*cdrs": true},
 				RequestFields: []*FCTemplate{},
@@ -223,12 +223,12 @@ func TestHttpAgentCfgloadFromJsonCfg(t *testing.T) {
 	jsnhttpCfg := &HttpAgentJsonCfg{
 		Id:              utils.StringPointer("conecto1"),
 		Url:             utils.StringPointer("/conecto"),
-		Sessions_conns:  &[]*HaPoolJsonCfg{{Address: utils.StringPointer("127.0.0.1:2012"), Transport: utils.StringPointer("*json")}},
+		Sessions_conns:  &[]*RemoteHostJson{{Address: utils.StringPointer("127.0.0.1:2012"), Transport: utils.StringPointer("*json")}},
 		Request_payload: utils.StringPointer("*url"),
 		Reply_payload:   utils.StringPointer("*xml"),
-		Request_processors: &[]*HttpAgentProcessorJsnCfg{
+		Request_processors: &[]*ReqProcessorJsnCfg{
 			{
-				Id:             utils.StringPointer("OutboundAUTHDryRun"),
+				ID:             utils.StringPointer("OutboundAUTHDryRun"),
 				Filters:        &[]string{"*string:*req.request_type:OutboundAUTH", "*string:*req.Msisdn:497700056231"},
 				Tenant:         utils.StringPointer("cgrates.org"),
 				Flags:          &[]string{"*dryrun"},
@@ -240,11 +240,11 @@ func TestHttpAgentCfgloadFromJsonCfg(t *testing.T) {
 	expected = HttpAgentCfg{
 		ID:             "conecto1",
 		Url:            "/conecto",
-		SessionSConns:  []*HaPoolConfig{{Address: "127.0.0.1:2012", Transport: "*json"}},
+		SessionSConns:  []*RemoteHost{{Address: "127.0.0.1:2012", Transport: "*json"}},
 		RequestPayload: "*url",
 		ReplyPayload:   "*xml",
-		RequestProcessors: []*HttpAgntProcCfg{{
-			Id:            "OutboundAUTHDryRun",
+		RequestProcessors: []*RequestProcessor{{
+			ID:            "OutboundAUTHDryRun",
 			Filters:       []string{"*string:*req.request_type:OutboundAUTH", "*string:*req.Msisdn:497700056231"},
 			Tenant:        NewRSRParsersMustCompile("cgrates.org", true, utils.INFIELD_SEP),
 			Flags:         utils.StringMap{"*dryrun": true},
@@ -264,11 +264,11 @@ func TestHttpAgentCfgappendHttpAgntProcCfgs(t *testing.T) {
 	initial := &HttpAgentCfg{
 		ID:             "conecto1",
 		Url:            "/conecto",
-		SessionSConns:  []*HaPoolConfig{{Address: "127.0.0.1:2012", Transport: "*json"}},
+		SessionSConns:  []*RemoteHost{{Address: "127.0.0.1:2012", Transport: "*json"}},
 		RequestPayload: "*url",
 		ReplyPayload:   "*xml",
-		RequestProcessors: []*HttpAgntProcCfg{{
-			Id:            "OutboundAUTHDryRun",
+		RequestProcessors: []*RequestProcessor{{
+			ID:            "OutboundAUTHDryRun",
 			Filters:       []string{"*string:*req.request_type:OutboundAUTH", "*string:*req.Msisdn:497700056231"},
 			Tenant:        NewRSRParsersMustCompile("cgrates.org", true, utils.INFIELD_SEP),
 			Flags:         utils.StringMap{"*dryrun": true},
@@ -282,8 +282,8 @@ func TestHttpAgentCfgappendHttpAgntProcCfgs(t *testing.T) {
 			}},
 		}},
 	}
-	proceses := &[]*HttpAgentProcessorJsnCfg{{
-		Id:             utils.StringPointer("OutboundAUTHDryRun1"),
+	proceses := &[]*ReqProcessorJsnCfg{{
+		ID:             utils.StringPointer("OutboundAUTHDryRun1"),
 		Filters:        &[]string{"*string:*req.request_type:OutboundAUTH", "*string:*req.Msisdn:497700056231"},
 		Tenant:         utils.StringPointer("cgrates.org"),
 		Flags:          &[]string{"*dryrun"},
@@ -296,7 +296,7 @@ func TestHttpAgentCfgappendHttpAgntProcCfgs(t *testing.T) {
 			Mandatory: utils.BoolPointer(true),
 		}},
 	}, {
-		Id:             utils.StringPointer("OutboundAUTHDryRun"),
+		ID:             utils.StringPointer("OutboundAUTHDryRun"),
 		Filters:        &[]string{"*string:*req.request_type:OutboundAUTH", "*string:*req.Msisdn:497700056231"},
 		Tenant:         utils.StringPointer("cgrates.org"),
 		Flags:          &[]string{"*dryrun"},
@@ -313,11 +313,11 @@ func TestHttpAgentCfgappendHttpAgntProcCfgs(t *testing.T) {
 	expected := &HttpAgentCfg{
 		ID:             "conecto1",
 		Url:            "/conecto",
-		SessionSConns:  []*HaPoolConfig{{Address: "127.0.0.1:2012", Transport: "*json"}},
+		SessionSConns:  []*RemoteHost{{Address: "127.0.0.1:2012", Transport: "*json"}},
 		RequestPayload: "*url",
 		ReplyPayload:   "*xml",
-		RequestProcessors: []*HttpAgntProcCfg{{
-			Id:            "OutboundAUTHDryRun",
+		RequestProcessors: []*RequestProcessor{{
+			ID:            "OutboundAUTHDryRun",
 			Filters:       []string{"*string:*req.request_type:OutboundAUTH", "*string:*req.Msisdn:497700056231"},
 			Tenant:        NewRSRParsersMustCompile("cgrates.org", true, utils.INFIELD_SEP),
 			Flags:         utils.StringMap{"*dryrun": true},
@@ -330,7 +330,7 @@ func TestHttpAgentCfgappendHttpAgntProcCfgs(t *testing.T) {
 				Mandatory: false,
 			}},
 		}, {
-			Id:            "OutboundAUTHDryRun1",
+			ID:            "OutboundAUTHDryRun1",
 			Filters:       []string{"*string:*req.request_type:OutboundAUTH", "*string:*req.Msisdn:497700056231"},
 			Tenant:        NewRSRParsersMustCompile("cgrates.org", true, utils.INFIELD_SEP),
 			Flags:         utils.StringMap{"*dryrun": true},
@@ -349,54 +349,5 @@ func TestHttpAgentCfgappendHttpAgntProcCfgs(t *testing.T) {
 		t.Error(err)
 	} else if !reflect.DeepEqual(expected, initial) {
 		t.Errorf("Expected: %+v , recived: %+v", utils.ToJSON(expected), utils.ToJSON(initial))
-	}
-}
-
-func TestHttpAgntProcCfgloadFromJsonCfg(t *testing.T) {
-	var httpcfg, expected HttpAgntProcCfg
-	if err := httpcfg.loadFromJsonCfg(nil, utils.INFIELD_SEP); err != nil {
-		t.Error(err)
-	} else if !reflect.DeepEqual(httpcfg, expected) {
-		t.Errorf("Expected: %+v ,recived: %+v", expected, httpcfg)
-	}
-	if err := httpcfg.loadFromJsonCfg(new(HttpAgentProcessorJsnCfg), utils.INFIELD_SEP); err != nil {
-		t.Error(err)
-	} else if !reflect.DeepEqual(httpcfg, expected) {
-		t.Errorf("Expected: %+v ,recived: %+v", expected, httpcfg)
-	}
-
-	jsnhttpCfg := &HttpAgentProcessorJsnCfg{
-		Id:             utils.StringPointer("OutboundAUTHDryRun1"),
-		Filters:        &[]string{"*string:*req.request_type:OutboundAUTH", "*string:*req.Msisdn:497700056231"},
-		Tenant:         utils.StringPointer("cgrates.org"),
-		Flags:          &[]string{"*dryrun"},
-		Request_fields: &[]*FcTemplateJsonCfg{},
-		Reply_fields: &[]*FcTemplateJsonCfg{{
-			Tag:       utils.StringPointer("Allow"),
-			Field_id:  utils.StringPointer("response.Allow"),
-			Type:      utils.StringPointer("*constant"),
-			Value:     utils.StringPointer("1"),
-			Mandatory: utils.BoolPointer(true),
-		}},
-	}
-	expected = HttpAgntProcCfg{
-		Id:            "OutboundAUTHDryRun1",
-		Filters:       []string{"*string:*req.request_type:OutboundAUTH", "*string:*req.Msisdn:497700056231"},
-		Tenant:        NewRSRParsersMustCompile("cgrates.org", true, utils.INFIELD_SEP),
-		Flags:         utils.StringMap{"*dryrun": true},
-		RequestFields: []*FCTemplate{},
-		ReplyFields: []*FCTemplate{{
-			Tag:       "Allow",
-			FieldId:   "response.Allow",
-			Type:      "*constant",
-			Value:     NewRSRParsersMustCompile("1", true, utils.INFIELD_SEP),
-			Mandatory: true,
-		}},
-	}
-
-	if err = httpcfg.loadFromJsonCfg(jsnhttpCfg, utils.INFIELD_SEP); err != nil {
-		t.Error(err)
-	} else if !reflect.DeepEqual(expected, httpcfg) {
-		t.Errorf("Expected: %+v , recived: %+v", utils.ToJSON(expected), utils.ToJSON(httpcfg))
 	}
 }

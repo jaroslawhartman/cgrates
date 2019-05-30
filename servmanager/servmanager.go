@@ -32,9 +32,13 @@ import (
 )
 
 func NewServiceManager(cfg *config.CGRConfig, dm *engine.DataManager,
-	engineShutdown chan bool, cacheS *engine.CacheS) *ServiceManager {
-	return &ServiceManager{cfg: cfg, dm: dm,
-		engineShutdown: engineShutdown, cacheS: cacheS}
+	cacheS *engine.CacheS, engineShutdown chan bool) *ServiceManager {
+	return &ServiceManager{
+		cfg:            cfg,
+		dm:             dm,
+		engineShutdown: engineShutdown,
+		cacheS:         cacheS,
+	}
 }
 
 // ServiceManager handles service management ran by the engine
@@ -45,8 +49,6 @@ type ServiceManager struct {
 	engineShutdown chan bool
 	cacheS         *engine.CacheS
 	sched          *scheduler.Scheduler
-	rpcChans       map[string]chan rpcclient.RpcClientConnection // services expected to start
-	rpcServices    map[string]rpcclient.RpcClientConnection      // services started
 }
 
 func (srvMngr *ServiceManager) StartScheduler(waitCache bool) error {

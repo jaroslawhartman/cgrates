@@ -94,7 +94,7 @@ func testRedisSentinelStartNodes(t *testing.T) {
 
 func testRedisSentinelInitConfig(t *testing.T) {
 	var err error
-	sentinelConfig, err = config.NewCGRConfigFromFolder(engineConfigPath)
+	sentinelConfig, err = config.NewCGRConfigFromPath(engineConfigPath)
 	if err != nil {
 		t.Error(err)
 	}
@@ -130,8 +130,8 @@ func testRedisSentinelSetGetAttribute(t *testing.T) {
 		FilterIDs: []string{"*string:Account:1001"},
 		Attributes: []*engine.Attribute{
 			{
-				FieldName:  utils.Subject,
-				Substitute: config.NewRSRParsersMustCompile("1001", true, utils.INFIELD_SEP),
+				FieldName: utils.Subject,
+				Value:     config.NewRSRParsersMustCompile("1001", true, utils.INFIELD_SEP),
 			},
 		},
 		Weight: 20,
@@ -164,8 +164,8 @@ func testRedisSentinelInsertion(t *testing.T) {
 		FilterIDs: []string{"*string:Account:1001"},
 		Attributes: []*engine.Attribute{
 			{
-				FieldName:  utils.Subject,
-				Substitute: config.NewRSRParsersMustCompile("1001", true, utils.INFIELD_SEP),
+				FieldName: utils.Subject,
+				Value:     config.NewRSRParsersMustCompile("1001", true, utils.INFIELD_SEP),
 			},
 		},
 		Weight: 20,
@@ -248,8 +248,8 @@ func testRedisSentinelGetAttrAfterFailover(t *testing.T) {
 		FilterIDs: []string{"*string:Account:1001"},
 		Attributes: []*engine.Attribute{
 			{
-				FieldName:  utils.Subject,
-				Substitute: config.NewRSRParsersMustCompile("1001", true, utils.INFIELD_SEP),
+				FieldName: utils.Subject,
+				Value:     config.NewRSRParsersMustCompile("1001", true, utils.INFIELD_SEP),
 			},
 		},
 		Weight: 20,

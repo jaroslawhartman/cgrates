@@ -25,6 +25,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cgrates/cgrates/config"
 	"github.com/cgrates/cgrates/utils"
 )
 
@@ -301,7 +302,7 @@ func (b *Balance) debitUnits(cd *CallDescriptor, ub *Account, moneyBalances Bala
 	if !b.IsActiveAt(cd.TimeStart) || b.GetValue() <= 0 {
 		return
 	}
-	if duration, err := utils.ParseZeroRatingSubject(cd.TOR, b.RatingSubject); err == nil {
+	if duration, err := utils.ParseZeroRatingSubject(cd.TOR, b.RatingSubject, config.CgrConfig().RalsCfg().RALsBalanceRatingSubject); err == nil {
 		// we have *zero based units
 		cc = cd.CreateCallCost()
 		cc.Timespans = append(cc.Timespans, &TimeSpan{
@@ -689,7 +690,7 @@ func (b *Balance) Publish() {
 	}
 	accountId := b.account.ID
 	acntTnt := utils.NewTenantID(accountId)
-	cgrEv := utils.CGREvent{
+	cgrEv := &utils.CGREvent{
 		Tenant: acntTnt.Tenant,
 		ID:     utils.GenUUID(),
 		Event: map[string]interface{}{
@@ -740,7 +741,6 @@ func (bc Balances) Swap(i, j int) {
 func (bc Balances) Less(j, i int) bool {
 	return bc[i].precision < bc[j].precision ||
 		(bc[i].precision == bc[j].precision && bc[i].Weight < bc[j].Weight)
-
 }
 
 func (bc Balances) Sort() {
@@ -807,7 +807,7 @@ func (bc Balances) SaveDirtyBalances(acc *Account) {
 			}
 			acntTnt := utils.NewTenantID(b.account.ID)
 			thEv := &ArgsProcessEvent{
-				CGREvent: utils.CGREvent{
+				CGREvent: &utils.CGREvent{
 					Tenant: acntTnt.Tenant,
 					ID:     utils.GenUUID(),
 					Event: map[string]interface{}{
@@ -838,7 +838,7 @@ func (bc Balances) SaveDirtyBalances(acc *Account) {
 		for _, acnt := range savedAccounts {
 			acntTnt := utils.NewTenantID(acnt.ID)
 			thEv := &ArgsProcessEvent{
-				CGREvent: utils.CGREvent{
+				CGREvent: &utils.CGREvent{
 					Tenant: acntTnt.Tenant,
 					ID:     utils.GenUUID(),
 					Event: map[string]interface{}{

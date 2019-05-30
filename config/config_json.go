@@ -21,7 +21,10 @@ package config
 import (
 	"encoding/json"
 	"io"
+	"net/http"
 	"os"
+
+	"github.com/cgrates/cgrates/utils"
 )
 
 const (
@@ -35,20 +38,17 @@ const (
 	RALS_JSN           = "rals"
 	SCHEDULER_JSN      = "scheduler"
 	CDRS_JSN           = "cdrs"
-	MEDIATOR_JSN       = "mediator"
 	CDRE_JSN           = "cdre"
 	CDRC_JSN           = "cdrc"
 	SessionSJson       = "sessions"
 	FreeSWITCHAgentJSN = "freeswitch_agent"
 	KamailioAgentJSN   = "kamailio_agent"
 	AsteriskAgentJSN   = "asterisk_agent"
-	SM_JSN             = "session_manager"
 	FS_JSN             = "freeswitch"
 	OSIPS_JSN          = "opensips"
 	DA_JSN             = "diameter_agent"
 	RA_JSN             = "radius_agent"
 	HttpAgentJson      = "http_agent"
-	HISTSERV_JSN       = "historys"
 	ATTRIBUTE_JSN      = "attributes"
 	RESOURCES_JSON     = "resources"
 	STATS_JSON         = "stats"
@@ -65,6 +65,8 @@ const (
 	ChargerSCfgJson    = "chargers"
 	TlsCfgJson         = "tls"
 	AnalyzerCfgJson    = "analyzers"
+	Apier              = "apier"
+	DNSAgentJson       = "dns_agent"
 )
 
 // Loads the json config out of io.Reader, eg other sources than file, maybe over http
@@ -85,6 +87,19 @@ func NewCgrJsonCfgFromFile(fpath string) (*CgrJsonCfg, error) {
 	}
 	defer cfgFile.Close()
 	return NewCgrJsonCfgFromReader(cfgFile)
+}
+
+// Loads the config out of http request
+func NewCgrJsonCfgFromHttp(fpath string) (*CgrJsonCfg, error) {
+	var myClient = &http.Client{
+		Timeout: CgrConfig().GeneralCfg().ReplyTimeout,
+	}
+	cfgReq, err := myClient.Get(fpath)
+	if err != nil {
+		return nil, utils.ErrPathNotReachable(fpath)
+	}
+	defer cfgReq.Body.Close()
+	return NewCgrJsonCfgFromReader(cfgReq.Body)
 }
 
 // Main object holding the loaded config as section raw messages
@@ -306,6 +321,16 @@ func (self CgrJsonCfg) HttpAgentJsonCfg() (*[]*HttpAgentJsonCfg, error) {
 	return &httpAgnt, nil
 }
 
+func (self CgrJsonCfg) DNSAgentJsonCfg() (da *DNSAgentJsonCfg, err error) {
+	rawCfg, hasKey := self[DNSAgentJson]
+	if !hasKey {
+		return
+	}
+	da = new(DNSAgentJsonCfg)
+	err = json.Unmarshal(*rawCfg, da)
+	return
+}
+
 func (cgrJsn CgrJsonCfg) AttributeServJsonCfg() (*AttributeSJsonCfg, error) {
 	rawCfg, hasKey := cgrJsn[ATTRIBUTE_JSN]
 	if !hasKey {
@@ -468,6 +493,18 @@ func (self CgrJsonCfg) AnalyzerCfgJson() (*AnalyzerSJsonCfg, error) {
 		return nil, nil
 	}
 	cfg := new(AnalyzerSJsonCfg)
+	if err := json.Unmarshal(*rawCfg, cfg); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+func (self CgrJsonCfg) ApierCfgJson() (*ApierJsonCfg, error) {
+	rawCfg, hasKey := self[Apier]
+	if !hasKey {
+		return nil, nil
+	}
+	cfg := new(ApierJsonCfg)
 	if err := json.Unmarshal(*rawCfg, cfg); err != nil {
 		return nil, err
 	}

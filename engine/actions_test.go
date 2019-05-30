@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/cgrates/cgrates/utils"
+	"github.com/cgrates/rpcclient"
 )
 
 var err error
@@ -787,14 +788,40 @@ func TestActionTriggers(t *testing.T) {
 func TestActionResetTriggres(t *testing.T) {
 	ub := &Account{
 		ID: "TEST_UB",
-		BalanceMap: map[string]Balances{utils.MONETARY: Balances{&Balance{Value: 10}},
-			utils.VOICE: Balances{&Balance{Value: 10, Weight: 20, DestinationIDs: utils.NewStringMap("NAT")},
-				&Balance{Weight: 10, DestinationIDs: utils.NewStringMap("RET")}}},
-		UnitCounters: UnitCounters{utils.MONETARY: []*UnitCounter{&UnitCounter{Counters: CounterFilters{&CounterFilter{Value: 1}}}}},
-		ActionTriggers: ActionTriggers{&ActionTrigger{Balance: &BalanceFilter{
-			Type: utils.StringPointer(utils.MONETARY)}, ThresholdValue: 2, ActionsID: "TEST_ACTIONS", Executed: true},
-			&ActionTrigger{Balance: &BalanceFilter{
-				Type: utils.StringPointer(utils.MONETARY)}, ThresholdValue: 2, ActionsID: "TEST_ACTIONS", Executed: true}},
+		BalanceMap: map[string]Balances{
+			utils.MONETARY: Balances{
+				&Balance{Value: 10},
+			},
+			utils.VOICE: Balances{
+				&Balance{Value: 10, Weight: 20, DestinationIDs: utils.NewStringMap("NAT")},
+				&Balance{Weight: 10, DestinationIDs: utils.NewStringMap("RET")},
+			},
+		},
+		UnitCounters: UnitCounters{
+			utils.MONETARY: []*UnitCounter{
+				&UnitCounter{
+					Counters: CounterFilters{
+						&CounterFilter{Value: 1},
+					},
+				},
+			},
+		},
+		ActionTriggers: ActionTriggers{
+			&ActionTrigger{
+				Balance: &BalanceFilter{
+					Type: utils.StringPointer(utils.MONETARY)},
+				ThresholdValue: 2,
+				ActionsID:      "TEST_ACTIONS",
+				Executed:       true,
+			},
+			&ActionTrigger{
+				Balance: &BalanceFilter{
+					Type: utils.StringPointer(utils.MONETARY)},
+				ThresholdValue: 2,
+				ActionsID:      "TEST_ACTIONS",
+				Executed:       true,
+			},
+		},
 	}
 	resetTriggersAction(ub, nil, nil, nil)
 	if ub.ActionTriggers[0].Executed == true || ub.ActionTriggers[1].Executed == true {
@@ -804,12 +831,26 @@ func TestActionResetTriggres(t *testing.T) {
 
 func TestActionResetTriggresExecutesThem(t *testing.T) {
 	ub := &Account{
-		ID:         "TEST_UB",
-		BalanceMap: map[string]Balances{utils.MONETARY: Balances{&Balance{Value: 10}}},
-		UnitCounters: UnitCounters{utils.MONETARY: []*UnitCounter{
-			&UnitCounter{Counters: CounterFilters{&CounterFilter{Value: 1}}}}},
-		ActionTriggers: ActionTriggers{&ActionTrigger{Balance: &BalanceFilter{
-			Type: utils.StringPointer(utils.MONETARY)}, ThresholdValue: 2, ActionsID: "TEST_ACTIONS", Executed: true}},
+		ID: "TEST_UB",
+		BalanceMap: map[string]Balances{
+			utils.MONETARY: Balances{
+				&Balance{Value: 10},
+			},
+		},
+		UnitCounters: UnitCounters{
+			utils.MONETARY: []*UnitCounter{
+				&UnitCounter{Counters: CounterFilters{&CounterFilter{Value: 1}}},
+			},
+		},
+		ActionTriggers: ActionTriggers{
+			&ActionTrigger{
+				Balance: &BalanceFilter{
+					Type: utils.StringPointer(utils.MONETARY)},
+				ThresholdValue: 2,
+				ActionsID:      "TEST_ACTIONS",
+				Executed:       true,
+			},
+		},
 	}
 	resetTriggersAction(ub, nil, nil, nil)
 	if ub.ActionTriggers[0].Executed == true || ub.BalanceMap[utils.MONETARY][0].GetValue() == 12 {
@@ -820,20 +861,77 @@ func TestActionResetTriggresExecutesThem(t *testing.T) {
 func TestActionResetTriggresActionFilter(t *testing.T) {
 	ub := &Account{
 		ID: "TEST_UB",
-		BalanceMap: map[string]Balances{utils.MONETARY: Balances{
-			&Balance{Value: 10}}, utils.VOICE: Balances{
-			&Balance{Value: 10, Weight: 20, DestinationIDs: utils.NewStringMap("NAT")},
-			&Balance{Weight: 10, DestinationIDs: utils.NewStringMap("RET")}}},
-		UnitCounters: UnitCounters{utils.MONETARY: []*UnitCounter{
-			&UnitCounter{Counters: CounterFilters{&CounterFilter{Value: 1}}}}},
+		BalanceMap: map[string]Balances{
+			utils.MONETARY: Balances{
+				&Balance{Value: 10},
+			},
+			utils.VOICE: Balances{
+				&Balance{Value: 10, Weight: 20, DestinationIDs: utils.NewStringMap("NAT")},
+				&Balance{Weight: 10, DestinationIDs: utils.NewStringMap("RET")},
+			},
+		},
+		UnitCounters: UnitCounters{
+			utils.MONETARY: []*UnitCounter{
+				&UnitCounter{Counters: CounterFilters{&CounterFilter{Value: 1}}},
+			},
+		},
 		ActionTriggers: ActionTriggers{
-			&ActionTrigger{Balance: &BalanceFilter{Type: utils.StringPointer(utils.MONETARY)},
-				ThresholdValue: 2, ActionsID: "TEST_ACTIONS", Executed: true},
-			&ActionTrigger{Balance: &BalanceFilter{Type: utils.StringPointer(utils.MONETARY)},
-				ThresholdValue: 2, ActionsID: "TEST_ACTIONS", Executed: true}},
+			&ActionTrigger{
+				Balance: &BalanceFilter{
+					Type: utils.StringPointer(utils.MONETARY),
+				},
+				ThresholdValue: 2,
+				ActionsID:      "TEST_ACTIONS",
+				Executed:       true},
+			&ActionTrigger{
+				Balance: &BalanceFilter{
+					Type: utils.StringPointer(utils.MONETARY),
+				},
+				ThresholdValue: 2,
+				ActionsID:      "TEST_ACTIONS",
+				Executed:       true}},
 	}
 	resetTriggersAction(ub, &Action{Balance: &BalanceFilter{Type: utils.StringPointer(utils.SMS)}}, nil, nil)
 	if ub.ActionTriggers[0].Executed == false || ub.ActionTriggers[1].Executed == false {
+		t.Error("Reset triggers action failed!")
+	}
+}
+
+func TestActionResetTriggresActionFilter2(t *testing.T) {
+	ub := &Account{
+		ID: "TestActionResetTriggresActionFilter2",
+		BalanceMap: map[string]Balances{
+			utils.MONETARY: Balances{
+				&Balance{Value: 10},
+			},
+			utils.VOICE: Balances{
+				&Balance{Value: 10, Weight: 20, DestinationIDs: utils.NewStringMap("NAT")},
+				&Balance{Weight: 10, DestinationIDs: utils.NewStringMap("RET")},
+			},
+		},
+		UnitCounters: UnitCounters{
+			utils.MONETARY: []*UnitCounter{
+				&UnitCounter{Counters: CounterFilters{&CounterFilter{Value: 1}}},
+			},
+		},
+		ActionTriggers: ActionTriggers{
+			&ActionTrigger{
+				Balance: &BalanceFilter{
+					Type: utils.StringPointer(utils.MONETARY),
+				},
+				ThresholdValue: 2,
+				ActionsID:      "TEST_ACTIONS",
+				Executed:       true},
+			&ActionTrigger{
+				Balance: &BalanceFilter{
+					Type: utils.StringPointer(utils.MONETARY),
+				},
+				ThresholdValue: 2,
+				ActionsID:      "TEST_ACTIONS",
+				Executed:       true}},
+	}
+	resetTriggersAction(ub, &Action{}, nil, nil)
+	if ub.ActionTriggers[0].Executed != false && ub.ActionTriggers[1].Executed != false {
 		t.Error("Reset triggers action failed!")
 	}
 }
@@ -1637,6 +1735,59 @@ func TestActionRemoveBalance(t *testing.T) {
 	}
 }
 
+func TestActionRemoveExpiredBalance(t *testing.T) {
+	err := dm.DataDB().SetAccount(&Account{
+		ID: "cgrates.org:rembal2",
+		BalanceMap: map[string]Balances{
+			utils.MONETARY: Balances{
+				&Balance{
+					Value: 10,
+				},
+				&Balance{
+					Value:          10,
+					DestinationIDs: utils.NewStringMap("NAT", "RET"),
+					ExpirationDate: time.Date(2025, time.November, 11, 22, 39, 0, 0, time.UTC),
+				},
+				&Balance{
+					Value:          10,
+					DestinationIDs: utils.NewStringMap("NAT", "RET"),
+					ExpirationDate: time.Date(2010, time.November, 11, 22, 39, 0, 0, time.UTC),
+				},
+				&Balance{
+					Value:          10,
+					DestinationIDs: utils.NewStringMap("NAT", "RET"),
+					ExpirationDate: time.Date(2012, time.November, 11, 22, 39, 0, 0, time.UTC),
+				},
+			},
+		},
+		Disabled: true,
+	})
+	if err != nil {
+		t.Error("Error setting account: ", err)
+	}
+	at := &ActionTiming{
+		accountIDs: utils.StringMap{"cgrates.org:rembal2": true},
+		Timing:     &RateInterval{},
+		actions: []*Action{
+			&Action{
+				ActionType: MetaRemoveExpired,
+				Balance: &BalanceFilter{
+					Type: utils.StringPointer(utils.MONETARY),
+				},
+			},
+		},
+	}
+	err = at.Execute(nil, nil)
+	acc, err := dm.DataDB().GetAccount("cgrates.org:rembal2")
+	if err != nil || acc == nil {
+		t.Errorf("Error getting account: %+v: %v", acc, err)
+	}
+	if len(acc.BalanceMap) != 1 ||
+		len(acc.BalanceMap[utils.MONETARY]) != 2 {
+		t.Errorf("Error removing balance: %+v", utils.ToJSON(acc.BalanceMap[utils.MONETARY]))
+	}
+}
+
 func TestActionTransferMonetaryDefault(t *testing.T) {
 	err := dm.DataDB().SetAccount(
 		&Account{
@@ -1965,7 +2116,7 @@ func TestActionConditionalDisabledIfNegative(t *testing.T) {
 				"*monetary": Balances{
 					&Balance{
 						Uuid:  "9fa1847a-f36a-41a7-8ec0-dfaab370141e",
-						ID:    "*default",
+						ID:    utils.MetaDefault,
 						Value: -1.95001,
 					},
 				},
@@ -2404,7 +2555,7 @@ func TestClonedAction(t *testing.T) {
 		Id:         "test1",
 		ActionType: TOPUP,
 		Balance: &BalanceFilter{
-			ID:    utils.StringPointer("*default"),
+			ID:    utils.StringPointer(utils.MetaDefault),
 			Value: &utils.ValueFormula{Static: 1},
 			Type:  utils.StringPointer(utils.MONETARY),
 		},
@@ -2424,7 +2575,7 @@ func TestClonedActions(t *testing.T) {
 			Id:         "RECUR_FOR_V3HSILLMILLD1G",
 			ActionType: TOPUP,
 			Balance: &BalanceFilter{
-				ID:    utils.StringPointer("*default"),
+				ID:    utils.StringPointer(utils.MetaDefault),
 				Value: &utils.ValueFormula{Static: 1},
 				Type:  utils.StringPointer(utils.MONETARY),
 			},
@@ -2434,7 +2585,7 @@ func TestClonedActions(t *testing.T) {
 			Id:         "RECUR_FOR_V3HSILLMILLD5G",
 			ActionType: DEBIT,
 			Balance: &BalanceFilter{
-				ID:    utils.StringPointer("*default"),
+				ID:    utils.StringPointer(utils.MetaDefault),
 				Value: &utils.ValueFormula{Static: 2},
 				Type:  utils.StringPointer(utils.MONETARY),
 			},
@@ -2460,7 +2611,7 @@ func TestCacheGetClonedActions(t *testing.T) {
 			Id:         "RECUR_FOR_V3HSILLMILLD1G",
 			ActionType: TOPUP,
 			Balance: &BalanceFilter{
-				ID:    utils.StringPointer("*default"),
+				ID:    utils.StringPointer(utils.MetaDefault),
 				Value: &utils.ValueFormula{Static: 1},
 				Type:  utils.StringPointer(utils.MONETARY),
 			},
@@ -2494,6 +2645,109 @@ func TestCacheGetClonedActions(t *testing.T) {
 	aCloned := clned.(Actions)
 	if !reflect.DeepEqual(actions, aCloned) {
 		t.Errorf("Expecting: %+v, received: %+v", actions[1].Balance, aCloned[1].Balance)
+	}
+}
+
+// TestCdrLogAction
+type RPCMock struct {
+	args *ArgV1ProcessEvent
+}
+
+func (r *RPCMock) Call(method string, args interface{}, rply interface{}) error {
+	if method != utils.CDRsV1ProcessEvent {
+		return rpcclient.ErrUnsupporteServiceMethod
+	}
+	if r.args != nil {
+		return fmt.Errorf("There should be only one call to this function")
+	}
+	r.args = args.(*ArgV1ProcessEvent)
+	rp := rply.(*string)
+	*rp = utils.OK
+	return nil
+}
+func TestCdrLogAction(t *testing.T) {
+	bakSch := schedCdrsConns
+	mock := RPCMock{}
+	schedCdrsConns = &mock
+	defer func() { schedCdrsConns = bakSch }()
+
+	var extraData interface{}
+	acc := &Account{
+		ID: "cgrates.org:1001",
+		BalanceMap: map[string]Balances{
+			utils.MONETARY: Balances{
+				&Balance{Value: 20},
+			},
+		},
+		UnitCounters: UnitCounters{
+			utils.MONETARY: []*UnitCounter{
+				&UnitCounter{
+					Counters: CounterFilters{
+						&CounterFilter{Value: 1},
+					},
+				},
+			},
+		},
+	}
+	a := &Action{
+		Id:              "CDRLog1",
+		ActionType:      "*cdrlog",
+		ExtraParameters: "{\"BalanceID\":\"~BalanceID\",\"ActionID\":\"~ActionID\",\"BalanceValue\":\"~BalanceValue\"}",
+		Weight:          50,
+	}
+	acs := Actions{
+		a,
+		&Action{
+			Id:         "CdrDebit",
+			ActionType: "*debit",
+			Balance: &BalanceFilter{
+				ID:     utils.StringPointer(utils.MetaDefault),
+				Value:  &utils.ValueFormula{Static: 9.95},
+				Type:   utils.StringPointer(utils.MONETARY),
+				Weight: utils.Float64Pointer(0),
+			},
+			Weight:       float64(90),
+			balanceValue: 10,
+		},
+	}
+	if err := cdrLogAction(acc, a, acs, extraData); err != nil {
+		t.Fatal(err)
+	}
+	if mock.args == nil {
+		t.Fatalf("Expected a call to %s", utils.CDRsV1ProcessEvent)
+	}
+	expCgrEv := utils.CGREvent{
+		Tenant: "cgrates.org",
+		ID:     mock.args.CGREvent.ID,
+		Event: map[string]interface{}{
+			"Account":      "1001",
+			"ActionID":     "CdrDebit",
+			"AnswerTime":   mock.args.CGREvent.Event["AnswerTime"],
+			"BalanceID":    "*default",
+			"BalanceValue": "10",
+			"CGRID":        mock.args.CGREvent.Event["CGRID"],
+			"Category":     "",
+			"Cost":         9.95,
+			"CostSource":   "",
+			"Destination":  "",
+			"ExtraInfo":    "",
+			"OrderID":      mock.args.CGREvent.Event["OrderID"],
+			"OriginHost":   "127.0.0.1",
+			"OriginID":     mock.args.CGREvent.Event["OriginID"],
+			"Partial":      false,
+			"PreRated":     true,
+			"RequestType":  "*none",
+			"RunID":        "*debit",
+			"SetupTime":    mock.args.CGREvent.Event["SetupTime"],
+			"Source":       "*cdrlog",
+			"Subject":      "1001",
+			"Tenant":       "cgrates.org",
+			"ToR":          "*monetary",
+			"Usage":        mock.args.CGREvent.Event["Usage"],
+		},
+	}
+	if !reflect.DeepEqual(expCgrEv, mock.args.CGREvent) {
+		t.Errorf("Expected: %s ,received: %s", utils.ToJSON(expCgrEv), utils.ToJSON(mock.args.CGREvent))
 	}
 }
 

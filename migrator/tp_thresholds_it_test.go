@@ -38,7 +38,7 @@ var (
 	tpTresCfgIn    *config.CGRConfig
 	tpTresCfgOut   *config.CGRConfig
 	tpTresMigrator *Migrator
-	tpThresholds   []*utils.TPThreshold
+	tpThresholds   []*utils.TPThresholdProfile
 )
 
 var sTestsTpTresIT = []func(t *testing.T){
@@ -58,12 +58,12 @@ func TestTpTresMove(t *testing.T) {
 func testTpTresITConnect(t *testing.T) {
 	var err error
 	tpTresPathIn = path.Join(*dataDir, "conf", "samples", "tutmongo")
-	tpTresCfgIn, err = config.NewCGRConfigFromFolder(tpTresPathIn)
+	tpTresCfgIn, err = config.NewCGRConfigFromPath(tpTresPathIn)
 	if err != nil {
 		t.Fatal(err)
 	}
 	tpTresPathOut = path.Join(*dataDir, "conf", "samples", "tutmysql")
-	tpTresCfgOut, err = config.NewCGRConfigFromFolder(tpTresPathOut)
+	tpTresCfgOut, err = config.NewCGRConfigFromPath(tpTresPathOut)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func testTpTresITFlush(t *testing.T) {
 }
 
 func testTpTresITPopulate(t *testing.T) {
-	tpThresholds = []*utils.TPThreshold{
+	tpThresholds = []*utils.TPThresholdProfile{
 		{
 			TPid:      "TH1",
 			Tenant:    "cgrates.org",

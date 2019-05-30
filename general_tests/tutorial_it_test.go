@@ -28,7 +28,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cgrates/cgrates/apier/v1"
+	v1 "github.com/cgrates/cgrates/apier/v1"
 	"github.com/cgrates/cgrates/config"
 	"github.com/cgrates/cgrates/engine"
 	"github.com/cgrates/cgrates/utils"
@@ -81,7 +81,7 @@ func TestTutorialMySQL(t *testing.T) {
 func testTutorialLoadConfig(t *testing.T) {
 	var err error
 	tutorialCfgPath = path.Join(*dataDir, "conf", "samples", tutorialConfDIR)
-	if tutorialCfg, err = config.NewCGRConfigFromFolder(tutorialCfgPath); err != nil {
+	if tutorialCfg, err = config.NewCGRConfigFromPath(tutorialCfgPath); err != nil {
 		t.Error(err)
 	}
 	switch tutorialConfDIR {
@@ -136,7 +136,7 @@ func testTutorialGetCost(t *testing.T) {
 	var rply *engine.EventCost
 	if err := tutorialRpc.Call("ApierV1.GetCost", attrs, &rply); err != nil {
 		t.Error("Unexpected nil error received: ", err.Error())
-	} else if *rply.Cost != 0.316900 {
+	} else if *rply.Cost != 0.716900 {
 		t.Errorf("Unexpected cost received: %f", *rply.Cost)
 	}
 }

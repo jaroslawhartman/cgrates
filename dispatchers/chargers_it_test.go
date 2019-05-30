@@ -40,11 +40,11 @@ var sTestsDspCpp = []func(t *testing.T){
 
 //Test start here
 func TestDspChargerSTMySQL(t *testing.T) {
-	testDsp(t, sTestsDspCpp, "TestDspChargerS", "all", "all2", "attributes", "dispatchers", "tutorial", "oldtutorial", "dispatchers")
+	testDsp(t, sTestsDspCpp, "TestDspChargerS", "all", "all2", "dispatchers", "tutorial", "oldtutorial", "dispatchers")
 }
 
 func TestDspChargerSMongo(t *testing.T) {
-	testDsp(t, sTestsDspCpp, "TestDspChargerS", "all", "all2", "attributes_mongo", "dispatchers_mongo", "tutorial", "oldtutorial", "dispatchers")
+	testDsp(t, sTestsDspCpp, "TestDspChargerS", "all", "all2", "dispatchers_mongo", "tutorial", "oldtutorial", "dispatchers")
 }
 
 func testDspCppPingFailover(t *testing.T) {
@@ -54,12 +54,12 @@ func testDspCppPingFailover(t *testing.T) {
 	} else if reply != utils.Pong {
 		t.Errorf("Received: %s", reply)
 	}
-	ev := CGREvWithApiKey{
-		CGREvent: utils.CGREvent{
+	ev := utils.CGREventWithArgDispatcher{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 		},
-		DispatcherResource: DispatcherResource{
-			APIKey: "chrg12345",
+		ArgDispatcher: &utils.ArgDispatcher{
+			APIKey: utils.StringPointer("chrg12345"),
 		},
 	}
 	if err := dispEngine.RCP.Call(utils.ChargerSv1Ping, &ev, &reply); err != nil {
@@ -82,11 +82,8 @@ func testDspCppPingFailover(t *testing.T) {
 }
 
 func testDspCppGetChtgFailover(t *testing.T) {
-	args := CGREvWithApiKey{
-		DispatcherResource: DispatcherResource{
-			APIKey: "chrg12345",
-		},
-		CGREvent: utils.CGREvent{
+	args := utils.CGREventWithArgDispatcher{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "event1",
 			Event: map[string]interface{}{
@@ -94,21 +91,26 @@ func testDspCppGetChtgFailover(t *testing.T) {
 				utils.Account:    "1001",
 			},
 		},
+		ArgDispatcher: &utils.ArgDispatcher{
+			APIKey: utils.StringPointer("chrg12345"),
+		},
 	}
 	eChargers := &engine.ChargerProfiles{
 		&engine.ChargerProfile{
 			Tenant:       "cgrates.org",
 			ID:           "DEFAULT",
 			FilterIDs:    []string{},
-			RunID:        "*default",
+			RunID:        utils.MetaDefault,
 			AttributeIDs: []string{"*none"},
 			Weight:       0,
 		},
 	}
 	var reply *engine.ChargerProfiles
 	if err := dispEngine.RCP.Call(utils.ChargerSv1GetChargersForEvent,
-		args, &reply); err == nil || err.Error() != utils.ErrNotFound.Error() {
-		t.Errorf("Expected error NOT_FOUND but recived %v and reply %v\n", err, reply)
+		args, &reply); err != nil {
+		t.Error(err)
+	} else if !reflect.DeepEqual(eChargers, reply) {
+		t.Errorf("Expecting : %+v, received: %+v", utils.ToJSON(eChargers), utils.ToJSON(reply))
 	}
 
 	allEngine2.stopEngine(t)
@@ -130,12 +132,12 @@ func testDspCppPing(t *testing.T) {
 	} else if reply != utils.Pong {
 		t.Errorf("Received: %s", reply)
 	}
-	if err := dispEngine.RCP.Call(utils.ChargerSv1Ping, &CGREvWithApiKey{
-		CGREvent: utils.CGREvent{
+	if err := dispEngine.RCP.Call(utils.ChargerSv1Ping, &utils.CGREventWithArgDispatcher{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 		},
-		DispatcherResource: DispatcherResource{
-			APIKey: "chrg12345",
+		ArgDispatcher: &utils.ArgDispatcher{
+			APIKey: utils.StringPointer("chrg12345"),
 		},
 	}, &reply); err != nil {
 		t.Error(err)
@@ -145,16 +147,16 @@ func testDspCppPing(t *testing.T) {
 }
 
 func testDspCppTestAuthKey(t *testing.T) {
-	args := CGREvWithApiKey{
-		DispatcherResource: DispatcherResource{
-			APIKey: "12345",
-		},
-		CGREvent: utils.CGREvent{
+	args := utils.CGREventWithArgDispatcher{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "event1",
 			Event: map[string]interface{}{
 				utils.Account: "1001",
 			},
+		},
+		ArgDispatcher: &utils.ArgDispatcher{
+			APIKey: utils.StringPointer("12345"),
 		},
 	}
 	var reply *engine.ChargerProfiles
@@ -165,16 +167,16 @@ func testDspCppTestAuthKey(t *testing.T) {
 }
 
 func testDspCppTestAuthKey2(t *testing.T) {
-	args := CGREvWithApiKey{
-		DispatcherResource: DispatcherResource{
-			APIKey: "chrg12345",
-		},
-		CGREvent: utils.CGREvent{
+	args := utils.CGREventWithArgDispatcher{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "event1",
 			Event: map[string]interface{}{
 				utils.Account: "1001",
 			},
+		},
+		ArgDispatcher: &utils.ArgDispatcher{
+			APIKey: utils.StringPointer("chrg12345"),
 		},
 	}
 	eChargers := &engine.ChargerProfiles{
@@ -182,7 +184,7 @@ func testDspCppTestAuthKey2(t *testing.T) {
 			Tenant:       "cgrates.org",
 			ID:           "DEFAULT",
 			FilterIDs:    []string{},
-			RunID:        "*default",
+			RunID:        utils.MetaDefault,
 			AttributeIDs: []string{"*none"},
 			Weight:       0,
 		},
@@ -197,11 +199,8 @@ func testDspCppTestAuthKey2(t *testing.T) {
 }
 
 func testDspCppGetChtgRoundRobin(t *testing.T) {
-	args := CGREvWithApiKey{
-		DispatcherResource: DispatcherResource{
-			APIKey: "chrg12345",
-		},
-		CGREvent: utils.CGREvent{
+	args := utils.CGREventWithArgDispatcher{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "event1",
 			Event: map[string]interface{}{
@@ -209,13 +208,16 @@ func testDspCppGetChtgRoundRobin(t *testing.T) {
 				utils.Account:    "1001",
 			},
 		},
+		ArgDispatcher: &utils.ArgDispatcher{
+			APIKey: utils.StringPointer("chrg12345"),
+		},
 	}
 	eChargers := &engine.ChargerProfiles{
 		&engine.ChargerProfile{
 			Tenant:       "cgrates.org",
 			ID:           "DEFAULT",
 			FilterIDs:    []string{},
-			RunID:        "*default",
+			RunID:        utils.MetaDefault,
 			AttributeIDs: []string{"*none"},
 			Weight:       0,
 		},
@@ -223,10 +225,11 @@ func testDspCppGetChtgRoundRobin(t *testing.T) {
 	var reply *engine.ChargerProfiles
 	// To ALL2
 	if err := dispEngine.RCP.Call(utils.ChargerSv1GetChargersForEvent,
-		args, &reply); err == nil || err.Error() != utils.ErrNotFound.Error() {
-		t.Errorf("Expected error NOT_FOUND but recived %v and reply %v\n", err, reply)
+		args, &reply); err != nil {
+		t.Error(err)
+	} else if !reflect.DeepEqual(eChargers, reply) {
+		t.Errorf("Expecting : %+v, received: %+v", utils.ToJSON(eChargers), utils.ToJSON(reply))
 	}
-
 	// To ALL
 	if err := dispEngine.RCP.Call(utils.ChargerSv1GetChargersForEvent,
 		args, &reply); err != nil {

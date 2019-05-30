@@ -19,20 +19,19 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>
 package v1
 
 import (
+	"time"
+
 	"github.com/cgrates/cgrates/engine"
 	"github.com/cgrates/cgrates/utils"
 )
 
 // GetChargerProfile returns a Charger Profile
-func (apierV1 *ApierV1) GetChargerProfile(arg utils.TenantID, reply *engine.ChargerProfile) error {
-	if missing := utils.MissingStructFields(&arg, []string{"Tenant", "ID"}); len(missing) != 0 { //Params missing
+func (apierV1 *ApierV1) GetChargerProfile(arg *utils.TenantID, reply *engine.ChargerProfile) error {
+	if missing := utils.MissingStructFields(arg, []string{"Tenant", "ID"}); len(missing) != 0 { //Params missing
 		return utils.NewErrMandatoryIeMissing(missing...)
 	}
 	if cpp, err := apierV1.DataManager.GetChargerProfile(arg.Tenant, arg.ID, true, true, utils.NonTransactional); err != nil {
-		if err.Error() != utils.ErrNotFound.Error() {
-			err = utils.NewErrServerError(err)
-		}
-		return err
+		return utils.APIErrorHandler(err)
 	} else {
 		*reply = *cpp
 	}
@@ -40,26 +39,49 @@ func (apierV1 *ApierV1) GetChargerProfile(arg utils.TenantID, reply *engine.Char
 }
 
 // GetChargerProfileIDs returns list of chargerProfile IDs registered for a tenant
-func (apierV1 *ApierV1) GetChargerProfileIDs(tenant string, chPrfIDs *[]string) error {
-	prfx := utils.ChargerProfilePrefix + tenant + ":"
+func (apierV1 *ApierV1) GetChargerProfileIDs(args *utils.TenantArgWithPaginator, chPrfIDs *[]string) error {
+	if missing := utils.MissingStructFields(args, []string{utils.Tenant}); len(missing) != 0 { //Params missing
+		return utils.NewErrMandatoryIeMissing(missing...)
+	}
+	prfx := utils.ChargerProfilePrefix + args.Tenant + ":"
 	keys, err := apierV1.DataManager.DataDB().GetKeysForPrefix(prfx)
 	if err != nil {
 		return err
+	}
+	if len(keys) == 0 {
+		return utils.ErrNotFound
 	}
 	retIDs := make([]string, len(keys))
 	for i, key := range keys {
 		retIDs[i] = key[len(prfx):]
 	}
-	*chPrfIDs = retIDs
+	*chPrfIDs = args.PaginateStringSlice(retIDs)
 	return nil
 }
 
+type ChargerWithCache struct {
+	*engine.ChargerProfile
+	Cache *string
+}
+
 //SetChargerProfile add/update a new Charger Profile
-func (apierV1 *ApierV1) SetChargerProfile(cpp *engine.ChargerProfile, reply *string) error {
-	if missing := utils.MissingStructFields(cpp, []string{"Tenant", "ID"}); len(missing) != 0 {
+func (apierV1 *ApierV1) SetChargerProfile(arg *ChargerWithCache, reply *string) error {
+	if missing := utils.MissingStructFields(arg.ChargerProfile, []string{"Tenant", "ID"}); len(missing) != 0 {
 		return utils.NewErrMandatoryIeMissing(missing...)
 	}
-	if err := apierV1.DataManager.SetChargerProfile(cpp, true); err != nil {
+	if err := apierV1.DataManager.SetChargerProfile(arg.ChargerProfile, true); err != nil {
+		return utils.APIErrorHandler(err)
+	}
+	//generate a loadID for CacheChargerProfiles and store it in database
+	if err := apierV1.DataManager.SetLoadIDs(map[string]int64{utils.CacheChargerProfiles: time.Now().UnixNano()}); err != nil {
+		return utils.APIErrorHandler(err)
+	}
+	//handle caching for ChargerProfile
+	argCache := utils.ArgsGetCacheItem{
+		CacheID: utils.CacheChargerProfiles,
+		ItemID:  arg.TenantID(),
+	}
+	if err := apierV1.CallCache(GetCacheOpt(arg.Cache), argCache); err != nil {
 		return utils.APIErrorHandler(err)
 	}
 	*reply = utils.OK
@@ -67,16 +89,25 @@ func (apierV1 *ApierV1) SetChargerProfile(cpp *engine.ChargerProfile, reply *str
 }
 
 //RemoveChargerProfile remove a specific Charger Profile
-func (apierV1 *ApierV1) RemoveChargerProfile(arg utils.TenantID, reply *string) error {
-	if missing := utils.MissingStructFields(&arg, []string{"Tenant", "ID"}); len(missing) != 0 { //Params missing
+func (apierV1 *ApierV1) RemoveChargerProfile(arg *utils.TenantIDWithCache, reply *string) error {
+	if missing := utils.MissingStructFields(arg, []string{"Tenant", "ID"}); len(missing) != 0 { //Params missing
 		return utils.NewErrMandatoryIeMissing(missing...)
 	}
 	if err := apierV1.DataManager.RemoveChargerProfile(arg.Tenant,
 		arg.ID, utils.NonTransactional, true); err != nil {
-		if err.Error() != utils.ErrNotFound.Error() {
-			err = utils.NewErrServerError(err)
-		}
-		return err
+		return utils.APIErrorHandler(err)
+	}
+	//generate a loadID for CacheChargerProfiles and store it in database
+	if err := apierV1.DataManager.SetLoadIDs(map[string]int64{utils.CacheChargerProfiles: time.Now().UnixNano()}); err != nil {
+		return utils.APIErrorHandler(err)
+	}
+	//handle caching for ChargerProfile
+	argCache := utils.ArgsGetCacheItem{
+		CacheID: utils.CacheChargerProfiles,
+		ItemID:  arg.TenantID(),
+	}
+	if err := apierV1.CallCache(GetCacheOpt(arg.Cache), argCache); err != nil {
+		return utils.APIErrorHandler(err)
 	}
 	*reply = utils.OK
 	return nil
@@ -97,19 +128,19 @@ func (cSv1 *ChargerSv1) Call(serviceMethod string,
 	return utils.APIerRPCCall(cSv1, serviceMethod, args, reply)
 }
 
-func (cSv1 *ChargerSv1) Ping(ign *utils.CGREvent, reply *string) error {
+func (cSv1 *ChargerSv1) Ping(ign *utils.CGREventWithArgDispatcher, reply *string) error {
 	*reply = utils.Pong
 	return nil
 }
 
 // GetChargerForEvent  returns matching ChargerProfile for Event
-func (cSv1 *ChargerSv1) GetChargersForEvent(cgrEv *utils.CGREvent,
+func (cSv1 *ChargerSv1) GetChargersForEvent(cgrEv *utils.CGREventWithArgDispatcher,
 	reply *engine.ChargerProfiles) error {
 	return cSv1.cS.V1GetChargersForEvent(cgrEv, reply)
 }
 
 // ProcessEvent
-func (cSv1 *ChargerSv1) ProcessEvent(args *utils.CGREvent,
+func (cSv1 *ChargerSv1) ProcessEvent(args *utils.CGREventWithArgDispatcher,
 	reply *[]*engine.ChrgSProcessEventReply) error {
 	return cSv1.cS.V1ProcessEvent(args, reply)
 }

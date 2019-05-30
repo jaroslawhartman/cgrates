@@ -64,7 +64,7 @@ func TestHAitSimple(t *testing.T) {
 	haCfgPath = path.Join(*dataDir, "conf", "samples", "httpagent")
 	// Init config first
 	var err error
-	haCfg, err = config.NewCGRConfigFromFolder(haCfgPath)
+	haCfg, err = config.NewCGRConfigFromPath(haCfgPath)
 	if err != nil {
 		t.Error(err)
 	}
@@ -80,7 +80,7 @@ func TestHA2itWithTls(t *testing.T) {
 	haCfgPath = path.Join(*dataDir, "conf", "samples", "httpagenttls")
 	// Init config first
 	var err error
-	haCfg, err = config.NewCGRConfigFromFolder(haCfgPath)
+	haCfg, err = config.NewCGRConfigFromPath(haCfgPath)
 	if err != nil {
 		t.Error(err)
 	}
@@ -149,20 +149,6 @@ func testHAitTPFromFolder(t *testing.T) {
 		t.Error(err)
 	}
 	time.Sleep(time.Duration(*waitRater) * time.Millisecond) // Give time for scheduler to execute topups
-	//add a default charger
-	chargerProfile := &engine.ChargerProfile{
-		Tenant:       "cgrates.org",
-		ID:           "Default",
-		RunID:        "*default",
-		AttributeIDs: []string{"*none"},
-		Weight:       20,
-	}
-	var result string
-	if err := haRPC.Call("ApierV1.SetChargerProfile", chargerProfile, &result); err != nil {
-		t.Error(err)
-	} else if result != utils.OK {
-		t.Error("Unexpected reply returned", result)
-	}
 }
 
 func testHAitAuthDryRun(t *testing.T) {
@@ -176,7 +162,7 @@ func testHAitAuthDryRun(t *testing.T) {
 		httpConst, addr, haCfg.HttpAgentCfg()[0].Url)
 	rply, err := httpC.Get(reqUrl)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 	eXml := []byte(`<?xml version="1.0" encoding="UTF-8"?>
 <response>

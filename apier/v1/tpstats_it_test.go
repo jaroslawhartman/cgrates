@@ -1,4 +1,4 @@
-// +build offline_tp
+// +build integration
 
 /*
 Real-time Online/Offline Charging System (OCS) for Telecom & ISP environments
@@ -25,6 +25,8 @@ import (
 	"net/rpc/jsonrpc"
 	"path"
 	"reflect"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/cgrates/cgrates/config"
@@ -37,7 +39,7 @@ var (
 	tpStatCfg       *config.CGRConfig
 	tpStatRPC       *rpc.Client
 	tpStatDataDir   = "/usr/share/cgrates"
-	tpStat          *utils.TPStats
+	tpStat          *utils.TPStatProfile
 	tpStatDelay     int
 	tpStatConfigDIR string //run tests for specific configuration
 )
@@ -52,7 +54,7 @@ var sTestsTPStats = []func(t *testing.T){
 	testTPStatsGetTPStatAfterSet,
 	testTPStatsUpdateTPStat,
 	testTPStatsGetTPStatAfterUpdate,
-	testTPStatsRemTPStat,
+	testTPStatsRemoveTPStat,
 	testTPStatsGetTPStatAfterRemove,
 	testTPStatsKillEngine,
 }
@@ -82,7 +84,7 @@ func TestTPStatITPG(t *testing.T) {
 func testTPStatsInitCfg(t *testing.T) {
 	var err error
 	tpStatCfgPath = path.Join(tpStatDataDir, "conf", "samples", tpStatConfigDIR)
-	tpStatCfg, err = config.NewCGRConfigFromFolder(tpStatCfgPath)
+	tpStatCfg, err = config.NewCGRConfigFromPath(tpStatCfgPath)
 	if err != nil {
 		t.Error(err)
 	}
@@ -115,7 +117,7 @@ func testTPStatsRpcConn(t *testing.T) {
 }
 
 func testTPStatsGetTPStatBeforeSet(t *testing.T) {
-	var reply *utils.TPStats
+	var reply *utils.TPStatProfile
 	if err := tpStatRPC.Call("ApierV1.GetTPStat",
 		&utils.TPTntID{TPid: "TPS1", Tenant: "cgrates.org", ID: "Stat1"},
 		&reply); err == nil || err.Error() != utils.ErrNotFound.Error() {
@@ -124,7 +126,7 @@ func testTPStatsGetTPStatBeforeSet(t *testing.T) {
 }
 
 func testTPStatsSetTPStat(t *testing.T) {
-	tpStat = &utils.TPStats{
+	tpStat = &utils.TPStatProfile{
 		Tenant:    "cgrates.org",
 		TPid:      "TPS1",
 		ID:        "Stat1",
@@ -134,10 +136,9 @@ func testTPStatsSetTPStat(t *testing.T) {
 			ExpiryTime:     "",
 		},
 		TTL: "1",
-		Metrics: []*utils.MetricWithParams{
-			&utils.MetricWithParams{
-				MetricID:   "*sum",
-				Parameters: "Param1",
+		Metrics: []*utils.MetricWithFilters{
+			&utils.MetricWithFilters{
+				MetricID: "*sum",
 			},
 		},
 		Blocker:      false,
@@ -146,6 +147,7 @@ func testTPStatsSetTPStat(t *testing.T) {
 		MinItems:     1,
 		ThresholdIDs: []string{"ThreshValue", "ThreshValueTwo"},
 	}
+	sort.Strings(tpStat.ThresholdIDs)
 	var result string
 	if err := tpStatRPC.Call("ApierV1.SetTPStat", tpStat, &result); err != nil {
 		t.Error(err)
@@ -155,11 +157,13 @@ func testTPStatsSetTPStat(t *testing.T) {
 }
 
 func testTPStatsGetTPStatAfterSet(t *testing.T) {
-	var respond *utils.TPStats
+	var respond *utils.TPStatProfile
 	if err := tpStatRPC.Call("ApierV1.GetTPStat",
 		&utils.TPTntID{TPid: "TPS1", Tenant: "cgrates.org", ID: "Stat1"}, &respond); err != nil {
-		t.Error(err)
-	} else if !reflect.DeepEqual(tpStat, respond) {
+		t.Fatal(err)
+	}
+	sort.Strings(respond.ThresholdIDs)
+	if !reflect.DeepEqual(tpStat, respond) {
 		t.Errorf("Expecting: %+v, received: %+v", tpStat, respond)
 	}
 }
@@ -167,16 +171,17 @@ func testTPStatsGetTPStatAfterSet(t *testing.T) {
 func testTPStatsUpdateTPStat(t *testing.T) {
 	var result string
 	tpStat.Weight = 21
-	tpStat.Metrics = []*utils.MetricWithParams{
-		&utils.MetricWithParams{
-			MetricID:   "*sum",
-			Parameters: "Param1",
+	tpStat.Metrics = []*utils.MetricWithFilters{
+		&utils.MetricWithFilters{
+			MetricID: "*sum",
 		},
-		&utils.MetricWithParams{
-			MetricID:   "*averege",
-			Parameters: "Param1",
+		&utils.MetricWithFilters{
+			MetricID: "*averege",
 		},
 	}
+	sort.Slice(tpStat.Metrics, func(i, j int) bool {
+		return strings.Compare(tpStat.Metrics[i].MetricID, tpStat.Metrics[j].MetricID) == -1
+	})
 	if err := tpStatRPC.Call("ApierV1.SetTPStat", tpStat, &result); err != nil {
 		t.Error(err)
 	} else if result != utils.OK {
@@ -185,18 +190,23 @@ func testTPStatsUpdateTPStat(t *testing.T) {
 }
 
 func testTPStatsGetTPStatAfterUpdate(t *testing.T) {
-	var expectedTPS *utils.TPStats
+	var expectedTPS *utils.TPStatProfile
 	if err := tpStatRPC.Call("ApierV1.GetTPStat",
 		&utils.TPTntID{TPid: "TPS1", Tenant: "cgrates.org", ID: "Stat1"}, &expectedTPS); err != nil {
-		t.Error(err)
-	} else if !reflect.DeepEqual(tpStat, expectedTPS) {
+		t.Fatal(err)
+	}
+	sort.Strings(expectedTPS.ThresholdIDs)
+	sort.Slice(expectedTPS.Metrics, func(i, j int) bool {
+		return strings.Compare(expectedTPS.Metrics[i].MetricID, expectedTPS.Metrics[j].MetricID) == -1
+	})
+	if !reflect.DeepEqual(tpStat, expectedTPS) {
 		t.Errorf("Expecting: %+v, received: %+v", tpStat, expectedTPS)
 	}
 }
 
-func testTPStatsRemTPStat(t *testing.T) {
+func testTPStatsRemoveTPStat(t *testing.T) {
 	var resp string
-	if err := tpStatRPC.Call("ApierV1.RemTPStat",
+	if err := tpStatRPC.Call("ApierV1.RemoveTPStat",
 		&utils.TPTntID{TPid: "TPS1", Tenant: "cgrates.org", ID: "Stat1"}, &resp); err != nil {
 		t.Error(err)
 	} else if resp != utils.OK {
@@ -205,7 +215,7 @@ func testTPStatsRemTPStat(t *testing.T) {
 }
 
 func testTPStatsGetTPStatAfterRemove(t *testing.T) {
-	var respond *utils.TPStats
+	var respond *utils.TPStatProfile
 	if err := tpStatRPC.Call("ApierV1.GetTPStat",
 		&utils.TPTntID{TPid: "TPS1", Tenant: "cgrates.org", ID: "Stat1"},
 		&respond); err == nil || err.Error() != utils.ErrNotFound.Error() {

@@ -311,6 +311,12 @@ func TestParseTimeDetectLayout(t *testing.T) {
 		t.Errorf("Expecting: %v, received: %v", expected, date)
 	}
 
+	date, err = ParseTimeDetectLayout("2014-11-25T00:00:00+01:00", "")
+	expected = time.Date(2014, 11, 24, 23, 0, 0, 0, time.UTC)
+	if err != nil || !date.UTC().Equal(expected.UTC()) {
+		t.Errorf("Expecting: %v, received: %v", expected.UTC(), date.UTC())
+	}
+
 }
 
 func TestRoundDuration(t *testing.T) {
@@ -437,10 +443,24 @@ func TestParseZeroRatingSubject(t *testing.T) {
 	subj := []string{"", "*zero1024", "*zero1s", "*zero5m", "*zero10h"}
 	dur := []time.Duration{time.Second, time.Duration(1024),
 		time.Second, 5 * time.Minute, 10 * time.Hour}
+	dfltRatingSubject := map[string]string{
+		ANY:      "*zero1ns",
+		VOICE:    "*zero1s",
+		DATA:     "*zero1ns",
+		SMS:      "*zero1ns",
+		MONETARY: "*zero1ns",
+		GENERIC:  "*zero1ns",
+	}
 	for i, s := range subj {
-		if d, err := ParseZeroRatingSubject(VOICE, s); err != nil || d != dur[i] {
+		if d, err := ParseZeroRatingSubject(VOICE, s, dfltRatingSubject); err != nil || d != dur[i] {
 			t.Error("Error parsing rating subject: ", s, d, err)
 		}
+	}
+	if d, err := ParseZeroRatingSubject(DATA, EmptyString, dfltRatingSubject); err != nil || d != time.Nanosecond {
+		t.Error("Error parsing rating subject: ", EmptyString, d, err)
+	}
+	if d, err := ParseZeroRatingSubject(MONETARY, EmptyString, dfltRatingSubject); err != nil || d != time.Nanosecond {
+		t.Error("Error parsing rating subject: ", EmptyString, d, err)
 	}
 }
 

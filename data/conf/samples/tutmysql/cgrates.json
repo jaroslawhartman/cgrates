@@ -5,6 +5,7 @@
 
 "general": {
 	"log_level": 7,
+	"reply_timeout": "20s",
 },
 
 
@@ -25,38 +26,10 @@
 },
 
 
-"cache":{
-	"destinations": {"limit": 10000, "ttl":"0s", "precache": true},
-	"reverse_destinations": {"limit": 10000, "ttl":"0s", "precache": true},
-	"rating_plans": {"limit": 10000, "ttl":"0s","precache": true},
-	"rating_profiles": {"limit": 10000, "ttl":"0s", "precache": true},
-	"actions": {"limit": 10000, "ttl":"0s", "precache": true},
-	"action_plans": {"limit": 10000, "ttl":"0s", "precache": true},
-	"account_action_plans": {"limit": 10000, "ttl":"0s", "precache": true},
-	"action_triggers": {"limit": 10000, "ttl":"0s", "precache": true},
-	"shared_groups": {"limit": 10000, "ttl":"0s", "precache": true},
-	"resource_profiles": {"limit": 10000, "ttl":"0s", "precache": true},
-	"resources": {"limit": 10000, "ttl":"0s", "precache": true},
-	"statqueues": {"limit": 10000, "ttl":"0s", "precache": true},
-	"statqueue_profiles": {"limit": 10000, "ttl":"0s", "precache": true},
-	"thresholds": {"limit": 10000, "ttl":"0s", "precache": true},
-	"threshold_profiles": {"limit": 10000, "ttl":"0s", "precache": true},
-	"filters": {"limit": 10000, "ttl":"0s", "precache": true},
-	"supplier_profiles": {"limit": 10000, "ttl":"0s", "precache": true},
-	"attribute_profiles": {"limit": 10000, "ttl":"0s", "precache": true},
-	"resource_filter_indexes" :{"limit": 10000, "ttl":"0s"},
-	"stat_filter_indexes" : {"limit": 10000, "ttl":"0s"},
-	"threshold_filter_indexes" : {"limit": 10000, "ttl":"0s"},
-	"supplier_filter_indexes" : {"limit": 10000, "ttl":"0s"},
-	"attribute_filter_indexes" : {"limit": 10000, "ttl":"0s"},
-	"charger_filter_indexes" : {"limit": 10000, "ttl":"0s"},
-},
-
-
 "rals": {
 	"enabled": true,
 	"thresholds_conns": [
-		{"address": "127.0.0.1:2012", "transport":"*json"},
+		{"address": "*internal"},
 	],
 },
 
@@ -64,7 +37,7 @@
 "scheduler": {
 	"enabled": true,
 	"cdrs_conns": [
-		{"address": "127.0.0.1:2012", "transport":"*json"},
+		{"address": "*internal"},
 	],
 },
 
@@ -72,7 +45,7 @@
 "cdrs": {
 	"enabled": true,
 	"chargers_conns":[
-		{"address": "127.0.0.1:2012", "transport":"*json"},
+		{"address": "*internal"},
 	],
 },
 
@@ -226,7 +199,7 @@
 "chargers": {
 	"enabled": true,
 	"attributes_conns": [
-		{"address": "127.0.0.1:2012", "transport":"*json"},
+		{"address": "*internal"},
 	],
 },
 
@@ -261,7 +234,7 @@
 		{"address": "*internal"},
 	],
 	"resources_conns": [
-		{"address": "127.0.0.1:2012", "transport":"*json"},
+		{"address": "*internal"},
 	],
 },
 
@@ -278,7 +251,13 @@
 		{"address": "*internal"}
 	],
 	"rals_conns": [
+		{"address": "*internal"},
+	],
+	"cdrs_conns": [
 		{"address": "*internal"}
+	],
+	"chargers_conns": [
+		{"address": "*internal"},
 	],
 },
 

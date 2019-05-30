@@ -32,12 +32,26 @@ type CSVStorage struct {
 	sep        rune
 	readerFunc func(string, rune, int) (*csv.Reader, *os.File, error)
 	// file names
-	destinationsFn, ratesFn, destinationratesFn, timingsFn,
-	destinationratetimingsFn, ratingprofilesFn,
-	sharedgroupsFn, actionsFn, actiontimingsFn, actiontriggersFn,
-	accountactionsFn, resProfilesFn, statsFn, thresholdsFn,
-	filterFn, suppProfilesFn, attributeProfilesFn,
-	chargerProfilesFn, dispatcherProfilesFn string
+	destinationsFn           string
+	ratesFn                  string
+	destinationratesFn       string
+	timingsFn                string
+	destinationratetimingsFn string
+	ratingprofilesFn         string
+	sharedgroupsFn           string
+	actionsFn                string
+	actiontimingsFn          string
+	actiontriggersFn         string
+	accountactionsFn         string
+	resProfilesFn            string
+	statsFn                  string
+	thresholdsFn             string
+	filterFn                 string
+	suppProfilesFn           string
+	attributeProfilesFn      string
+	chargerProfilesFn        string
+	dispatcherProfilesFn     string
+	dispatcherHostsFn        string
 }
 
 func NewFileCSVStorage(sep rune,
@@ -46,7 +60,7 @@ func NewFileCSVStorage(sep rune,
 	actionsFn, actiontimingsFn, actiontriggersFn, accountactionsFn,
 	resProfilesFn, statsFn, thresholdsFn,
 	filterFn, suppProfilesFn, attributeProfilesFn,
-	chargerProfilesFn, dispatcherProfilesFn string) *CSVStorage {
+	chargerProfilesFn, dispatcherProfilesFn, dispatcherHostsFn string) *CSVStorage {
 	return &CSVStorage{
 		sep:                      sep,
 		readerFunc:               openFileCSVStorage,
@@ -69,6 +83,7 @@ func NewFileCSVStorage(sep rune,
 		attributeProfilesFn:      attributeProfilesFn,
 		chargerProfilesFn:        chargerProfilesFn,
 		dispatcherProfilesFn:     dispatcherProfilesFn,
+		dispatcherHostsFn:        dispatcherHostsFn,
 	}
 }
 
@@ -79,14 +94,14 @@ func NewStringCSVStorage(sep rune,
 	accountactionsFn, resProfilesFn, statsFn,
 	thresholdsFn, filterFn, suppProfilesFn,
 	attributeProfilesFn, chargerProfilesFn,
-	dispatcherProfilesFn string) *CSVStorage {
+	dispatcherProfilesFn, dispatcherHostsFn string) *CSVStorage {
 	c := NewFileCSVStorage(sep, destinationsFn, timingsFn,
 		ratesFn, destinationratesFn, destinationratetimingsFn,
 		ratingprofilesFn, sharedgroupsFn, actionsFn,
 		actiontimingsFn, actiontriggersFn, accountactionsFn,
 		resProfilesFn, statsFn, thresholdsFn, filterFn,
-		suppProfilesFn, attributeProfilesFn,
-		chargerProfilesFn, dispatcherProfilesFn)
+		suppProfilesFn, attributeProfilesFn, chargerProfilesFn,
+		dispatcherProfilesFn, dispatcherHostsFn)
 	c.readerFunc = openStringCSVStorage
 	return c
 }
@@ -461,7 +476,7 @@ func (csvs *CSVStorage) GetTPAccountActions(filter *utils.TPAccountActions) ([]*
 	}
 }
 
-func (csvs *CSVStorage) GetTPResources(tpid, tenant, id string) ([]*utils.TPResource, error) {
+func (csvs *CSVStorage) GetTPResources(tpid, tenant, id string) ([]*utils.TPResourceProfile, error) {
 	csvReader, fp, err := csvs.readerFunc(csvs.resProfilesFn, csvs.sep, getColumnCount(TpResource{}))
 	if err != nil {
 		//log.Print("Could not load resource limits file: ", err)
@@ -489,8 +504,8 @@ func (csvs *CSVStorage) GetTPResources(tpid, tenant, id string) ([]*utils.TPReso
 	return tpResLimits.AsTPResources(), nil
 }
 
-func (csvs *CSVStorage) GetTPStats(tpid, tenant, id string) ([]*utils.TPStats, error) {
-	csvReader, fp, err := csvs.readerFunc(csvs.statsFn, csvs.sep, getColumnCount(TpStats{}))
+func (csvs *CSVStorage) GetTPStats(tpid, tenant, id string) ([]*utils.TPStatProfile, error) {
+	csvReader, fp, err := csvs.readerFunc(csvs.statsFn, csvs.sep, getColumnCount(TpStat{}))
 	if err != nil {
 		//log.Print("Could not load stats file: ", err)
 		// allow writing of the other values
@@ -499,17 +514,17 @@ func (csvs *CSVStorage) GetTPStats(tpid, tenant, id string) ([]*utils.TPStats, e
 	if fp != nil {
 		defer fp.Close()
 	}
-	var tpStats TpStatsS
+	var tpStats TpStats
 	for record, err := csvReader.Read(); err != io.EOF; record, err = csvReader.Read() {
 		if err != nil {
 			log.Printf("bad line in %s, %s\n", csvs.statsFn, err.Error())
 			return nil, err
 		}
-		if tpstats, err := csvLoad(TpStats{}, record); err != nil {
+		if tpstats, err := csvLoad(TpStat{}, record); err != nil {
 			log.Print("error loading TPStats: ", err)
 			return nil, err
 		} else {
-			tPstats := tpstats.(TpStats)
+			tPstats := tpstats.(TpStat)
 			tPstats.Tpid = tpid
 			tpStats = append(tpStats, &tPstats)
 		}
@@ -517,7 +532,7 @@ func (csvs *CSVStorage) GetTPStats(tpid, tenant, id string) ([]*utils.TPStats, e
 	return tpStats.AsTPStats(), nil
 }
 
-func (csvs *CSVStorage) GetTPThresholds(tpid, tenant, id string) ([]*utils.TPThreshold, error) {
+func (csvs *CSVStorage) GetTPThresholds(tpid, tenant, id string) ([]*utils.TPThresholdProfile, error) {
 	csvReader, fp, err := csvs.readerFunc(csvs.thresholdsFn, csvs.sep, getColumnCount(TpThreshold{}))
 	if err != nil {
 		//log.Print("Could not load threshold file: ", err)
@@ -527,7 +542,7 @@ func (csvs *CSVStorage) GetTPThresholds(tpid, tenant, id string) ([]*utils.TPThr
 	if fp != nil {
 		defer fp.Close()
 	}
-	var tpThreshold TpThresholdS
+	var tpThreshold TpThresholds
 	for record, err := csvReader.Read(); err != io.EOF; record, err = csvReader.Read() {
 		if err != nil {
 			log.Printf("bad line in %s, %s\n", csvs.thresholdsFn, err.Error())
@@ -657,8 +672,8 @@ func (csvs *CSVStorage) GetTPChargers(tpid, tenant, id string) ([]*utils.TPCharg
 	return tpCPPs.AsTPChargers(), nil
 }
 
-func (csvs *CSVStorage) GetTPDispatchers(tpid, tenant, id string) ([]*utils.TPDispatcherProfile, error) {
-	csvReader, fp, err := csvs.readerFunc(csvs.dispatcherProfilesFn, csvs.sep, getColumnCount(TPDispatcher{}))
+func (csvs *CSVStorage) GetTPDispatcherProfiles(tpid, tenant, id string) ([]*utils.TPDispatcherProfile, error) {
+	csvReader, fp, err := csvs.readerFunc(csvs.dispatcherProfilesFn, csvs.sep, getColumnCount(TPDispatcherProfile{}))
 	if err != nil {
 		// allow writing of the other values
 		return nil, nil
@@ -666,22 +681,49 @@ func (csvs *CSVStorage) GetTPDispatchers(tpid, tenant, id string) ([]*utils.TPDi
 	if fp != nil {
 		defer fp.Close()
 	}
-	var tpDPPs TPDispatchers
+	var tpDPPs TPDispatcherProfiles
 	for record, err := csvReader.Read(); err != io.EOF; record, err = csvReader.Read() {
 		if err != nil {
 			log.Printf("bad line in %s, %s\n", csvs.dispatcherProfilesFn, err.Error())
 			return nil, err
 		}
-		if dpp, err := csvLoad(TPDispatcher{}, record); err != nil {
+		if dpp, err := csvLoad(TPDispatcherProfile{}, record); err != nil {
 			log.Print("error loading tpDispatcherProfile: ", err)
 			return nil, err
 		} else {
-			dpp := dpp.(TPDispatcher)
+			dpp := dpp.(TPDispatcherProfile)
 			dpp.Tpid = tpid
 			tpDPPs = append(tpDPPs, &dpp)
 		}
 	}
-	return tpDPPs.AsTPDispatchers(), nil
+	return tpDPPs.AsTPDispatcherProfiles(), nil
+}
+
+func (csvs *CSVStorage) GetTPDispatcherHosts(tpid, tenant, id string) ([]*utils.TPDispatcherHost, error) {
+	csvReader, fp, err := csvs.readerFunc(csvs.dispatcherHostsFn, csvs.sep, getColumnCount(TPDispatcherHost{}))
+	if err != nil {
+		// allow writing of the other values
+		return nil, nil
+	}
+	if fp != nil {
+		defer fp.Close()
+	}
+	var tpDDHs TPDispatcherHosts
+	for record, err := csvReader.Read(); err != io.EOF; record, err = csvReader.Read() {
+		if err != nil {
+			log.Printf("bad line in %s, %s\n", csvs.dispatcherHostsFn, err.Error())
+			return nil, err
+		}
+		if dpp, err := csvLoad(TPDispatcherHost{}, record); err != nil {
+			log.Print("error loading tpDispatcherHost: ", err)
+			return nil, err
+		} else {
+			dpp := dpp.(TPDispatcherHost)
+			dpp.Tpid = tpid
+			tpDDHs = append(tpDDHs, &dpp)
+		}
+	}
+	return tpDDHs.AsTPDispatcherHosts(), nil
 }
 
 func (csvs *CSVStorage) GetTpIds(colName string) ([]string, error) {
@@ -689,6 +731,6 @@ func (csvs *CSVStorage) GetTpIds(colName string) ([]string, error) {
 }
 
 func (csvs *CSVStorage) GetTpTableIds(tpid, table string,
-	distinct utils.TPDistinctIds, filters map[string]string, p *utils.Paginator) ([]string, error) {
+	distinct utils.TPDistinctIds, filters map[string]string, p *utils.PaginatorWithSearch) ([]string, error) {
 	return nil, utils.ErrNotImplemented
 }

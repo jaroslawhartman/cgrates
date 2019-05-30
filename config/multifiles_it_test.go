@@ -37,7 +37,7 @@ func TestMfInitConfig(t *testing.T) {
 		os.Setenv(key, val)
 	}
 	var err error
-	if mfCgrCfg, err = NewCGRConfigFromFolder("/usr/share/cgrates/conf/samples/multifiles"); err != nil {
+	if mfCgrCfg, err = NewCGRConfigFromPath("/usr/share/cgrates/conf/samples/multifiles"); err != nil {
 		t.Fatal("Got config error: ", err.Error())
 	}
 }
@@ -52,12 +52,12 @@ func TestMfGeneralItems(t *testing.T) {
 }
 
 func TestMfCdreDefaultInstance(t *testing.T) {
-	for _, prflName := range []string{"*default", "export1"} {
+	for _, prflName := range []string{utils.MetaDefault, "export1"} {
 		if _, hasIt := mfCgrCfg.CdreProfiles[prflName]; !hasIt {
 			t.Error("Cdre does not contain profile ", prflName)
 		}
 	}
-	prfl := "*default"
+	prfl := utils.MetaDefault
 	if mfCgrCfg.CdreProfiles[prfl].ExportFormat != utils.MetaFileCSV {
 		t.Error("Default instance has cdrFormat: ", mfCgrCfg.CdreProfiles[prfl].ExportFormat)
 	}
@@ -111,12 +111,12 @@ func TestMfEnvReaderITRead(t *testing.T) {
 		DefaultReqType:    utils.META_PSEUDOPREPAID,
 		DefaultCategory:   "call",
 		DefaultTenant:     "cgrates.org",
+		DefaultCaching:    utils.MetaReload,
 		DefaultTimezone:   "Local",
 		ConnectAttempts:   3,
 		Reconnects:        -1,
 		ConnectTimeout:    time.Duration(1 * time.Second),
 		ReplyTimeout:      time.Duration(2 * time.Second),
-		InternalTtl:       time.Duration(2 * time.Minute),
 		LockingTimeout:    time.Duration(0),
 		DigestSeparator:   ",",
 		DigestEqual:       ":",
@@ -135,12 +135,12 @@ func TestMfHttpAgentMultipleFields(t *testing.T) {
 		&HttpAgentCfg{
 			ID:             "conecto1",
 			Url:            "/newConecto",
-			SessionSConns:  []*HaPoolConfig{{Address: "127.0.0.2:2012", Transport: "*json"}},
+			SessionSConns:  []*RemoteHost{{Address: "127.0.0.2:2012", Transport: "*json"}},
 			RequestPayload: "*url",
 			ReplyPayload:   "*xml",
-			RequestProcessors: []*HttpAgntProcCfg{
+			RequestProcessors: []*RequestProcessor{
 				{
-					Id:            "OutboundAUTHDryRun",
+					ID:            "OutboundAUTHDryRun",
 					Filters:       []string{},
 					Tenant:        NewRSRParsersMustCompile("cgrates.org", true, utils.INFIELD_SEP),
 					Flags:         utils.StringMap{"*dryrun": true},
@@ -154,7 +154,7 @@ func TestMfHttpAgentMultipleFields(t *testing.T) {
 					}},
 				},
 				{
-					Id:      "OutboundAUTH",
+					ID:      "OutboundAUTH",
 					Filters: []string{"*string:~*req.request_type:OutboundAUTH"},
 					Tenant:  NewRSRParsersMustCompile("cgrates.org", true, utils.INFIELD_SEP),
 					Flags: utils.StringMap{"*accounts": true,
@@ -179,7 +179,7 @@ func TestMfHttpAgentMultipleFields(t *testing.T) {
 					},
 				},
 				{
-					Id:      "mtcall_cdr",
+					ID:      "mtcall_cdr",
 					Filters: []string{"*string:~*req.request_type:MTCALL_CDR"},
 					Tenant:  NewRSRParsersMustCompile("cgrates.org", true, utils.INFIELD_SEP),
 					Flags:   utils.StringMap{"*cdrs": true},
@@ -203,11 +203,11 @@ func TestMfHttpAgentMultipleFields(t *testing.T) {
 		&HttpAgentCfg{
 			ID:             "conecto_xml",
 			Url:            "/conecto_xml",
-			SessionSConns:  []*HaPoolConfig{{Address: "127.0.0.1:2012", Transport: "*json"}},
+			SessionSConns:  []*RemoteHost{{Address: "127.0.0.1:2012", Transport: "*json"}},
 			RequestPayload: "*xml",
 			ReplyPayload:   "*xml",
-			RequestProcessors: []*HttpAgntProcCfg{{
-				Id:     "cdr_from_xml",
+			RequestProcessors: []*RequestProcessor{{
+				ID:     "cdr_from_xml",
 				Tenant: NewRSRParsersMustCompile("cgrates.org", true, utils.INFIELD_SEP),
 				Flags:  utils.StringMap{"*cdrs": true},
 				RequestFields: []*FCTemplate{

@@ -21,6 +21,7 @@ import (
 	"flag"
 	"net/rpc"
 	"net/rpc/jsonrpc"
+	"os/exec"
 	"path"
 	"strings"
 	"testing"
@@ -35,44 +36,62 @@ import (
 	"github.com/cgrates/go-diameter/diam/dict"
 )
 
-var waitRater = flag.Int("wait_rater", 100, "Number of miliseconds to wait for rater to start and cache")
-var dataDir = flag.String("data_dir", "/usr/share/cgrates", "CGR data dir path here")
-var interations = flag.Int("iterations", 1, "Number of iterations to do for dry run simulation")
-var replyTimeout = flag.String("reply_timeout", "1s", "Maximum duration to wait for a reply")
+var (
+	waitRater    = flag.Int("wait_rater", 100, "Number of miliseconds to wait for rater to start and cache")
+	dataDir      = flag.String("data_dir", "/usr/share/cgrates", "CGR data dir path here")
+	interations  = flag.Int("iterations", 1, "Number of iterations to do for dry run simulation")
+	replyTimeout = flag.String("reply_timeout", "1s", "Maximum duration to wait for a reply")
 
-var daCfgPath, diamConfigDIR string
-var daCfg *config.CGRConfig
-var apierRpc *rpc.Client
-var diamClnt *DiameterClient
+	daCfgPath, diamConfigDIR string
+	daCfg                    *config.CGRConfig
+	apierRpc                 *rpc.Client
+	diamClnt                 *DiameterClient
 
-var rplyTimeout time.Duration
+	rplyTimeout time.Duration
 
-var sTestsDiam = []func(t *testing.T){
-	testDiamItInitCfg,
-	testDiamItResetDataDb,
-	testDiamItResetStorDb,
-	testDiamItStartEngine,
-	testDiamItConnectDiameterClient,
-	testDiamItApierRpcConn,
-	testDiamItTPFromFolder,
-	testDiamItDryRun,
-	testDiamItCCRInit,
-	testDiamItCCRUpdate,
-	testDiamItCCRTerminate,
-	testDiamItCCRSMS,
-	// testDiamTerminateWithoutAnswerTime,
-	testDiamItKillEngine,
-}
+	isDispatcherActive bool
+
+	sTestsDiam = []func(t *testing.T){
+		testDiamItInitCfg,
+		testDiamItResetDataDb,
+		testDiamItResetStorDb,
+		testDiamItStartEngine,
+		testDiamItConnectDiameterClient,
+		testDiamItApierRpcConn,
+		testDiamItTPFromFolder,
+		testDiamItDryRun,
+		testDiamItCCRInit,
+		testDiamItCCRUpdate,
+		testDiamItCCRTerminate,
+		testDiamItCCRSMS,
+		testDiamItKillEngine,
+	}
+)
 
 // Test start here
 func TestDiamItTcp(t *testing.T) {
+	engine.KillEngine(0)
 	diamConfigDIR = "diamagent"
 	for _, stest := range sTestsDiam {
 		t.Run(diamConfigDIR, stest)
 	}
 }
 
+func TestDiamItDispatcher(t *testing.T) {
+	isDispatcherActive = true
+	engine.StartEngine(path.Join(*dataDir, "conf", "samples", "dispatchers", "all"), 200)
+	engine.StartEngine(path.Join(*dataDir, "conf", "samples", "dispatchers", "all2"), 200)
+	diamConfigDIR = "dispatchers/diamagent"
+	testDiamItResetAllDB(t)
+	for _, stest := range sTestsDiam {
+		t.Run(diamConfigDIR, stest)
+	}
+	engine.KillEngine(100)
+	isDispatcherActive = false
+}
+
 func TestDiamItSctp(t *testing.T) {
+	engine.KillEngine(0)
 	diamConfigDIR = "diamsctpagent"
 	for _, stest := range sTestsDiam {
 		t.Run(diamConfigDIR, stest)
@@ -80,6 +99,7 @@ func TestDiamItSctp(t *testing.T) {
 }
 
 func TestDiamItMaxConn(t *testing.T) {
+	engine.KillEngine(0)
 	diamConfigDIR = "diamagentmaxconn"
 	for _, stest := range sTestsDiam[:7] {
 		t.Run(diamConfigDIR, stest)
@@ -89,6 +109,7 @@ func TestDiamItMaxConn(t *testing.T) {
 }
 
 func TestDiamItSessionDisconnect(t *testing.T) {
+	engine.KillEngine(0)
 	diamConfigDIR = "diamagent"
 	for _, stest := range sTestsDiam[:7] {
 		t.Run(diamConfigDIR, stest)
@@ -101,13 +122,30 @@ func testDiamItInitCfg(t *testing.T) {
 	daCfgPath = path.Join(*dataDir, "conf", "samples", diamConfigDIR)
 	// Init config first
 	var err error
-	daCfg, err = config.NewCGRConfigFromFolder(daCfgPath)
+	daCfg, err = config.NewCGRConfigFromPath(daCfgPath)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 	daCfg.DataFolderPath = *dataDir // Share DataFolderPath through config towards StoreDb for Flush()
 	config.SetCgrConfig(daCfg)
 	rplyTimeout, _ = utils.ParseDurationWithSecs(*replyTimeout)
+	if isDispatcherActive {
+		daCfg.ListenCfg().RPCJSONListen = ":6012"
+	}
+}
+
+func testDiamItResetAllDB(t *testing.T) {
+	cfgPath1 := path.Join(*dataDir, "conf", "samples", "dispatchers", "all")
+	allCfg, err := config.NewCGRConfigFromPath(cfgPath1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := engine.InitDataDb(allCfg); err != nil {
+		t.Fatal(err)
+	}
+	if err := engine.InitStorDb(allCfg); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // Remove data in both rating and accounting db
@@ -126,7 +164,7 @@ func testDiamItResetStorDb(t *testing.T) {
 
 // Start CGR Engine
 func testDiamItStartEngine(t *testing.T) {
-	if _, err := engine.StopStartEngine(daCfgPath, 200); err != nil {
+	if _, err := engine.StartEngine(daCfgPath, 500); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -157,7 +195,32 @@ func testDiamItTPFromFolder(t *testing.T) {
 	if err := apierRpc.Call("ApierV2.LoadTariffPlanFromFolder", attrs, &loadInst); err != nil {
 		t.Error(err)
 	}
+	if isDispatcherActive {
+		testDiamItTPLoadData(t)
+	}
 	time.Sleep(time.Duration(1 * time.Second)) // Give time for scheduler to execute topups
+}
+
+func testDiamItTPLoadData(t *testing.T) {
+	wchan := make(chan struct{}, 1)
+	go func() {
+		loaderPath, err := exec.LookPath("cgr-loader")
+		if err != nil {
+			t.Error(err)
+		}
+		loader := exec.Command(loaderPath, "-config_path", daCfgPath, "-path", path.Join(*dataDir, "tariffplans", "dispatchers"))
+
+		if err := loader.Start(); err != nil {
+			t.Error(err)
+		}
+		loader.Wait()
+		wchan <- struct{}{}
+	}()
+	select {
+	case <-wchan:
+	case <-time.After(5 * time.Second):
+		t.Errorf("cgr-loader failed: ")
+	}
 }
 
 func testDiamItDryRun(t *testing.T) {
@@ -239,6 +302,20 @@ func testDiamItDryRun(t *testing.T) {
 		t.Error(err)
 	}
 	for i := 0; i < *interations; i++ {
+		// ============================================
+		// prevent nil pointer dereference
+		// ============================================
+		if diamClnt == nil {
+			t.Fatal("Diameter client should not be nil")
+		}
+		if diamClnt.conn == nil {
+			t.Fatal("Diameter conection should not be nil")
+		}
+		if ccr == nil {
+			t.Fatal("The mesage to diameter should not be nil")
+		}
+		// ============================================
+
 		if err := diamClnt.SendMessage(ccr); err != nil {
 			t.Error(err)
 		}
@@ -474,6 +551,19 @@ func testDiamItCCRInit(t *testing.T) {
 				},
 			}),
 		}})
+	// ============================================
+	// prevent nil pointer dereference
+	// ============================================
+	if diamClnt == nil {
+		t.Fatal("Diameter client should not be nil")
+	}
+	if diamClnt.conn == nil {
+		t.Fatal("Diameter conection should not be nil")
+	}
+	if m == nil {
+		t.Fatal("The mesage to diameter should not be nil")
+	}
+	// ============================================
 	if err := diamClnt.SendMessage(m); err != nil {
 		t.Error(err)
 	}
@@ -549,6 +639,19 @@ func testDiamItCCRUpdate(t *testing.T) {
 				},
 			}),
 		}})
+	// ============================================
+	// prevent nil pointer dereference
+	// ============================================
+	if diamClnt == nil {
+		t.Fatal("Diameter client should not be nil")
+	}
+	if diamClnt.conn == nil {
+		t.Fatal("Diameter conection should not be nil")
+	}
+	if m == nil {
+		t.Fatal("The mesage to diameter should not be nil")
+	}
+	// ============================================
 	if err := diamClnt.SendMessage(m); err != nil {
 		t.Error(err)
 	}
@@ -624,6 +727,19 @@ func testDiamItCCRTerminate(t *testing.T) {
 				},
 			}),
 		}})
+	// ============================================
+	// prevent nil pointer dereference
+	// ============================================
+	if diamClnt == nil {
+		t.Fatal("Diameter client should not be nil")
+	}
+	if diamClnt.conn == nil {
+		t.Fatal("Diameter conection should not be nil")
+	}
+	if m == nil {
+		t.Fatal("The mesage to diameter should not be nil")
+	}
+	// ============================================
 	if err := diamClnt.SendMessage(m); err != nil {
 		t.Error(err)
 	}
@@ -708,6 +824,19 @@ func testDiamItCCRSMS(t *testing.T) {
 				},
 			}),
 		}})
+	// ============================================
+	// prevent nil pointer dereference
+	// ============================================
+	if diamClnt == nil {
+		t.Fatal("Diameter client should not be nil")
+	}
+	if diamClnt.conn == nil {
+		t.Fatal("Diameter conection should not be nil")
+	}
+	if ccr == nil {
+		t.Fatal("The mesage to diameter should not be nil")
+	}
+	// ============================================
 	if err := diamClnt.SendMessage(ccr); err != nil {
 		t.Error(err)
 	}
@@ -785,6 +914,19 @@ func testDiamInitWithSessionDisconnect(t *testing.T) {
 				},
 			}),
 		}})
+	// ============================================
+	// prevent nil pointer dereference
+	// ============================================
+	if diamClnt == nil {
+		t.Fatal("Diameter client should not be nil")
+	}
+	if diamClnt.conn == nil {
+		t.Fatal("Diameter conection should not be nil")
+	}
+	if m == nil {
+		t.Fatal("The mesage to diameter should not be nil")
+	}
+	// ============================================
 	if err := diamClnt.SendMessage(m); err != nil {
 		t.Error(err)
 	}
@@ -818,151 +960,6 @@ func testDiamInitWithSessionDisconnect(t *testing.T) {
 		t.Errorf("expecting: %s, received: <%s>", sessID, val)
 	}
 }
-
-/*
-func testDiamTerminateWithoutAnswerTime(t *testing.T) {
-	// Init Session
-	m := diam.NewRequest(diam.CreditControl, 4, nil)
-	m.NewAVP(avp.SessionID, avp.Mbit, 0, datatype.UTF8String("bb97be2b9f37c2be9614fff71c8b1d08b1acbff8"))
-	m.NewAVP(avp.OriginHost, avp.Mbit, 0, datatype.DiameterIdentity("192.168.1.1"))
-	m.NewAVP(avp.OriginRealm, avp.Mbit, 0, datatype.DiameterIdentity("cgrates.org"))
-	m.NewAVP(avp.AuthApplicationID, avp.Mbit, 0, datatype.Unsigned32(4))
-	m.NewAVP(avp.CCRequestType, avp.Mbit, 0, datatype.Enumerated(1))
-	m.NewAVP(avp.CCRequestNumber, avp.Mbit, 0, datatype.Unsigned32(1))
-	m.NewAVP(avp.DestinationHost, avp.Mbit, 0, datatype.DiameterIdentity("CGR-DA"))
-	m.NewAVP(avp.DestinationRealm, avp.Mbit, 0, datatype.DiameterIdentity("cgrates.org"))
-	m.NewAVP(avp.ServiceContextID, avp.Mbit, 0, datatype.UTF8String("voice@DiamItCCRInit"))
-	m.NewAVP(avp.EventTimestamp, avp.Mbit, 0, datatype.Time(time.Date(2018, 10, 4, 14, 42, 20, 0, time.UTC)))
-	m.NewAVP(avp.SubscriptionID, avp.Mbit, 0, &diam.GroupedAVP{
-		AVP: []*diam.AVP{
-			diam.NewAVP(450, avp.Mbit, 0, datatype.Enumerated(0)),      // Subscription-Id-Type
-			diam.NewAVP(444, avp.Mbit, 0, datatype.UTF8String("1006")), // Subscription-Id-Data
-		}})
-	m.NewAVP(avp.ServiceIdentifier, avp.Mbit, 0, datatype.Unsigned32(0))
-	m.NewAVP(avp.RequestedServiceUnit, avp.Mbit, 0, &diam.GroupedAVP{
-		AVP: []*diam.AVP{
-			diam.NewAVP(420, avp.Mbit, 0, datatype.Unsigned32(300))}})
-	m.NewAVP(avp.UsedServiceUnit, avp.Mbit, 0, &diam.GroupedAVP{
-		AVP: []*diam.AVP{
-			diam.NewAVP(420, avp.Mbit, 0, datatype.Unsigned32(0))}})
-	m.NewAVP(873, avp.Mbit, 10415, &diam.GroupedAVP{
-		AVP: []*diam.AVP{
-			diam.NewAVP(20300, avp.Mbit, 2011, &diam.GroupedAVP{ // IN-Information
-				AVP: []*diam.AVP{
-					diam.NewAVP(831, avp.Mbit, 10415, datatype.UTF8String("1006")),                                      // Calling-Party-Address
-					diam.NewAVP(832, avp.Mbit, 10415, datatype.UTF8String("1002")),                                      // Called-Party-Address
-					diam.NewAVP(20327, avp.Mbit, 2011, datatype.UTF8String("1002")),                                     // Real-Called-Number
-					diam.NewAVP(20339, avp.Mbit, 2011, datatype.Unsigned32(0)),                                          // Charge-Flow-Type
-					diam.NewAVP(20302, avp.Mbit, 2011, datatype.UTF8String("")),                                         // Calling-Vlr-Number
-					diam.NewAVP(20303, avp.Mbit, 2011, datatype.UTF8String("")),                                         // Calling-CellID-Or-SAI
-					diam.NewAVP(20313, avp.Mbit, 2011, datatype.UTF8String("")),                                         // Bearer-Capability
-					diam.NewAVP(20321, avp.Mbit, 2011, datatype.UTF8String("bb97be2b9f37c2be9614fff71c8b1d08b1acbff8")), // Call-Reference-Number
-					diam.NewAVP(20322, avp.Mbit, 2011, datatype.UTF8String("")),                                         // MSC-Address
-					diam.NewAVP(20324, avp.Mbit, 2011, datatype.Unsigned32(0)),                                          // Time-Zone
-					diam.NewAVP(20385, avp.Mbit, 2011, datatype.UTF8String("")),                                         // Called-Party-NP
-					diam.NewAVP(20386, avp.Mbit, 2011, datatype.UTF8String("")),                                         // SSP-Time
-				},
-			}),
-		}})
-	if err := diamClnt.SendMessage(m); err != nil {
-		t.Error(err)
-	}
-	msg := diamClnt.ReceivedMessage(rplyTimeout)
-	if msg == nil {
-		t.Fatal("No message returned")
-	}
-	// Result-Code
-	eVal := "2001"
-	if avps, err := msg.FindAVPsWithPath([]interface{}{"Result-Code"}, dict.UndefinedVendorID); err != nil {
-		t.Error(err)
-	} else if len(avps) == 0 {
-		t.Error("Missing AVP")
-	} else if val, err := diamAVPAsString(avps[0]); err != nil {
-		t.Error(err)
-	} else if val != eVal {
-		t.Errorf("expecting: %s, received: <%s>", eVal, val)
-	}
-	// Result-Code
-	eVal = "300" // 5 mins of session
-	if avps, err := msg.FindAVPsWithPath([]interface{}{"Granted-Service-Unit", "CC-Time"},
-		dict.UndefinedVendorID); err != nil {
-		t.Error(err)
-	} else if len(avps) == 0 {
-		t.Error("Missing AVP")
-	} else if val, err := diamAVPAsString(avps[0]); err != nil {
-		t.Error(err)
-	} else if val != eVal {
-		t.Errorf("expecting: %s, received: <%s>", eVal, val)
-	}
-	//Terminate session without answer time in template
-	//It should take the answer time from init but in DB store 0
-	m2 := diam.NewRequest(diam.CreditControl, 4, nil)
-	m2.NewAVP(avp.SessionID, avp.Mbit, 0, datatype.UTF8String("bb97be2b9f37c2be9614fff71c8b1d08b1acbff8"))
-	m2.NewAVP(avp.OriginHost, avp.Mbit, 0, datatype.DiameterIdentity("192.168.1.1"))
-	m2.NewAVP(avp.OriginRealm, avp.Mbit, 0, datatype.DiameterIdentity("cgrates.org"))
-	m2.NewAVP(avp.AuthApplicationID, avp.Mbit, 0, datatype.Unsigned32(4))
-	m2.NewAVP(avp.CCRequestType, avp.Mbit, 0, datatype.Enumerated(3))
-	m2.NewAVP(avp.CCRequestNumber, avp.Mbit, 0, datatype.Unsigned32(3))
-	m2.NewAVP(avp.DestinationHost, avp.Mbit, 0, datatype.DiameterIdentity("CGR-DA"))
-	m2.NewAVP(avp.DestinationRealm, avp.Mbit, 0, datatype.DiameterIdentity("cgrates.org"))
-	m2.NewAVP(avp.ServiceContextID, avp.Mbit, 0, datatype.UTF8String("voice@DiamItCCRInit"))
-	m2.NewAVP(avp.EventTimestamp, avp.Mbit, 0, datatype.Time(time.Date(2018, 10, 4, 15, 12, 20, 0, time.UTC)))
-	m2.NewAVP(avp.SubscriptionID, avp.Mbit, 0, &diam.GroupedAVP{
-		AVP: []*diam.AVP{
-			diam.NewAVP(450, avp.Mbit, 0, datatype.Enumerated(0)),      // Subscription-Id-Type
-			diam.NewAVP(444, avp.Mbit, 0, datatype.UTF8String("1006")), // Subscription-Id-Data
-		}})
-	m2.NewAVP(avp.ServiceIdentifier, avp.Mbit, 0, datatype.Unsigned32(0))
-	m2.NewAVP(avp.RequestedServiceUnit, avp.Mbit, 0, &diam.GroupedAVP{
-		AVP: []*diam.AVP{
-			diam.NewAVP(420, avp.Mbit, 0, datatype.Unsigned32(0))}})
-	m2.NewAVP(avp.UsedServiceUnit, avp.Mbit, 0, &diam.GroupedAVP{
-		AVP: []*diam.AVP{
-			diam.NewAVP(420, avp.Mbit, 0, datatype.Unsigned32(250))}})
-	m2.NewAVP(873, avp.Mbit, 10415, &diam.GroupedAVP{
-		AVP: []*diam.AVP{
-			diam.NewAVP(20300, avp.Mbit, 2011, &diam.GroupedAVP{ // IN-Information
-				AVP: []*diam.AVP{
-					diam.NewAVP(831, avp.Mbit, 10415, datatype.UTF8String("1006")),                                      // Calling-Party-Address
-					diam.NewAVP(832, avp.Mbit, 10415, datatype.UTF8String("1002")),                                      // Called-Party-Address
-					diam.NewAVP(20327, avp.Mbit, 2011, datatype.UTF8String("1002")),                                     // Real-Called-Number
-					diam.NewAVP(20339, avp.Mbit, 2011, datatype.Unsigned32(0)),                                          // Charge-Flow-Type
-					diam.NewAVP(20302, avp.Mbit, 2011, datatype.UTF8String("")),                                         // Calling-Vlr-Number
-					diam.NewAVP(20303, avp.Mbit, 2011, datatype.UTF8String("")),                                         // Calling-CellID-Or-SAI
-					diam.NewAVP(20313, avp.Mbit, 2011, datatype.UTF8String("")),                                         // Bearer-Capability
-					diam.NewAVP(20321, avp.Mbit, 2011, datatype.UTF8String("bb97be2b9f37c2be9614fff71c8b1d08b1acbff8")), // Call-Reference-Number
-					diam.NewAVP(20322, avp.Mbit, 2011, datatype.UTF8String("")),                                         // MSC-Address
-					diam.NewAVP(20324, avp.Mbit, 2011, datatype.Unsigned32(0)),                                          // Time-Zone
-					diam.NewAVP(20385, avp.Mbit, 2011, datatype.UTF8String("")),                                         // Called-Party-NP
-					diam.NewAVP(20386, avp.Mbit, 2011, datatype.UTF8String("")),                                         // SSP-Time
-				},
-			}),
-		}})
-	if err := diamClnt.SendMessage(m2); err != nil {
-		t.Error(err)
-	}
-
-	time.Sleep(time.Duration(*waitRater) * time.Millisecond)
-	var cdrs []*engine.CDR
-	args := utils.RPCCDRsFilter{RunIDs: []string{utils.MetaRaw}}
-	if err := apierRpc.Call(utils.CDRsV1GetCDRs, args, &cdrs); err != nil {
-		t.Error("Unexpected error: ", err.Error())
-	} else if len(cdrs) != 1 {
-		t.Error("Unexpected number of CDRs returned: ", len(cdrs))
-	} else {
-		if cdrs[0].Usage != 550*time.Second {
-			t.Errorf("Unexpected Usage CDR: %+v", cdrs[0])
-		}
-		// in case of sctp we get OriginHost ip1/ip2/ip3/...
-		if !strings.Contains(cdrs[0].OriginHost, "127.0.0.1") {
-			t.Errorf("Unexpected OriginHost CDR: %+v", cdrs[0])
-		}
-		if cdrs[0].AnswerTime.IsZero() {
-			t.Errorf("Unexpected AnswerTime: %+v", cdrs[0].AnswerTime)
-		}
-	}
-}
-*/
 
 func testDiamItKillEngine(t *testing.T) {
 	if err := engine.KillEngine(1000); err != nil {

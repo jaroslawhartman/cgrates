@@ -23,8 +23,8 @@ import "github.com/cgrates/cgrates/utils"
 func init() {
 	c := &CmdRemoveThreshold{
 		name:      "threshold_remove",
-		rpcMethod: "ApierV1.RemoveThresholdProfile",
-		rpcParams: &utils.TenantID{},
+		rpcMethod: utils.ApierV1RemoveThresholdProfile,
+		rpcParams: &utils.TenantIDWithCache{},
 	}
 	commands[c.Name()] = c
 	c.CommandExecuter = &CommandExecuter{c}
@@ -33,7 +33,7 @@ func init() {
 type CmdRemoveThreshold struct {
 	name      string
 	rpcMethod string
-	rpcParams *utils.TenantID
+	rpcParams *utils.TenantIDWithCache
 	*CommandExecuter
 }
 
@@ -47,7 +47,7 @@ func (self *CmdRemoveThreshold) RpcMethod() string {
 
 func (self *CmdRemoveThreshold) RpcParams(reset bool) interface{} {
 	if reset || self.rpcParams == nil {
-		self.rpcParams = &utils.TenantID{}
+		self.rpcParams = &utils.TenantIDWithCache{}
 	}
 	return self.rpcParams
 }

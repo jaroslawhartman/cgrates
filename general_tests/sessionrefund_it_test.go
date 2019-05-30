@@ -42,7 +42,7 @@ var (
 
 func TestSrItLoadConfig(t *testing.T) {
 	srCfgPath = path.Join(*dataDir, "conf", "samples", "tutmongo")
-	if srCfg, err = config.NewCGRConfigFromFolder(srCfgPath); err != nil {
+	if srCfg, err = config.NewCGRConfigFromPath(srCfgPath); err != nil {
 		t.Error(err)
 	}
 }
@@ -80,21 +80,6 @@ func TestSrItLoadFromFolder(t *testing.T) {
 		t.Error(err)
 	}
 	time.Sleep(500 * time.Millisecond)
-
-	//add a default charger
-	chargerProfile := &engine.ChargerProfile{
-		Tenant:       "cgrates.org",
-		ID:           "Default",
-		RunID:        "*default",
-		AttributeIDs: []string{"*none"},
-		Weight:       20,
-	}
-	var result string
-	if err := srrpc.Call("ApierV1.SetChargerProfile", chargerProfile, &result); err != nil {
-		t.Error(err)
-	} else if result != utils.OK {
-		t.Error("Unexpected reply returned", result)
-	}
 }
 
 func testAccountBalance(t *testing.T, sracc, srten, balType string, expected float64) {
@@ -132,7 +117,7 @@ func TestSrItAddVoiceBalance(t *testing.T) {
 func TestSrItInitSession(t *testing.T) {
 	args1 := &sessions.V1InitSessionArgs{
 		InitSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: srtenant,
 			ID:     "TestSrItInitiateSession",
 			Event: map[string]interface{}{
@@ -164,7 +149,7 @@ func TestSrItInitSession(t *testing.T) {
 func TestSrItTerminateSession(t *testing.T) {
 	args := &sessions.V1TerminateSessionArgs{
 		TerminateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: srtenant,
 			ID:     "TestSrItUpdateSession",
 			Event: map[string]interface{}{
@@ -219,7 +204,7 @@ func TestSrItAddMonetaryBalance(t *testing.T) {
 func TestSrItInitSession2(t *testing.T) {
 	args1 := &sessions.V1InitSessionArgs{
 		InitSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: srtenant,
 			ID:     "TestSrItInitiateSession1",
 			Event: map[string]interface{}{
@@ -251,7 +236,7 @@ func TestSrItInitSession2(t *testing.T) {
 func TestSrItTerminateSession2(t *testing.T) {
 	args := &sessions.V1TerminateSessionArgs{
 		TerminateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: srtenant,
 			ID:     "TestSrItUpdateSession",
 			Event: map[string]interface{}{

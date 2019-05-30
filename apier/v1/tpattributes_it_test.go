@@ -1,4 +1,4 @@
-// +build offline_tp
+// +build integration
 
 /*
 Real-time Online/Offline Charging System (OCS) for Telecom & ISP environments
@@ -25,6 +25,8 @@ import (
 	"net/rpc/jsonrpc"
 	"path"
 	"reflect"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/cgrates/cgrates/config"
@@ -76,7 +78,7 @@ func TestTPAlsPrfITMongo(t *testing.T) {
 func testTPAlsPrfInitCfg(t *testing.T) {
 	var err error
 	tpAlsPrfCfgPath = path.Join(tpAlsPrfDataDir, "conf", "samples", tpAlsPrfConfigDIR)
-	tpAlsPrfCfg, err = config.NewCGRConfigFromFolder(tpAlsPrfCfgPath)
+	tpAlsPrfCfg, err = config.NewCGRConfigFromPath(tpAlsPrfCfgPath)
 	if err != nil {
 		t.Error(err)
 	}
@@ -129,14 +131,14 @@ func testTPAlsPrfSetTPAlsPrf(t *testing.T) {
 		Contexts: []string{"con1"},
 		Attributes: []*utils.TPAttribute{
 			&utils.TPAttribute{
-				FieldName:  "FL1",
-				Initial:    "In1",
-				Substitute: "Al1",
-				Append:     true,
+				FieldName: "FL1",
+				Value:     "Al1",
+				FilterIDs: []string{},
 			},
 		},
 		Weight: 20,
 	}
+	sort.Strings(tpAlsPrf.FilterIDs)
 	var result string
 	if err := tpAlsPrfRPC.Call("ApierV1.SetTPAttributeProfile", tpAlsPrf, &result); err != nil {
 		t.Error(err)
@@ -149,9 +151,11 @@ func testTPAlsPrfGetTPAlsPrfAfterSet(t *testing.T) {
 	var reply *utils.TPAttributeProfile
 	if err := tpAlsPrfRPC.Call("ApierV1.GetTPAttributeProfile",
 		&utils.TPTntID{TPid: "TP1", Tenant: "cgrates.org", ID: "Attr1"}, &reply); err != nil {
-		t.Error(err)
-	} else if !reflect.DeepEqual(tpAlsPrf, reply) {
-		t.Errorf("Expecting : %+v, received: %+v", tpAlsPrf, reply)
+		t.Fatal(err)
+	}
+	sort.Strings(reply.FilterIDs)
+	if !reflect.DeepEqual(tpAlsPrf, reply) {
+		t.Errorf("Expecting : %+v, received: %+v", utils.ToJSON(tpAlsPrf), utils.ToJSON(reply))
 	}
 }
 
@@ -169,16 +173,14 @@ func testTPAlsPrfGetTPAlsPrfIDs(t *testing.T) {
 func testTPAlsPrfUpdateTPAlsPrf(t *testing.T) {
 	tpAlsPrf.Attributes = []*utils.TPAttribute{
 		&utils.TPAttribute{
-			FieldName:  "FL1",
-			Initial:    "In1",
-			Substitute: "Al1",
-			Append:     true,
+			FieldName: "FL1",
+			Value:     "Al1",
+			FilterIDs: []string{},
 		},
 		&utils.TPAttribute{
-			FieldName:  "FL2",
-			Initial:    "In2",
-			Substitute: "Al2",
-			Append:     false,
+			FieldName: "FL2",
+			Value:     "Al2",
+			FilterIDs: []string{},
 		},
 	}
 	var result string
@@ -203,31 +205,38 @@ func testTPAlsPrfGetTPAlsPrfAfterUpdate(t *testing.T) {
 		Contexts: []string{"con1"},
 		Attributes: []*utils.TPAttribute{
 			&utils.TPAttribute{
-				FieldName:  "FL2",
-				Initial:    "In2",
-				Substitute: "Al2",
-				Append:     false,
+				FieldName: "FL2",
+				Value:     "Al2",
+				FilterIDs: []string{},
 			},
 			&utils.TPAttribute{
-				FieldName:  "FL1",
-				Initial:    "In1",
-				Substitute: "Al1",
-				Append:     true,
+				FieldName: "FL1",
+				Value:     "Al1",
+				FilterIDs: []string{},
 			},
 		},
 		Weight: 20,
 	}
+	sort.Strings(revTPAlsPrf.FilterIDs)
+	sort.Slice(revTPAlsPrf.Attributes, func(i, j int) bool {
+		return strings.Compare(revTPAlsPrf.Attributes[i].FieldName, revTPAlsPrf.Attributes[j].FieldName) == -1
+	})
 	if err := tpAlsPrfRPC.Call("ApierV1.GetTPAttributeProfile",
 		&utils.TPTntID{TPid: "TP1", Tenant: "cgrates.org", ID: "Attr1"}, &reply); err != nil {
-		t.Error(err)
-	} else if !reflect.DeepEqual(tpAlsPrf, reply) && !reflect.DeepEqual(revTPAlsPrf, reply) {
+		t.Fatal(err)
+	}
+	sort.Strings(reply.FilterIDs)
+	sort.Slice(reply.Attributes, func(i, j int) bool {
+		return strings.Compare(reply.Attributes[i].FieldName, reply.Attributes[j].FieldName) == -1
+	})
+	if !reflect.DeepEqual(tpAlsPrf, reply) && !reflect.DeepEqual(revTPAlsPrf, reply) {
 		t.Errorf("Expecting : %+v, \n received: %+v", utils.ToJSON(tpAlsPrf), utils.ToJSON(reply))
 	}
 }
 
 func testTPAlsPrfRemTPAlsPrf(t *testing.T) {
 	var resp string
-	if err := tpAlsPrfRPC.Call("ApierV1.RemTPAttributeProfile",
+	if err := tpAlsPrfRPC.Call("ApierV1.RemoveTPAttributeProfile",
 		&utils.TPTntID{TPid: "TP1", Tenant: "cgrates.org", ID: "Attr1"},
 		&resp); err != nil {
 		t.Error(err)

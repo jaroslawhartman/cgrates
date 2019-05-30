@@ -18,34 +18,45 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>
 
 package v2
 
-/*
 import (
+	"time"
+
+	v1 "github.com/cgrates/cgrates/apier/v1"
 	"github.com/cgrates/cgrates/engine"
 	"github.com/cgrates/cgrates/utils"
 )
 
+type AttributeWithCache struct {
+	*engine.ExternalAttributeProfile
+	Cache *string
+}
+
 //SetAttributeProfile add/update a new Attribute Profile
-func (apierV1 *ApierV2) SetAttributeProfile(alsPrf *engine.AttributeProfile, reply *string) error {
-	if missing := utils.MissingStructFields(alsPrf, []string{"Tenant", "ID"}); len(missing) != 0 {
+func (apierV2 *ApierV2) SetAttributeProfile(arg *AttributeWithCache, reply *string) error {
+	if missing := utils.MissingStructFields(arg.ExternalAttributeProfile, []string{utils.Tenant, utils.ID}); len(missing) != 0 {
 		return utils.NewErrMandatoryIeMissing(missing...)
 	}
-	if len(alsPrf.Attributes) != 0 {
-		for _, attr := range alsPrf.Attributes {
-			for _, sub := range attr.Substitute {
-				if sub.Rules == "" {
-					return utils.NewErrMandatoryIeMissing("Rules")
-				}
-				if err := sub.Compile(); err != nil {
-					return utils.NewErrServerError(err)
-				}
-			}
-		}
+	alsPrf, err := arg.ExternalAttributeProfile.AsAttributeProfile()
+	if err != nil {
+		return utils.APIErrorHandler(err)
 	}
-
-	if err := apierV1.DataManager.SetAttributeProfile(alsPrf, true); err != nil {
+	if err := apierV2.DataManager.SetAttributeProfile(alsPrf, true); err != nil {
+		return utils.APIErrorHandler(err)
+	}
+	//generate a loadID for CacheAttributeProfiles and store it in database
+	if err := apierV2.DataManager.SetLoadIDs(
+		map[string]int64{utils.CacheAttributeProfiles: time.Now().UnixNano()}); err != nil {
+		return utils.APIErrorHandler(err)
+	}
+	args := utils.ArgsGetCacheItem{
+		CacheID: utils.CacheAttributeProfiles,
+		ItemID:  alsPrf.TenantID(),
+	}
+	if err := apierV2.ApierV1.CallCache(
+		v1.GetCacheOpt(arg.Cache),
+		args); err != nil {
 		return utils.APIErrorHandler(err)
 	}
 	*reply = utils.OK
 	return nil
 }
-*/

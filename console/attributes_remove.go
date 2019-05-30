@@ -18,15 +18,13 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>
 
 package console
 
-import (
-	"github.com/cgrates/cgrates/apier/v1"
-)
+import "github.com/cgrates/cgrates/utils"
 
 func init() {
 	c := &CmdRemoveAttributes{
 		name:      "attributes_remove",
-		rpcMethod: "ApierV1.RemoveAttributeProfile",
-		rpcParams: &v1.ArgRemoveAttrProfile{},
+		rpcMethod: utils.ApierV1RemoveAttributeProfile,
+		rpcParams: &utils.TenantIDWithCache{},
 	}
 	commands[c.Name()] = c
 	c.CommandExecuter = &CommandExecuter{c}
@@ -35,7 +33,7 @@ func init() {
 type CmdRemoveAttributes struct {
 	name      string
 	rpcMethod string
-	rpcParams *v1.ArgRemoveAttrProfile
+	rpcParams *utils.TenantIDWithCache
 	*CommandExecuter
 }
 
@@ -49,7 +47,7 @@ func (self *CmdRemoveAttributes) RpcMethod() string {
 
 func (self *CmdRemoveAttributes) RpcParams(reset bool) interface{} {
 	if reset || self.rpcParams == nil {
-		self.rpcParams = &v1.ArgRemoveAttrProfile{}
+		self.rpcParams = &utils.TenantIDWithCache{}
 	}
 	return self.rpcParams
 }

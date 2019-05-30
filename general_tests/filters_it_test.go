@@ -67,7 +67,7 @@ func TestFltrIT(t *testing.T) {
 func testV1FltrLoadConfig(t *testing.T) {
 	var err error
 	fltrCfgPath = path.Join(*dataDir, "conf", "samples", fltrConfDIR)
-	if fltrCfg, err = config.NewCGRConfigFromFolder(fltrCfgPath); err != nil {
+	if fltrCfg, err = config.NewCGRConfigFromPath(fltrCfgPath); err != nil {
 		t.Error(err)
 	}
 	fltrDelay = 1000
@@ -400,8 +400,9 @@ func testV1FltrPopulateResources(t *testing.T) {
 
 	// Allocate 3 units for resource ResTest
 	argsRU := utils.ArgRSv1ResourceUsage{
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
+			ID:     utils.UUIDSha1Prefix(),
 			Event: map[string]interface{}{
 				"Account":     "3001",
 				"Destination": "3002"},

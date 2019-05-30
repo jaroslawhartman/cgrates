@@ -18,12 +18,15 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>
 
 package console
 
-import "github.com/cgrates/cgrates/engine"
+import (
+	"github.com/cgrates/cgrates/engine"
+	"github.com/cgrates/cgrates/utils"
+)
 
 func init() {
 	c := &CmdDebit{
 		name:       "debit",
-		rpcMethod:  "Responder.Debit",
+		rpcMethod:  utils.ResponderDebit,
 		clientArgs: []string{"Direction", "Category", "TOR", "Tenant", "Subject", "Account", "Destination", "TimeStart", "TimeEnd", "CallDuration", "FallbackSubject", "DryRun"},
 	}
 	commands[c.Name()] = c
@@ -34,7 +37,7 @@ func init() {
 type CmdDebit struct {
 	name       string
 	rpcMethod  string
-	rpcParams  *engine.CallDescriptor
+	rpcParams  *engine.CallDescriptorWithArgDispatcher
 	clientArgs []string
 	*CommandExecuter
 }
@@ -49,7 +52,10 @@ func (self *CmdDebit) RpcMethod() string {
 
 func (self *CmdDebit) RpcParams(reset bool) interface{} {
 	if reset || self.rpcParams == nil {
-		self.rpcParams = new(engine.CallDescriptor)
+		self.rpcParams = &engine.CallDescriptorWithArgDispatcher{
+			CallDescriptor: new(engine.CallDescriptor),
+			ArgDispatcher:  new(utils.ArgDispatcher),
+		}
 	}
 	return self.rpcParams
 }

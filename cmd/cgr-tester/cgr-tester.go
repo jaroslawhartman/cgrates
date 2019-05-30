@@ -81,7 +81,7 @@ func durInternalRater(cd *engine.CallDescriptor) (time.Duration, error) {
 	}
 	defer dm.DataDB().Close()
 	engine.SetDataStorage(dm)
-	if err := dm.LoadDataDBCache(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+	if err := dm.LoadDataDBCache(nil, nil, nil, nil, nil, nil, nil, nil,
 		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
 		return nilDuration, fmt.Errorf("Cache rating error: %s", err.Error())
 	}
@@ -165,7 +165,7 @@ func main() {
 
 	tstCfg := cgrConfig
 	if *cfgPath != "" {
-		if tstCfg, err = config.NewCGRConfigFromFolder(*cfgPath); err != nil {
+		if tstCfg, err = config.NewCGRConfigFromPath(*cfgPath); err != nil {
 			log.Fatalf("error loading config file %s", err.Error())
 		}
 	}

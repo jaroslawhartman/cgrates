@@ -109,8 +109,9 @@ func alias2AtttributeProfile(alias *v1Alias, defaultTenant string) *engine.Attri
 					fieldName = utils.MetaTenant
 				}
 				attr := &engine.Attribute{
-					FieldName:  fieldName,
-					Substitute: config.NewRSRParsersMustCompile(substitute, true, utils.INFIELD_SEP),
+					FieldName: fieldName,
+					Type:      utils.MetaVariable, //default type for Attribute
+					Value:     config.NewRSRParsersMustCompile(substitute, true, utils.INFIELD_SEP),
 				}
 				out.Attributes = append(out.Attributes, attr)
 				// Add attribute filters if needed
@@ -183,5 +184,8 @@ func (m *Migrator) migrateAlias2Attributes() (err error) {
 }
 
 func (m *Migrator) migrateAlias() (err error) {
-	return m.migrateAlias2Attributes()
+	if err = m.migrateAlias2Attributes(); err != nil {
+		return err
+	}
+	return m.ensureIndexesDataDB(engine.ColAttr)
 }

@@ -225,7 +225,7 @@ func (tS *ThresholdService) matchingThresholdsForEvent(args *ArgsProcessEvent) (
 	} else {
 		tIDsMap, err := MatchingItemIDsForEvent(args.Event, tS.stringIndexedFields,
 			tS.prefixIndexedFields, tS.dm, utils.CacheThresholdFilterIndexes,
-			args.Tenant, tS.filterS.cfg.FilterSCfg().IndexedSelects)
+			args.Tenant, tS.filterS.cfg.ThresholdSCfg().IndexedSelects)
 		if err != nil {
 			return nil, err
 		}
@@ -278,7 +278,8 @@ func (tS *ThresholdService) matchingThresholdsForEvent(args *ArgsProcessEvent) (
 
 type ArgsProcessEvent struct {
 	ThresholdIDs []string
-	utils.CGREvent
+	*utils.CGREvent
+	*utils.ArgDispatcher
 }
 
 // processEvent processes a new event, dispatching to matching thresholds
@@ -303,7 +304,14 @@ func (tS *ThresholdService) processEvent(args *ArgsProcessEvent) (thresholdsIDs 
 		if t.dirty == nil || t.Hits == t.tPrfl.MaxHits { // one time threshold
 			if err = tS.dm.RemoveThreshold(t.Tenant, t.ID, utils.NonTransactional); err != nil {
 				utils.Logger.Warning(
-					fmt.Sprintf("<ThresholdService> failed removing non-recurrent threshold: %s, error: %s",
+					fmt.Sprintf("<ThresholdService> failed removing from database non-recurrent threshold: %s, error: %s",
+						t.TenantID(), err.Error()))
+				withErrors = true
+			}
+			//since we don't handle in DataManager caching we do a manual remove here
+			if err = tS.dm.CacheDataFromDB(utils.ThresholdPrefix, []string{t.TenantID()}, true); err != nil {
+				utils.Logger.Warning(
+					fmt.Sprintf("<ThresholdService> failed removing from cache non-recurrent threshold: %s, error: %s",
 						t.TenantID(), err.Error()))
 				withErrors = true
 			}
@@ -332,10 +340,13 @@ func (tS *ThresholdService) processEvent(args *ArgsProcessEvent) (thresholdsIDs 
 
 // V1ProcessEvent implements ThresholdService method for processing an Event
 func (tS *ThresholdService) V1ProcessEvent(args *ArgsProcessEvent, reply *[]string) (err error) {
-	if missing := utils.MissingStructFields(args, []string{"Tenant", "ID"}); len(missing) != 0 { //Params missing
+	if args.CGREvent == nil {
+		return utils.NewErrMandatoryIeMissing(utils.CGREventString)
+	}
+	if missing := utils.MissingStructFields(args, []string{utils.Tenant, utils.ID}); len(missing) != 0 { //Params missing
 		return utils.NewErrMandatoryIeMissing(missing...)
 	} else if args.CGREvent.Event == nil {
-		return utils.NewErrMandatoryIeMissing("Event")
+		return utils.NewErrMandatoryIeMissing(utils.Event)
 	}
 	if ids, err := tS.processEvent(args); err != nil {
 		return err
@@ -347,10 +358,13 @@ func (tS *ThresholdService) V1ProcessEvent(args *ArgsProcessEvent, reply *[]stri
 
 // V1GetThresholdsForEvent queries thresholds matching an Event
 func (tS *ThresholdService) V1GetThresholdsForEvent(args *ArgsProcessEvent, reply *Thresholds) (err error) {
-	if missing := utils.MissingStructFields(args, []string{"Tenant", "ID"}); len(missing) != 0 { //Params missing
+	if args.CGREvent == nil {
+		return utils.NewErrMandatoryIeMissing(utils.CGREventString)
+	}
+	if missing := utils.MissingStructFields(args, []string{utils.Tenant, utils.ID}); len(missing) != 0 { //Params missing
 		return utils.NewErrMandatoryIeMissing(missing...)
 	} else if args.CGREvent.Event == nil {
-		return utils.NewErrMandatoryIeMissing("Event")
+		return utils.NewErrMandatoryIeMissing(utils.Event)
 	}
 	var ts Thresholds
 	if ts, err = tS.matchingThresholdsForEvent(args); err == nil {

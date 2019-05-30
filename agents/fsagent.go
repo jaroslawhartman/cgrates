@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/cgrates/cgrates/config"
@@ -147,8 +148,9 @@ func (sm *FSsessions) onChannelPark(fsev FSEvent, connId string) {
 	if fsev.GetReqType(utils.META_DEFAULT) == utils.META_NONE { // Not for us
 		return
 	}
-	fsev[VarCGROriginHost] = sm.conns[connId].cfg.Alias
+	fsev[VarCGROriginHost] = utils.FirstNonEmpty(fsev[VarCGROriginHost], sm.conns[connId].cfg.Alias) // rewrite the OriginHost variable if it is empty
 	authArgs := fsev.V1AuthorizeArgs()
+	authArgs.CGREvent.Event[FsConnID] = connId // Attach the connection ID
 	var authReply sessions.V1AuthorizeReply
 	if err := sm.sS.Call(utils.SessionSv1AuthorizeEvent, authArgs, &authReply); err != nil {
 		utils.Logger.Err(
@@ -226,7 +228,7 @@ func (sm *FSsessions) onChannelAnswer(fsev FSEvent, connId string) {
 				utils.FreeSWITCHAgent, err.Error(), VarCGROriginHost))
 		return
 	}
-	fsev[VarCGROriginHost] = sm.conns[connId].cfg.Alias
+	fsev[VarCGROriginHost] = utils.FirstNonEmpty(fsev[VarCGROriginHost], sm.conns[connId].cfg.Alias) // rewrite the OriginHost variable if it is empty
 	chanUUID := fsev.GetUUID()
 	if missing := fsev.MissingParameter(sm.timezone); missing != "" {
 		sm.disconnectSession(connId, chanUUID, "",
@@ -251,10 +253,12 @@ func (sm *FSsessions) onChannelHangupComplete(fsev FSEvent, connId string) {
 		return
 	}
 	var reply string
-	fsev[VarCGROriginHost] = sm.conns[connId].cfg.Alias
-	if fsev[VarAnswerEpoch] != "0" { // call was answered
+	fsev[VarCGROriginHost] = utils.FirstNonEmpty(fsev[VarCGROriginHost], sm.conns[connId].cfg.Alias) // rewrite the OriginHost variable if it is empty
+	if fsev[VarAnswerEpoch] != "0" {                                                                 // call was answered
+		terminateSessionArgs := fsev.V1TerminateSessionArgs()
+		terminateSessionArgs.CGREvent.Event[FsConnID] = connId // Attach the connection ID in case we need to create a session and disconnect it
 		if err := sm.sS.Call(utils.SessionSv1TerminateSession,
-			fsev.V1TerminateSessionArgs(), &reply); err != nil {
+			terminateSessionArgs, &reply); err != nil {
 			utils.Logger.Err(
 				fmt.Sprintf("<%s> Could not terminate session with event %s, error: %s",
 					utils.FreeSWITCHAgent, fsev.GetUUID(), err.Error()))
@@ -265,7 +269,9 @@ func (sm *FSsessions) onChannelHangupComplete(fsev FSEvent, connId string) {
 		if err != nil {
 			return
 		}
-		if err := sm.sS.Call(utils.SessionSv1ProcessCDR, cgrEv, &reply); err != nil {
+		cgrArgs := cgrEv.ConsumeArgs(strings.Index(fsev[VarCGRSubsystems], utils.MetaDispatchers) != -1, false)
+		if err := sm.sS.Call(utils.SessionSv1ProcessCDR,
+			&utils.CGREventWithArgDispatcher{CGREvent: cgrEv, ArgDispatcher: cgrArgs.ArgDispatcher}, &reply); err != nil {
 			utils.Logger.Err(fmt.Sprintf("<%s> Failed processing CGREvent: %s,  error: <%s>",
 				utils.FreeSWITCHAgent, utils.ToJSON(cgrEv), err.Error()))
 		}
@@ -368,11 +374,18 @@ func (sm *FSsessions) Call(serviceMethod string, args interface{}, reply interfa
 	return utils.RPCCall(sm, serviceMethod, args, reply)
 }
 
-// Internal method to disconnect session in asterisk
+// Internal method to disconnect session in FreeSWITCH
 func (fsa *FSsessions) V1DisconnectSession(args utils.AttrDisconnectSession, reply *string) (err error) {
 	ev := engine.NewMapEvent(args.EventStart)
 	channelID := ev.GetStringIgnoreErrors(utils.OriginID)
-	if err = fsa.disconnectSession(ev.GetStringIgnoreErrors(FsConnID), channelID,
+	connID, err := ev.GetString(FsConnID)
+	if err != nil {
+		utils.Logger.Err(
+			fmt.Sprintf("<%s> error: <%s:%s> when attempting to disconnect channelID: <%s>",
+				utils.FreeSWITCHAgent, err.Error(), FsConnID, channelID))
+		return
+	}
+	if err = fsa.disconnectSession(connID, channelID,
 		utils.FirstNonEmpty(ev.GetStringIgnoreErrors(CALL_DEST_NR), ev.GetStringIgnoreErrors(SIP_REQ_USER)),
 		utils.ErrInsufficientCredit.Error()); err != nil {
 		return

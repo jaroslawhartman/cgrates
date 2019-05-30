@@ -57,7 +57,7 @@ func (self *ApierV1) GetTPTiming(attrs AttrGetTPTiming, reply *utils.ApierTPTimi
 
 type AttrGetTPTimingIds struct {
 	TPid string // Tariff plan id
-	utils.Paginator
+	utils.PaginatorWithSearch
 }
 
 // Queries timing identities on specific tariff plan.
@@ -65,7 +65,8 @@ func (self *ApierV1) GetTPTimingIds(attrs AttrGetTPTimingIds, reply *[]string) e
 	if missing := utils.MissingStructFields(&attrs, []string{"TPid"}); len(missing) != 0 { //Params missing
 		return utils.NewErrMandatoryIeMissing(missing...)
 	}
-	if ids, err := self.StorDb.GetTpTableIds(attrs.TPid, utils.TBLTPTimings, utils.TPDistinctIds{"tag"}, nil, &attrs.Paginator); err != nil {
+	if ids, err := self.StorDb.GetTpTableIds(attrs.TPid, utils.TBLTPTimings,
+		utils.TPDistinctIds{"tag"}, nil, &attrs.PaginatorWithSearch); err != nil {
 		if err.Error() != utils.ErrNotFound.Error() {
 			err = utils.NewErrServerError(err)
 		}
@@ -77,7 +78,7 @@ func (self *ApierV1) GetTPTimingIds(attrs AttrGetTPTimingIds, reply *[]string) e
 }
 
 // Removes specific Timing on Tariff plan
-func (self *ApierV1) RemTPTiming(attrs AttrGetTPTiming, reply *string) error {
+func (self *ApierV1) RemoveTPTiming(attrs AttrGetTPTiming, reply *string) error {
 	if missing := utils.MissingStructFields(&attrs, []string{"TPid", "ID"}); len(missing) != 0 { //Params missing
 		return utils.NewErrMandatoryIeMissing(missing...)
 	}

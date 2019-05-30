@@ -1,4 +1,4 @@
-// +build offline_tp
+// +build integration
 
 /*
 Real-time Online/Offline Charging System (OCS) for Telecom & ISP environments
@@ -55,7 +55,8 @@ var sTestsTPRatingProfiles = []func(t *testing.T){
 	testTPRatingProfilesGetTPRatingProfilesByLoadId,
 	testTPRatingProfilesUpdateTPRatingProfile,
 	testTPRatingProfilesGetTPRatingProfileAfterUpdate,
-	testTPRatingProfilesRemTPRatingProfile,
+	testTPRatingProfilesGetTPRatingProfileIds,
+	testTPRatingProfilesRemoveTPRatingProfile,
 	testTPRatingProfilesGetTPRatingProfileAfterRemove,
 	testTPRatingProfilesKillEngine,
 }
@@ -85,7 +86,7 @@ func TestTPRatingProfilesITPG(t *testing.T) {
 func testTPRatingProfilesInitCfg(t *testing.T) {
 	var err error
 	tpRatingProfileCfgPath = path.Join(tpRatingProfileDataDir, "conf", "samples", tpRatingProfileConfigDIR)
-	tpRatingProfileCfg, err = config.NewCGRConfigFromFolder(tpRatingProfileCfgPath)
+	tpRatingProfileCfg, err = config.NewCGRConfigFromPath(tpRatingProfileCfgPath)
 	if err != nil {
 		t.Error(err)
 	}
@@ -132,24 +133,21 @@ func testTPRatingProfilesGetTPRatingProfileBeforeSet(t *testing.T) {
 
 func testTPRatingProfilesSetTPRatingProfile(t *testing.T) {
 	tpRatingProfile = &utils.TPRatingProfile{
-		TPid:      "TPRProf1",
-		LoadId:    "RPrf",
-		Direction: "*out",
-		Tenant:    "Tenant1",
-		Category:  "Category",
-		Subject:   "Subject",
+		TPid:     "TPRProf1",
+		LoadId:   "RPrf",
+		Tenant:   "Tenant1",
+		Category: "Category",
+		Subject:  "Subject",
 		RatingPlanActivations: []*utils.TPRatingActivation{
 			&utils.TPRatingActivation{
 				ActivationTime:   "2014-07-29T15:00:00Z",
 				RatingPlanId:     "PlanOne",
 				FallbackSubjects: "FallBack",
-				CdrStatQueueIds:  "RandomId",
 			},
 			&utils.TPRatingActivation{
 				ActivationTime:   "2015-07-29T10:00:00Z",
 				RatingPlanId:     "PlanTwo",
 				FallbackSubjects: "FallOut",
-				CdrStatQueueIds:  "RandomIdTwo",
 			},
 		},
 	}
@@ -170,8 +168,6 @@ func testTPRatingProfilesGetTPRatingProfileAfterSet(t *testing.T) {
 		t.Errorf("Expecting : %+v, received: %+v", tpRatingProfile.TPid, respond.TPid)
 	} else if !reflect.DeepEqual(tpRatingProfile.LoadId, respond.LoadId) {
 		t.Errorf("Expecting : %+v, received: %+v", tpRatingProfile.LoadId, respond.LoadId)
-	} else if !reflect.DeepEqual(tpRatingProfile.Direction, respond.Direction) {
-		t.Errorf("Expecting : %+v, received: %+v", tpRatingProfile.Direction, respond.Direction)
 	} else if !reflect.DeepEqual(tpRatingProfile.Tenant, respond.Tenant) {
 		t.Errorf("Expecting : %+v, received: %+v", tpRatingProfile.Tenant, respond.Tenant)
 	} else if !reflect.DeepEqual(tpRatingProfile.Category, respond.Category) {
@@ -188,7 +184,7 @@ func testTPRatingProfilesGetTPRatingProfileLoadIds(t *testing.T) {
 	expected := []string{"RPrf"}
 	if err := tpRatingProfileRPC.Call("ApierV1.GetTPRatingProfileLoadIds",
 		&utils.AttrTPRatingProfileIds{TPid: tpRatingProfile.TPid, Tenant: tpRatingProfile.Tenant,
-			Category: tpRatingProfile.Category, Direction: tpRatingProfile.Direction, Subject: tpRatingProfile.Subject}, &result); err != nil {
+			Category: tpRatingProfile.Category, Subject: tpRatingProfile.Subject}, &result); err != nil {
 		t.Error(err)
 	} else if !reflect.DeepEqual(expected, result) {
 		t.Errorf("Expecting: %+v, received: %+v", expected, result)
@@ -204,8 +200,6 @@ func testTPRatingProfilesGetTPRatingProfilesByLoadId(t *testing.T) {
 		t.Errorf("Expecting : %+v, received: %+v", tpRatingProfile.TPid, (*respond)[0].TPid)
 	} else if !reflect.DeepEqual(tpRatingProfile.LoadId, (*respond)[0].LoadId) {
 		t.Errorf("Expecting : %+v, received: %+v", tpRatingProfile.LoadId, (*respond)[0].LoadId)
-	} else if !reflect.DeepEqual(tpRatingProfile.Direction, (*respond)[0].Direction) {
-		t.Errorf("Expecting : %+v, received: %+v", tpRatingProfile.Direction, (*respond)[0].Direction)
 	} else if !reflect.DeepEqual(tpRatingProfile.Tenant, (*respond)[0].Tenant) {
 		t.Errorf("Expecting : %+v, received: %+v", tpRatingProfile.Tenant, (*respond)[0].Tenant)
 	} else if !reflect.DeepEqual(tpRatingProfile.Category, (*respond)[0].Category) {
@@ -224,19 +218,16 @@ func testTPRatingProfilesUpdateTPRatingProfile(t *testing.T) {
 			ActivationTime:   "2014-07-29T15:00:00Z",
 			RatingPlanId:     "PlanOne",
 			FallbackSubjects: "FallBack",
-			CdrStatQueueIds:  "RandomId",
 		},
 		&utils.TPRatingActivation{
 			ActivationTime:   "2015-07-29T10:00:00Z",
 			RatingPlanId:     "PlanTwo",
 			FallbackSubjects: "FallOut",
-			CdrStatQueueIds:  "RandomIdTwo",
 		},
 		&utils.TPRatingActivation{
 			ActivationTime:   "2017-07-29T10:00:00Z",
 			RatingPlanId:     "BackupPlan",
 			FallbackSubjects: "Retreat",
-			CdrStatQueueIds:  "DefenseID",
 		},
 	}
 	if err := tpRatingProfileRPC.Call("ApierV1.SetTPRatingProfile", tpRatingProfile, &result); err != nil {
@@ -255,8 +246,6 @@ func testTPRatingProfilesGetTPRatingProfileAfterUpdate(t *testing.T) {
 		t.Errorf("Expecting : %+v, received: %+v", tpRatingProfile.TPid, respond.TPid)
 	} else if !reflect.DeepEqual(tpRatingProfile.LoadId, respond.LoadId) {
 		t.Errorf("Expecting : %+v, received: %+v", tpRatingProfile.LoadId, respond.LoadId)
-	} else if !reflect.DeepEqual(tpRatingProfile.Direction, respond.Direction) {
-		t.Errorf("Expecting : %+v, received: %+v", tpRatingProfile.Direction, respond.Direction)
 	} else if !reflect.DeepEqual(tpRatingProfile.Tenant, respond.Tenant) {
 		t.Errorf("Expecting : %+v, received: %+v", tpRatingProfile.Tenant, respond.Tenant)
 	} else if !reflect.DeepEqual(tpRatingProfile.Category, respond.Category) {
@@ -268,9 +257,20 @@ func testTPRatingProfilesGetTPRatingProfileAfterUpdate(t *testing.T) {
 	}
 }
 
-func testTPRatingProfilesRemTPRatingProfile(t *testing.T) {
+func testTPRatingProfilesGetTPRatingProfileIds(t *testing.T) {
+	var respond []string
+	expected := []string{"RPrf:Tenant1:Category:Subject"}
+	if err := tpRatingProfileRPC.Call("ApierV1.GetTPRatingProfileIds",
+		&AttrGetTPRatingProfileIds{TPid: "TPRProf1"}, &respond); err != nil {
+		t.Error(err)
+	} else if !reflect.DeepEqual(expected, respond) {
+		t.Errorf("Expecting : %+v, received: %+v", expected, respond)
+	}
+}
+
+func testTPRatingProfilesRemoveTPRatingProfile(t *testing.T) {
 	var resp string
-	if err := tpRatingProfileRPC.Call("ApierV1.RemTPRatingProfile",
+	if err := tpRatingProfileRPC.Call("ApierV1.RemoveTPRatingProfile",
 		&AttrGetTPRatingProfile{TPid: "TPRProf1", RatingProfileId: tpRatingProfile.GetRatingProfilesId()}, &resp); err != nil {
 		t.Error(err)
 	} else if resp != utils.OK {

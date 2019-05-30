@@ -1,4 +1,4 @@
-// +build offline_tp
+// +build integration
 
 /*
 Real-time Online/Offline Charging System (OCS) for Telecom & ISP environments
@@ -83,7 +83,7 @@ func TestTPDstRateITPG(t *testing.T) {
 func testTPDstRateInitCfg(t *testing.T) {
 	var err error
 	tpDstRateCfgPath = path.Join(tpDstRateDataDir, "conf", "samples", tpDstRateConfigDIR)
-	tpDstRateCfg, err = config.NewCGRConfigFromFolder(tpDstRateCfgPath)
+	tpDstRateCfg, err = config.NewCGRConfigFromPath(tpDstRateCfgPath)
 	if err != nil {
 		t.Error(err)
 	}
@@ -183,7 +183,7 @@ func testTPDstRateGetTPDstRateAfterUpdate(t *testing.T) {
 
 func testTPDstRateRemTPDstRate(t *testing.T) {
 	var resp string
-	if err := tpDstRateRPC.Call("ApierV1.RemTPDestinationRate",
+	if err := tpDstRateRPC.Call("ApierV1.RemoveTPDestinationRate",
 		&AttrGetTPDestinationRate{TPid: "TP1", ID: "DR_FREESWITCH_USERS"}, &resp); err != nil {
 		t.Error(err)
 	} else if resp != utils.OK {

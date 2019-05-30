@@ -64,7 +64,7 @@ cgrates.org,call,*any,2013-01-06T00:00:00Z,RP_ANY,`
 	chargerProfiles := ``
 	csvr := engine.NewTpReader(dbAuth.DataDB(), engine.NewStringCSVStorage(',', destinations, timings, rates, destinationRates,
 		ratingPlans, ratingProfiles, sharedGroups, actions, actionPlans, actionTriggers, accountActions,
-		resLimits, stats, thresholds, filters, suppliers, attrProfiles, chargerProfiles, ``), "", "")
+		resLimits, stats, thresholds, filters, suppliers, attrProfiles, chargerProfiles, ``, ""), "", "", nil, nil)
 	if err := csvr.LoadAll(); err != nil {
 		t.Fatal(err)
 	}
@@ -76,9 +76,8 @@ cgrates.org,call,*any,2013-01-06T00:00:00Z,RP_ANY,`
 	}
 
 	engine.Cache.Clear(nil)
-	dbAuth.LoadDataDBCache(nil, nil, nil, nil, nil, nil,
-		nil, nil, nil, nil, nil, nil, nil, nil, nil,
-		nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	dbAuth.LoadDataDBCache(nil, nil, nil, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	if cachedDests := len(engine.Cache.GetItemIDs(utils.CacheDestinations, "")); cachedDests != 0 {
 		t.Error("Wrong number of cached destinations found", cachedDests)
@@ -103,7 +102,7 @@ func TestAuthPostpaidNoAcnt(t *testing.T) {
 		t.Error(err)
 	}
 	var maxSessionTime time.Duration
-	if err := rsponder.GetMaxSessionTime(cd, &maxSessionTime); err != utils.ErrAccountNotFound {
+	if err := rsponder.GetMaxSessionTime(&engine.CallDescriptorWithArgDispatcher{CallDescriptor: cd}, &maxSessionTime); err != utils.ErrAccountNotFound {
 		t.Error(err)
 	}
 }
@@ -118,7 +117,7 @@ func TestAuthPostpaidFallbackDest(t *testing.T) {
 		t.Error(err)
 	}
 	var maxSessionTime time.Duration
-	if err = rsponder.GetMaxSessionTime(cd, &maxSessionTime); err != nil {
+	if err = rsponder.GetMaxSessionTime(&engine.CallDescriptorWithArgDispatcher{CallDescriptor: cd}, &maxSessionTime); err != nil {
 		t.Error(err)
 	} else if maxSessionTime != time.Duration(0) {
 		t.Error("Unexpected maxSessionTime received: ", maxSessionTime)
@@ -135,7 +134,7 @@ func TestAuthPostpaidWithDestination(t *testing.T) {
 		t.Error(err)
 	}
 	var maxSessionTime time.Duration
-	if err := rsponder.GetMaxSessionTime(cd, &maxSessionTime); err != nil {
+	if err := rsponder.GetMaxSessionTime(&engine.CallDescriptorWithArgDispatcher{CallDescriptor: cd}, &maxSessionTime); err != nil {
 		t.Error(err)
 	} else if maxSessionTime != time.Duration(0) {
 		t.Error("Unexpected maxSessionTime received: ", maxSessionTime)

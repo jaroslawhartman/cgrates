@@ -1,4 +1,4 @@
-// +build offline_tp
+// +build integration
 
 /*
 Real-time Online/Offline Charging System (OCS) for Telecom & ISP environments
@@ -25,6 +25,8 @@ import (
 	"net/rpc/jsonrpc"
 	"path"
 	"reflect"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/cgrates/cgrates/config"
@@ -83,7 +85,7 @@ func TestTPFilterITPG(t *testing.T) {
 func testTPFilterInitCfg(t *testing.T) {
 	var err error
 	tpFilterCfgPath = path.Join(tpFilterDataDir, "conf", "samples", tpFilterConfigDIR)
-	tpFilterCfg, err = config.NewCGRConfigFromFolder(tpFilterCfgPath)
+	tpFilterCfg, err = config.NewCGRConfigFromPath(tpFilterCfgPath)
 	if err != nil {
 		t.Error(err)
 	}
@@ -142,6 +144,7 @@ func testTPFilterSetTPFilter(t *testing.T) {
 			ExpiryTime:     "",
 		},
 	}
+	sort.Strings(tpFilter.Filters[0].Values)
 
 	var result string
 	if err := tpFilterRPC.Call("ApierV1.SetTPFilterProfile", tpFilter, &result); err != nil {
@@ -155,8 +158,10 @@ func testTPFilterGetTPFilterAfterSet(t *testing.T) {
 	var reply *utils.TPFilterProfile
 	if err := tpFilterRPC.Call("ApierV1.GetTPFilterProfile",
 		&utils.TPTntID{TPid: "TP1", Tenant: "cgrates.org", ID: "Filter"}, &reply); err != nil {
-		t.Error(err)
-	} else if !reflect.DeepEqual(tpFilter, reply) {
+		t.Fatal(err)
+	}
+	sort.Strings(reply.Filters[0].Values)
+	if !reflect.DeepEqual(tpFilter, reply) {
 		t.Errorf("Expecting : %+v, received: %+v", tpFilter, reply)
 	}
 }
@@ -185,6 +190,11 @@ func testTPFilterUpdateTPFilter(t *testing.T) {
 			Values:    []string{"10", "20"},
 		},
 	}
+	sort.Slice(tpFilter.Filters, func(i, j int) bool {
+		sort.Strings(tpFilter.Filters[i].Values)
+		sort.Strings(tpFilter.Filters[j].Values)
+		return strings.Compare(tpFilter.Filters[i].FieldName, tpFilter.Filters[j].FieldName) == -1
+	})
 	var result string
 	if err := tpFilterRPC.Call("ApierV1.SetTPFilterProfile", tpFilter, &result); err != nil {
 		t.Error(err)
@@ -197,15 +207,21 @@ func testTPFilterGetTPFilterAfterUpdate(t *testing.T) {
 	var reply *utils.TPFilterProfile
 	if err := tpFilterRPC.Call("ApierV1.GetTPFilterProfile",
 		&utils.TPTntID{TPid: "TP1", Tenant: "cgrates.org", ID: "Filter"}, &reply); err != nil {
-		t.Error(err)
-	} else if !reflect.DeepEqual(tpFilter, reply) {
+		t.Fatal(err)
+	}
+	sort.Slice(reply.Filters, func(i, j int) bool {
+		sort.Strings(reply.Filters[i].Values)
+		sort.Strings(reply.Filters[j].Values)
+		return strings.Compare(reply.Filters[i].FieldName, reply.Filters[j].FieldName) == -1
+	})
+	if !reflect.DeepEqual(tpFilter, reply) {
 		t.Errorf("Expecting : %+v, received: %+v", utils.ToJSON(tpFilter), utils.ToJSON(reply))
 	}
 }
 
 func testTPFilterRemTPFilter(t *testing.T) {
 	var resp string
-	if err := tpFilterRPC.Call("ApierV1.RemTPFilterProfile",
+	if err := tpFilterRPC.Call("ApierV1.RemoveTPFilterProfile",
 		&utils.TPTntID{TPid: "TP1", Tenant: "cgrates.org", ID: "Filter"}, &resp); err != nil {
 		t.Error(err)
 	} else if resp != utils.OK {

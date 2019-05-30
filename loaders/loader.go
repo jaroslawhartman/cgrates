@@ -25,11 +25,13 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"reflect"
 	"strings"
 
 	"github.com/cgrates/cgrates/config"
 	"github.com/cgrates/cgrates/engine"
 	"github.com/cgrates/cgrates/utils"
+	"github.com/cgrates/rpcclient"
 )
 
 type openedCSVFile struct {
@@ -39,7 +41,8 @@ type openedCSVFile struct {
 }
 
 func NewLoader(dm *engine.DataManager, cfg *config.LoaderSCfg,
-	timezone string, filterS *engine.FilterS) (ldr *Loader) {
+	timezone string, exitChan chan bool, filterS *engine.FilterS,
+	internalCacheSChan chan rpcclient.RpcClientConnection) (ldr *Loader) {
 	ldr = &Loader{
 		enabled:       cfg.Enabled,
 		tenant:        cfg.Tenant,
@@ -70,6 +73,28 @@ func NewLoader(dm *engine.DataManager, cfg *config.LoaderSCfg,
 			}
 		}
 	}
+	var err error
+	//create cache connection
+	var caches *rpcclient.RpcClientPool
+	if len(cfg.CacheSConns) != 0 {
+		caches, err = engine.NewRPCPool(rpcclient.POOL_FIRST,
+			config.CgrConfig().TlsCfg().ClientKey,
+			config.CgrConfig().TlsCfg().ClientCerificate, config.CgrConfig().TlsCfg().CaCertificate,
+			config.CgrConfig().GeneralCfg().ConnectAttempts, config.CgrConfig().GeneralCfg().Reconnects,
+			config.CgrConfig().GeneralCfg().ConnectTimeout, config.CgrConfig().GeneralCfg().ReplyTimeout,
+			cfg.CacheSConns, internalCacheSChan, false)
+		if err != nil {
+			utils.Logger.Crit(fmt.Sprintf("<LoaderS> Could not connect to CacheS, error: %s", err.Error()))
+			exitChan <- true
+			return
+		}
+	}
+
+	//add verification in case of nil
+	if caches != nil && reflect.ValueOf(caches).IsNil() {
+		caches = nil
+	}
+	ldr.cacheS = caches
 	return
 }
 
@@ -82,7 +107,6 @@ type Loader struct {
 	tpInDir       string
 	tpOutDir      string
 	lockFilename  string
-	cacheSConns   []*config.HaPoolConfig
 	fieldSep      string
 	dataTpls      map[string][]*config.FCTemplate      // map[loaderType]*config.FCTemplate
 	rdrs          map[string]map[string]*openedCSVFile // map[loaderType]map[fileName]*openedCSVFile for common incremental read
@@ -91,6 +115,7 @@ type Loader struct {
 	dm            *engine.DataManager
 	timezone      string
 	filterS       *engine.FilterS
+	cacheS        rpcclient.RpcClientConnection
 }
 
 func (ldr *Loader) ListenAndServe(exitChan chan struct{}) (err error) {
@@ -247,6 +272,8 @@ func (ldr *Loader) processContent(loaderType string) (err error) {
 
 func (ldr *Loader) storeLoadedData(loaderType string,
 	lds map[string][]LoaderData) (err error) {
+	var ids []string
+	cacheArgs := utils.InitAttrReloadCache()
 	switch loaderType {
 	case utils.MetaAttributes:
 		for _, lDataSet := range lds {
@@ -268,10 +295,13 @@ func (ldr *Loader) storeLoadedData(loaderType string,
 							utils.LoaderS, ldr.ldrID, utils.ToJSON(apf)))
 					continue
 				}
+				// get IDs so we can reload in cache
+				ids = append(ids, apf.TenantID())
 				if err := ldr.dm.SetAttributeProfile(apf, true); err != nil {
 					return err
 				}
 			}
+			cacheArgs.AttributeProfileIDs = &ids
 		}
 	case utils.MetaResources:
 		for _, lDataSet := range lds {
@@ -333,9 +363,9 @@ func (ldr *Loader) storeLoadedData(loaderType string,
 		}
 	case utils.MetaStats:
 		for _, lDataSet := range lds {
-			stsModels := make(engine.TpStatsS, len(lDataSet))
+			stsModels := make(engine.TpStats, len(lDataSet))
 			for i, ld := range lDataSet {
-				stsModels[i] = new(engine.TpStats)
+				stsModels[i] = new(engine.TpStat)
 				if err = utils.UpdateStructWithIfaceMap(stsModels[i], ld); err != nil {
 					return
 				}
@@ -355,11 +385,11 @@ func (ldr *Loader) storeLoadedData(loaderType string,
 					return err
 				}
 				metrics := make(map[string]engine.StatMetric)
-				for _, metricID := range stsPrf.Metrics {
-					if metric, err := engine.NewStatMetric(metricID, stsPrf.MinItems); err != nil {
+				for _, metric := range stsPrf.Metrics {
+					if stsMetric, err := engine.NewStatMetric(metric.MetricID, stsPrf.MinItems, metric.FilterIDs); err != nil {
 						return utils.APIErrorHandler(err)
 					} else {
-						metrics[metricID] = metric
+						metrics[metric.MetricID] = stsMetric
 					}
 				}
 				if err := ldr.dm.SetStatQueue(&engine.StatQueue{Tenant: stsPrf.Tenant, ID: stsPrf.ID, SQMetrics: metrics}); err != nil {
@@ -369,14 +399,13 @@ func (ldr *Loader) storeLoadedData(loaderType string,
 		}
 	case utils.MetaThresholds:
 		for _, lDataSet := range lds {
-			thModels := make(engine.TpThresholdS, len(lDataSet))
+			thModels := make(engine.TpThresholds, len(lDataSet))
 			for i, ld := range lDataSet {
 				thModels[i] = new(engine.TpThreshold)
 				if err = utils.UpdateStructWithIfaceMap(thModels[i], ld); err != nil {
 					return
 				}
 			}
-
 			for _, tpTh := range thModels.AsTPThreshold() {
 				thPrf, err := engine.APItoThresholdProfile(tpTh, ldr.timezone)
 				if err != nil {
@@ -450,21 +479,21 @@ func (ldr *Loader) storeLoadedData(loaderType string,
 		}
 	case utils.MetaDispatchers:
 		for _, lDataSet := range lds {
-			dispModels := make(engine.TPDispatchers, len(lDataSet))
+			dispModels := make(engine.TPDispatcherProfiles, len(lDataSet))
 			for i, ld := range lDataSet {
-				dispModels[i] = new(engine.TPDispatcher)
+				dispModels[i] = new(engine.TPDispatcherProfile)
 				if err = utils.UpdateStructWithIfaceMap(dispModels[i], ld); err != nil {
 					return
 				}
 			}
-			for _, tpDsp := range dispModels.AsTPDispatchers() {
+			for _, tpDsp := range dispModels.AsTPDispatcherProfiles() {
 				dsp, err := engine.APItoDispatcherProfile(tpDsp, ldr.timezone)
 				if err != nil {
 					return err
 				}
 				if ldr.dryRun {
 					utils.Logger.Info(
-						fmt.Sprintf("<%s-%s> DRY_RUN: AttributeProfile: %s",
+						fmt.Sprintf("<%s-%s> DRY_RUN: DispatcherProfile: %s",
 							utils.LoaderS, ldr.ldrID, utils.ToJSON(dsp)))
 					continue
 				}
@@ -473,7 +502,35 @@ func (ldr *Loader) storeLoadedData(loaderType string,
 				}
 			}
 		}
+	case utils.MetaDispatcherHosts:
+		for _, lDataSet := range lds {
+			dispModels := make(engine.TPDispatcherHosts, len(lDataSet))
+			for i, ld := range lDataSet {
+				dispModels[i] = new(engine.TPDispatcherHost)
+				if err = utils.UpdateStructWithIfaceMap(dispModels[i], ld); err != nil {
+					return
+				}
+			}
+			for _, tpDsp := range dispModels.AsTPDispatcherHosts() {
+				dsp := engine.APItoDispatcherHost(tpDsp)
+				if ldr.dryRun {
+					utils.Logger.Info(
+						fmt.Sprintf("<%s-%s> DRY_RUN: DispatcherHost: %s",
+							utils.LoaderS, ldr.ldrID, utils.ToJSON(dsp)))
+					continue
+				}
+				if err := ldr.dm.SetDispatcherHost(dsp); err != nil {
+					return err
+				}
+			}
+		}
 	}
 
+	if ldr.cacheS != nil {
+		var reply string
+		if err = ldr.cacheS.Call(utils.CacheSv1ReloadCache, cacheArgs, &reply); err != nil {
+			return err
+		}
+	}
 	return
 }

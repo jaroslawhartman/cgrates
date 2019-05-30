@@ -1,4 +1,4 @@
-// +build offline_tp
+// +build integration
 
 /*
 Real-time Online/Offline Charging System (OCS) for Telecom & ISP environments
@@ -86,7 +86,7 @@ func TestTPAccActionsITPG(t *testing.T) {
 func testTPAccActionsInitCfg(t *testing.T) {
 	var err error
 	tpAccActionsCfgPath = path.Join(tpAccActionsDataDir, "conf", "samples", tpAccActionsConfigDIR)
-	tpAccActionsCfg, err = config.NewCGRConfigFromFolder(tpAccActionsCfgPath)
+	tpAccActionsCfg, err = config.NewCGRConfigFromPath(tpAccActionsCfgPath)
 	if err != nil {
 		t.Error(err)
 	}
@@ -121,7 +121,8 @@ func testTPAccActionsRpcConn(t *testing.T) {
 func testTPAccActionsGetTPAccActionBeforeSet(t *testing.T) {
 	var reply *utils.TPAccountActions
 	if err := tpAccActionsRPC.Call("ApierV1.GetTPAccountActions",
-		&AttrGetTPAccountActions{TPid: "TPAcc", AccountActionsId: tpAccActionID}, &reply); err == nil || err.Error() != utils.ErrNotFound.Error() {
+		&AttrGetTPAccountActions{TPid: "TPAcc", AccountActionsId: tpAccActionID}, &reply); err == nil ||
+		err.Error() != utils.ErrNotFound.Error() {
 		t.Error(err)
 	}
 
@@ -212,7 +213,7 @@ func testTPAccActionsGetTPAccActionAfterUpdate(t *testing.T) {
 
 func testTPAccActionsRemTPAccAction(t *testing.T) {
 	var resp string
-	if err := tpAccActionsRPC.Call("ApierV1.RemTPAccountActions",
+	if err := tpAccActionsRPC.Call("ApierV1.RemoveTPAccountActions",
 		&AttrGetTPAccountActions{TPid: "TPAcc", AccountActionsId: tpAccActionID}, &resp); err != nil {
 		t.Error(err)
 	} else if resp != utils.OK {
@@ -224,7 +225,8 @@ func testTPAccActionsRemTPAccAction(t *testing.T) {
 func testTPAccActionsGetTPAccActionAfterRemove(t *testing.T) {
 	var reply *utils.TPAccountActions
 	if err := tpAccActionsRPC.Call("ApierV1.GetTPAccountActions",
-		&AttrGetTPAccountActions{TPid: "TPAcc", AccountActionsId: tpAccActionID}, &reply); err == nil || err.Error() != utils.ErrNotFound.Error() {
+		&AttrGetTPAccountActions{TPid: "TPAcc", AccountActionsId: tpAccActionID}, &reply); err == nil ||
+		err.Error() != utils.ErrNotFound.Error() {
 		t.Error(err)
 	}
 }

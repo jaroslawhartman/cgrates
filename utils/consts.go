@@ -62,7 +62,6 @@ var (
 		CacheSharedGroups:            SHARED_GROUP_PREFIX,
 		CacheResourceProfiles:        ResourceProfilesPrefix,
 		CacheResources:               ResourcesPrefix,
-		CacheEventResources:          EventResourcesPrefix,
 		CacheTimings:                 TimingsPrefix,
 		CacheStatQueueProfiles:       StatQueueProfilePrefix,
 		CacheStatQueues:              StatQueuePrefix,
@@ -73,6 +72,7 @@ var (
 		CacheAttributeProfiles:       AttributeProfilePrefix,
 		CacheChargerProfiles:         ChargerProfilePrefix,
 		CacheDispatcherProfiles:      DispatcherProfilePrefix,
+		CacheDispatcherHosts:         DispatcherHostPrefix,
 		CacheResourceFilterIndexes:   ResourceFilterIndexes,
 		CacheStatFilterIndexes:       StatFilterIndexes,
 		CacheThresholdFilterIndexes:  ThresholdFilterIndexes,
@@ -80,6 +80,7 @@ var (
 		CacheAttributeFilterIndexes:  AttributeFilterIndexes,
 		CacheChargerFilterIndexes:    ChargerFilterIndexes,
 		CacheDispatcherFilterIndexes: DispatcherFilterIndexes,
+		CacheLoadIDs:                 LoadIDPrefix,
 	}
 	CachePrefixToInstance map[string]string // will be built on init
 	PrefixToIndexCache    = map[string]string{
@@ -251,8 +252,10 @@ const (
 	AttributeProfilePrefix        = "alp_"
 	ChargerProfilePrefix          = "cpp_"
 	DispatcherProfilePrefix       = "dpp_"
+	DispatcherHostPrefix          = "dph_"
 	ThresholdProfilePrefix        = "thp_"
 	StatQueuePrefix               = "stq_"
+	LoadIDPrefix                  = "lid_"
 	LOADINST_KEY                  = "load_history"
 	SESSION_MANAGER_SOURCE        = "SMR"
 	MEDIATOR_SOURCE               = "MED"
@@ -310,6 +313,7 @@ const (
 	HIERARCHY_SEP                = ">"
 	META_COMPOSED                = "*composed"
 	META_USAGE_DIFFERENCE        = "*usage_difference"
+	MetaDifference               = "*difference"
 	MetaVariable                 = "*variable"
 	MetaCCUsage                  = "*cc_usage"
 	MetaValueExponent            = "*value_exponent"
@@ -384,11 +388,16 @@ const (
 	MetaThresholds               = "*thresholds"
 	MetaSuppliers                = "*suppliers"
 	MetaAttributes               = "*attributes"
+	MetaServiceManager           = "*servicemanager"
 	MetaChargers                 = "*chargers"
+	MetaConfig                   = "*config"
 	MetaDispatchers              = "*dispatchers"
+	MetaDispatcherHosts          = "*dispatcher_hosts"
 	MetaResources                = "*resources"
 	MetaFilters                  = "*filters"
 	MetaCDRs                     = "*cdrs"
+	MetaCaches                   = "*caches"
+	MetaGuardian                 = "*guardians"
 	Migrator                     = "migrator"
 	UnsupportedMigrationTask     = "unsupported migration task"
 	NoStorDBConnection           = "not connected to StorDB"
@@ -427,7 +436,6 @@ const (
 	CostSource                   = "CostSource"
 	ExtraInfo                    = "ExtraInfo"
 	Meta                         = "*"
-	EventResourcesPrefix         = "ers_"
 	MetaSysLog                   = "*syslog"
 	MetaStdLog                   = "*stdout"
 	MetaNever                    = "*never"
@@ -491,6 +499,7 @@ const (
 	Error                        = "Error"
 	MetaCgreq                    = "*cgreq"
 	MetaCgrep                    = "*cgrep"
+	MetaCGRAReq                  = "*cgrareq"
 	MetaCGRRequest               = "*cgrRequest"
 	MetaCGRReply                 = "*cgrReply"
 	CGR_ACD                      = "cgr_acd"
@@ -550,6 +559,32 @@ const (
 	Version                      = "Version"
 	MetaTenant                   = "*tenant"
 	ResourceUsage                = "ResourceUsage"
+	MetaDuration                 = "*duration"
+	MetaReload                   = "*reload"
+	MetaLoad                     = "*load"
+	MetaRemove                   = "*remove"
+	MetaClear                    = "*clear"
+	LoadIDs                      = "load_ids"
+	DNSAgent                     = "DNSAgent"
+	TLSNoCaps                    = "tls"
+	MetaRouteID                  = "*route_id"
+	MetaApiKey                   = "*api_key"
+	UsageID                      = "UsageID"
+	Status                       = "status"
+	Rcode                        = "Rcode"
+	Replacement                  = "Replacement"
+	Regexp                       = "Regexp"
+	Order                        = "Order"
+	Preference                   = "Preference"
+	Flags                        = "Flags"
+	Service                      = "Service"
+	MetaSuppliersLimit           = "*suppliers_limit"
+	MetaSuppliersOffset          = "*suppliers_offset"
+	ActiveSessionPrefix          = "act"
+	PasiveSessionPrefix          = "psv"
+	ApierV                       = "ApierV"
+	MetaApier                    = "*apier"
+	CGREventString               = "CGREvent"
 )
 
 // Migrator Action
@@ -599,12 +634,14 @@ const (
 	ThresholdsLow  = "thresholds"
 	DispatcherSLow = "dispatchers"
 	AnalyzerSLow   = "analyzers"
+	SchedulerSLow  = "schedulers"
 	LoaderSLow     = "loaders"
 )
 
 // Migrator Metas
 const (
 	MetaSetVersions         = "*set_versions"
+	MetaEnsureIndexes       = "*ensure_indexes"
 	MetaTpRatingPlans       = "*tp_rating_plans"
 	MetaTpFilters           = "*tp_filters"
 	MetaTpDestinationRates  = "*tp_destination_rates"
@@ -665,51 +702,95 @@ const (
 
 // Dispatcher Const
 const (
-	MetaFirst      = "*first"
-	MetaRandom     = "*random"
-	MetaBroadcast  = "*broadcast"
-	MetaNext       = "*next"
-	MetaRoundRobin = "*round_robin"
-	ThresholdSv1   = "ThresholdSv1"
-	StatSv1        = "StatSv1"
-	ResourceSv1    = "ResourceSv1"
-	SupplierSv1    = "SupplierSv1"
-	AttributeSv1   = "AttributeSv1"
-	SessionSv1     = "SessionSv1"
-	ChargerSv1     = "ChargerSv1"
-	MetaAuth       = "*auth"
-	APIKey         = "APIKey"
-	APIMethods     = "APIMethods"
-	APIMethod      = "APIMethod"
-	NestingSep     = "."
+	MetaFirst          = "*first"
+	MetaRandom         = "*random"
+	MetaBroadcast      = "*broadcast"
+	MetaNext           = "*next"
+	MetaRoundRobin     = "*round_robin"
+	ThresholdSv1       = "ThresholdSv1"
+	StatSv1            = "StatSv1"
+	ResourceSv1        = "ResourceSv1"
+	SupplierSv1        = "SupplierSv1"
+	AttributeSv1       = "AttributeSv1"
+	SessionSv1         = "SessionSv1"
+	ChargerSv1         = "ChargerSv1"
+	MetaAuth           = "*auth"
+	APIKey             = "APIKey"
+	RouteID            = "RouteID"
+	APIMethods         = "APIMethods"
+	APIMethod          = "APIMethod"
+	NestingSep         = "."
+	ArgDispatcherField = "ArgDispatcher"
 )
 
 // ApierV1 APIs
 const (
-	ApierV1ComputeFilterIndexes    = "ApierV1.ComputeFilterIndexes"
-	ApierV1ReloadCache             = "ApierV1.ReloadCache"
-	ApierV1ReloadScheduler         = "ApierV1.ReloadScheduler"
-	ApierV1Ping                    = "ApierV1.Ping"
-	ApierV1SetDispatcherProfile    = "ApierV1.SetDispatcherProfile"
-	ApierV1GetDispatcherProfile    = "ApierV1.GetDispatcherProfile"
-	ApierV1RemoveDispatcherProfile = "ApierV1.RemoveDispatcherProfile"
-	ApierV1GetResource             = "ApierV1.GetResource"
-	ApierV1GetEventCost            = "ApierV1.GetEventCost"
+	ApierV1                         = "ApierV1"
+	ApierV1ComputeFilterIndexes     = "ApierV1.ComputeFilterIndexes"
+	ApierV1Ping                     = "ApierV1.Ping"
+	ApierV1SetDispatcherProfile     = "ApierV1.SetDispatcherProfile"
+	ApierV1GetDispatcherProfile     = "ApierV1.GetDispatcherProfile"
+	ApierV1GetDispatcherProfileIDs  = "ApierV1.GetDispatcherProfileIDs"
+	ApierV1RemoveDispatcherProfile  = "ApierV1.RemoveDispatcherProfile"
+	ApierV1SetDispatcherHost        = "ApierV1.SetDispatcherHost"
+	ApierV1GetDispatcherHost        = "ApierV1.GetDispatcherHost"
+	ApierV1GetDispatcherHostIDs     = "ApierV1.GetDispatcherHostIDs"
+	ApierV1RemoveDispatcherHost     = "ApierV1.RemoveDispatcherHost"
+	ApierV1GetEventCost             = "ApierV1.GetEventCost"
+	ApierV1LoadTariffPlanFromFolder = "ApierV1.LoadTariffPlanFromFolder"
+	ApierV1GetCost                  = "ApierV1.GetCost"
+	ApierV1SetBalance               = "ApierV1.SetBalance"
+	ApierV1GetFilter                = "ApierV1.GetFilter"
+	ApierV1GetFilterIndexes         = "ApierV1.GetFilterIndexes"
+	ApierV1RemoveFilterIndexes      = "ApierV1.RemoveFilterIndexes"
+	ApierV1RemoveFilter             = "ApierV1.RemoveFilter"
+	ApierV1SetFilter                = "ApierV1.SetFilter"
+	ApierV1GetFilterIDs             = "ApierV1.GetFilterIDs"
+	ApierV1GetRatingProfile         = "ApierV1.GetRatingProfile"
+	ApierV1RemoveRatingProfile      = "ApierV1.RemoveRatingProfile"
+	ApierV1SetRatingProfile         = "ApierV1.SetRatingProfile"
+	ApierV1GetRatingProfileIDs      = "ApierV1.GetRatingProfileIDs"
 )
 
 const (
+	ApierV2                         = "ApierV2"
 	ApierV2LoadTariffPlanFromFolder = "ApierV2.LoadTariffPlanFromFolder"
 	ApierV2GetCDRs                  = "ApierV2.GetCDRs"
+	ApierV2GetAccount               = "ApierV2.GetAccount"
+	ApierV2SetAccount               = "ApierV2.SetAccount"
+	ApierV2CountCDRs                = "ApierV2.CountCDRs"
+)
+
+const (
+	ServiceManagerV1              = "ServiceManagerV1"
+	ServiceManagerV1StartService  = "ServiceManagerV1.StartService"
+	ServiceManagerV1StopService   = "ServiceManagerV1.StopService"
+	ServiceManagerV1ServiceStatus = "ServiceManagerV1.ServiceStatus"
+	ServiceManagerV1Ping          = "ServiceManagerV1.Ping"
+)
+
+const (
+	ConfigSv1               = "ConfigSv1"
+	ConfigSv1GetJSONSection = "ConfigSv1.GetJSONSection"
 )
 
 // SupplierS APIs
 const (
-	SupplierSv1GetSuppliers = "SupplierSv1.GetSuppliers"
-	SupplierSv1Ping         = "SupplierSv1.Ping"
+	SupplierSv1GetSuppliers                = "SupplierSv1.GetSuppliers"
+	SupplierSv1GetSupplierProfilesForEvent = "SupplierSv1.GetSupplierProfilesForEvent"
+	SupplierSv1Ping                        = "SupplierSv1.Ping"
+	ApierV1GetSupplierProfile              = "ApierV1.GetSupplierProfile"
+	ApierV1GetSupplierProfileIDs           = "ApierV1.GetSupplierProfileIDs"
+	ApierV1RemoveSupplierProfile           = "ApierV1.RemoveSupplierProfile"
+	ApierV1SetSupplierProfile              = "ApierV1.SetSupplierProfile"
 )
 
 // AttributeS APIs
 const (
+	ApierV1GetAttributeProfile       = "ApierV1.GetAttributeProfile"
+	ApierV1GetAttributeProfileIDs    = "ApierV1.GetAttributeProfileIDs"
+	ApierV1RemoveAttributeProfile    = "ApierV1.RemoveAttributeProfile"
+	ApierV2SetAttributeProfile       = "ApierV2.SetAttributeProfile"
 	AttributeSv1GetAttributeForEvent = "AttributeSv1.GetAttributeForEvent"
 	AttributeSv1ProcessEvent         = "AttributeSv1.ProcessEvent"
 	AttributeSv1Ping                 = "AttributeSv1.Ping"
@@ -720,6 +801,10 @@ const (
 	ChargerSv1Ping                = "ChargerSv1.Ping"
 	ChargerSv1GetChargersForEvent = "ChargerSv1.GetChargersForEvent"
 	ChargerSv1ProcessEvent        = "ChargerSv1.ProcessEvent"
+	ApierV1GetChargerProfile      = "ApierV1.GetChargerProfile"
+	ApierV1RemoveChargerProfile   = "ApierV1.RemoveChargerProfile"
+	ApierV1SetChargerProfile      = "ApierV1.SetChargerProfile"
+	ApierV1GetChargerProfileIDs   = "ApierV1.GetChargerProfileIDs"
 )
 
 // ThresholdS APIs
@@ -729,16 +814,24 @@ const (
 	ThresholdSv1GetThresholdIDs       = "ThresholdSv1.GetThresholdIDs"
 	ThresholdSv1Ping                  = "ThresholdSv1.Ping"
 	ThresholdSv1GetThresholdsForEvent = "ThresholdSv1.GetThresholdsForEvent"
+	ApierV1GetThresholdProfileIDs     = "ApierV1.GetThresholdProfileIDs"
+	ApierV1GetThresholdProfile        = "ApierV1.GetThresholdProfile"
+	ApierV1RemoveThresholdProfile     = "ApierV1.RemoveThresholdProfile"
+	ApierV1SetThresholdProfile        = "ApierV1.SetThresholdProfile"
 )
 
 // StatS APIs
 const (
-	StatSv1ProcessEvent          = "StatSv1.ProcessEvent"
-	StatSv1GetQueueIDs           = "StatSv1.GetQueueIDs"
-	StatSv1GetQueueStringMetrics = "StatSv1.GetQueueStringMetrics"
-	StatSv1GetQueueFloatMetrics  = "StatSv1.GetQueueFloatMetrics"
-	StatSv1Ping                  = "StatSv1.Ping"
-	StatSv1GetStatQueuesForEvent = "StatSv1.GetStatQueuesForEvent"
+	StatSv1ProcessEvent           = "StatSv1.ProcessEvent"
+	StatSv1GetQueueIDs            = "StatSv1.GetQueueIDs"
+	StatSv1GetQueueStringMetrics  = "StatSv1.GetQueueStringMetrics"
+	StatSv1GetQueueFloatMetrics   = "StatSv1.GetQueueFloatMetrics"
+	StatSv1Ping                   = "StatSv1.Ping"
+	StatSv1GetStatQueuesForEvent  = "StatSv1.GetStatQueuesForEvent"
+	ApierV1GetStatQueueProfile    = "ApierV1.GetStatQueueProfile"
+	ApierV1RemoveStatQueueProfile = "ApierV1.RemoveStatQueueProfile"
+	ApierV1SetStatQueueProfile    = "ApierV1.SetStatQueueProfile"
+	ApierV1GetStatQueueProfileIDs = "ApierV1.GetStatQueueProfileIDs"
 )
 
 // ResourceS APIs
@@ -748,6 +841,11 @@ const (
 	ResourceSv1AllocateResources    = "ResourceSv1.AllocateResources"
 	ResourceSv1ReleaseResources     = "ResourceSv1.ReleaseResources"
 	ResourceSv1Ping                 = "ResourceSv1.Ping"
+	ResourceSv1GetResource          = "ResourceSv1.GetResource"
+	ApierV1SetResourceProfile       = "ApierV1.SetResourceProfile"
+	ApierV1RemoveResourceProfile    = "ApierV1.RemoveResourceProfile"
+	ApierV1GetResourceProfile       = "ApierV1.GetResourceProfile"
+	ApierV1GetResourceProfileIDs    = "ApierV1.GetResourceProfileIDs"
 )
 
 // SessionS APIs
@@ -768,13 +866,12 @@ const (
 	SessionSv1GetPassiveSessions         = "SessionSv1.GetPassiveSessions"
 	SessionSv1GetPassiveSessionsCount    = "SessionSv1.GetPassiveSessionsCount"
 	SessionSv1SetPassiveSession          = "SessionSv1.SetPassiveSession"
-	SMGenericV1InitiateSession           = "SMGenericV1.InitiateSession"
-	SMGenericV2InitiateSession           = "SMGenericV2.InitiateSession"
-	SMGenericV2UpdateSession             = "SMGenericV2.UpdateSession"
 	SessionSv1Ping                       = "SessionSv1.Ping"
 	SessionSv1GetActiveSessionIDs        = "SessionSv1.GetActiveSessionIDs"
 	SessionSv1RegisterInternalBiJSONConn = "SessionSv1.RegisterInternalBiJSONConn"
 	SessionSv1ReplicateSessions          = "SessionSv1.ReplicateSessions"
+
+	SMGenericV1InitiateSession = "SMGenericV1.InitiateSession"
 )
 
 // Responder APIs
@@ -789,26 +886,32 @@ const (
 	ResponderGetCost           = "Responder.GetCost"
 	ResponderShutdown          = "Responder.Shutdown"
 	ResponderGetTimeout        = "Responder.GetTimeout"
+	ResponderPing              = "Responder.Ping"
 )
 
 // DispatcherS APIs
 const (
-	DispatcherSv1Ping = "DispatcherSv1.Ping"
+	DispatcherSv1Ping               = "DispatcherSv1.Ping"
+	DispatcherSv1GetProfileForEvent = "DispatcherSv1.GetProfileForEvent"
+	DispatcherSv1Apier              = "DispatcherSv1.Apier"
 )
 
 // AnalyzerS APIs
 const (
+	AnalyzerSv1     = "AnalyzerSv1"
 	AnalyzerSv1Ping = "AnalyzerSv1.Ping"
 )
 
 // LoaderS APIs
 const (
+	LoaderSv1     = "LoaderSv1"
 	LoaderSv1Load = "LoaderSv1.Load"
 	LoaderSv1Ping = "LoaderSv1.Ping"
 )
 
 // CacheS APIs
 const (
+	CacheSv1                  = "CacheSv1"
 	CacheSv1GetCacheStats     = "CacheSv1.GetCacheStats"
 	CacheSv1GetItemIDs        = "CacheSv1.GetItemIDs"
 	CacheSv1HasItem           = "CacheSv1.HasItem"
@@ -819,22 +922,40 @@ const (
 	CacheSv1GetGroupItemIDs   = "CacheSv1.GetGroupItemIDs"
 	CacheSv1RemoveGroup       = "CacheSv1.RemoveGroup"
 	CacheSv1Clear             = "CacheSv1.Clear"
+	CacheSv1ReloadCache       = "CacheSv1.ReloadCache"
+	CacheSv1LoadCache         = "CacheSv1.LoadCache"
+	CacheSv1FlushCache        = "CacheSv1.FlushCache"
+	CacheSv1Ping              = "CacheSv1.Ping"
+)
+
+// GuardianS APIs
+const (
+	GuardianSv1             = "GuardianSv1"
+	GuardianSv1RemoteLock   = "GuardianSv1.RemoteLock"
+	GuardianSv1RemoteUnlock = "GuardianSv1.RemoteUnlock"
+	GuardianSv1Ping         = "GuardianSv1.Ping"
 )
 
 // Cdrs APIs
 const (
-	CDRsV1CountCDRs        = "CDRsV1.CountCDRs"
-	CDRsV1RateCDRs         = "CDRsV1.RateCDRs"
-	CDRsV1GetCDRs          = "CDRsV1.GetCDRs"
-	CDRsV1ProcessCDR       = "CDRsV1.ProcessCDR"
-	CDRsV1StoreSessionCost = "CDRsV1.StoreSessionCost"
-	CDRsV2ProcessCDR       = "CDRsV2.ProcessCDR"
-	CDRsV2StoreSessionCost = "CDRsV2.StoreSessionCost"
+	CDRsV1                   = "CDRsV1"
+	CDRsV1CountCDRs          = "CDRsV1.CountCDRs"
+	CDRsV1RateCDRs           = "CDRsV1.RateCDRs"
+	CDRsV1GetCDRs            = "CDRsV1.GetCDRs"
+	CDRsV1ProcessCDR         = "CDRsV1.ProcessCDR"
+	CDRsV1ProcessExternalCDR = "CDRsV1.ProcessExternalCDR"
+	CDRsV1StoreSessionCost   = "CDRsV1.StoreSessionCost"
+	CDRsV1ProcessEvent       = "CDRsV1.ProcessEvent"
+	CDRsV1Ping               = "CDRsV1.Ping"
+	CDRsV2                   = "CDRsV2"
+	CDRsV2StoreSessionCost   = "CDRsV2.StoreSessionCost"
 )
 
 // Scheduler
 const (
-	SchedulerPing = "Scheduler.Ping"
+	SchedulerSv1       = "SchedulerSv1"
+	SchedulerSv1Ping   = "SchedulerSv1.Ping"
+	SchedulerSv1Reload = "SchedulerSv1.Reload"
 )
 
 // Cdrc
@@ -881,7 +1002,8 @@ const (
 	SuppliersCsv          = "Suppliers.csv"
 	AttributesCsv         = "Attributes.csv"
 	ChargersCsv           = "Chargers.csv"
-	DispatchersCsv        = "Dispatchers.csv"
+	DispatcherProfilesCsv = "DispatcherProfiles.csv"
+	DispatcherHostsCsv    = "DispatcherHosts.csv"
 )
 
 // Table Name
@@ -908,7 +1030,8 @@ const (
 	TBLTPChargers         = "tp_chargers"
 	TBLVersions           = "versions"
 	OldSMCosts            = "sm_costs"
-	TBLTPDispatchers      = "tp_dispatchers"
+	TBLTPDispatchers      = "tp_dispatcher_profiles"
+	TBLTPDispatcherHosts  = "tp_dispatcher_hosts"
 )
 
 // Cache Name
@@ -935,6 +1058,7 @@ const (
 	CacheAttributeProfiles       = "attribute_profiles"
 	CacheChargerProfiles         = "charger_profiles"
 	CacheDispatcherProfiles      = "dispatcher_profiles"
+	CacheDispatcherHosts         = "dispatcher_hosts"
 	CacheDispatchers             = "dispatchers"
 	CacheDispatcherRoutes        = "dispatcher_routes"
 	CacheResourceFilterIndexes   = "resource_filter_indexes"
@@ -944,10 +1068,13 @@ const (
 	CacheAttributeFilterIndexes  = "attribute_filter_indexes"
 	CacheChargerFilterIndexes    = "charger_filter_indexes"
 	CacheDispatcherFilterIndexes = "dispatcher_filter_indexes"
+	CacheSessionFilterIndexes    = "session_filter_indexes"
 	CacheDiameterMessages        = "diameter_messages"
 	CacheRPCResponses            = "rpc_responses"
+	CacheClosedSessions          = "closed_sessions"
 	MetaPrecaching               = "*precaching"
 	MetaReady                    = "*ready"
+	CacheLoadIDs                 = "load_ids"
 )
 
 // Prefix for indexing

@@ -60,7 +60,13 @@ func (rs *Responder) usageAllowed(tor string, reqUsage time.Duration) (allowed b
 /*
 RPC method thet provides the external RPC interface for getting the rating information.
 */
-func (rs *Responder) GetCost(arg *CallDescriptor, reply *CallCost) (err error) {
+func (rs *Responder) GetCost(arg *CallDescriptorWithArgDispatcher, reply *CallCost) (err error) {
+	if arg.Tenant == "" {
+		arg.Tenant = config.CgrConfig().GeneralCfg().DefaultTenant
+	}
+	if arg.Category == "" {
+		arg.Category = config.CgrConfig().GeneralCfg().DefaultCategory
+	}
 	if arg.Subject == "" {
 		arg.Subject = arg.Account
 	}
@@ -79,12 +85,13 @@ func (rs *Responder) GetCost(arg *CallDescriptor, reply *CallCost) (err error) {
 	return
 }
 
-func (rs *Responder) Debit(arg *CallDescriptor, reply *CallCost) (err error) {
+func (rs *Responder) Debit(arg *CallDescriptorWithArgDispatcher, reply *CallCost) (err error) {
 	// RPC caching
 	if config.CgrConfig().CacheCfg()[utils.CacheRPCResponses].Limit != 0 {
 		cacheKey := utils.ConcatenatedKey(utils.ResponderDebit, arg.CgrID)
-		guardian.Guardian.GuardIDs(config.CgrConfig().GeneralCfg().LockingTimeout, cacheKey) // RPC caching needs to be atomic
-		defer guardian.Guardian.UnguardIDs(cacheKey)
+		refID := guardian.Guardian.GuardIDs("",
+			config.CgrConfig().GeneralCfg().LockingTimeout, cacheKey) // RPC caching needs to be atomic
+		defer guardian.Guardian.UnguardIDs(refID)
 
 		if itm, has := Cache.Get(utils.CacheRPCResponses, cacheKey); has {
 			cachedResp := itm.(*utils.CachedRPCResponse)
@@ -116,12 +123,13 @@ func (rs *Responder) Debit(arg *CallDescriptor, reply *CallCost) (err error) {
 	return
 }
 
-func (rs *Responder) MaxDebit(arg *CallDescriptor, reply *CallCost) (err error) {
+func (rs *Responder) MaxDebit(arg *CallDescriptorWithArgDispatcher, reply *CallCost) (err error) {
 	// RPC caching
 	if config.CgrConfig().CacheCfg()[utils.CacheRPCResponses].Limit != 0 {
 		cacheKey := utils.ConcatenatedKey(utils.ResponderMaxDebit, arg.CgrID)
-		guardian.Guardian.GuardIDs(config.CgrConfig().GeneralCfg().LockingTimeout, cacheKey) // RPC caching needs to be atomic
-		defer guardian.Guardian.UnguardIDs(cacheKey)
+		refID := guardian.Guardian.GuardIDs("",
+			config.CgrConfig().GeneralCfg().LockingTimeout, cacheKey) // RPC caching needs to be atomic
+		defer guardian.Guardian.UnguardIDs(refID)
 
 		if itm, has := Cache.Get(utils.CacheRPCResponses, cacheKey); has {
 			cachedResp := itm.(*utils.CachedRPCResponse)
@@ -153,12 +161,13 @@ func (rs *Responder) MaxDebit(arg *CallDescriptor, reply *CallCost) (err error) 
 	return
 }
 
-func (rs *Responder) RefundIncrements(arg *CallDescriptor, reply *Account) (err error) {
+func (rs *Responder) RefundIncrements(arg *CallDescriptorWithArgDispatcher, reply *Account) (err error) {
 	// RPC caching
 	if config.CgrConfig().CacheCfg()[utils.CacheRPCResponses].Limit != 0 {
 		cacheKey := utils.ConcatenatedKey(utils.ResponderRefundIncrements, arg.CgrID)
-		guardian.Guardian.GuardIDs(config.CgrConfig().GeneralCfg().LockingTimeout, cacheKey) // RPC caching needs to be atomic
-		defer guardian.Guardian.UnguardIDs(cacheKey)
+		refID := guardian.Guardian.GuardIDs("",
+			config.CgrConfig().GeneralCfg().LockingTimeout, cacheKey) // RPC caching needs to be atomic
+		defer guardian.Guardian.UnguardIDs(refID)
 
 		if itm, has := Cache.Get(utils.CacheRPCResponses, cacheKey); has {
 			cachedResp := itm.(*utils.CachedRPCResponse)
@@ -190,12 +199,13 @@ func (rs *Responder) RefundIncrements(arg *CallDescriptor, reply *Account) (err 
 	return
 }
 
-func (rs *Responder) RefundRounding(arg *CallDescriptor, reply *float64) (err error) {
+func (rs *Responder) RefundRounding(arg *CallDescriptorWithArgDispatcher, reply *float64) (err error) {
 	// RPC caching
 	if config.CgrConfig().CacheCfg()[utils.CacheRPCResponses].Limit != 0 {
 		cacheKey := utils.ConcatenatedKey(utils.ResponderRefundRounding, arg.CgrID)
-		guardian.Guardian.GuardIDs(config.CgrConfig().GeneralCfg().LockingTimeout, cacheKey) // RPC caching needs to be atomic
-		defer guardian.Guardian.UnguardIDs(cacheKey)
+		refID := guardian.Guardian.GuardIDs("",
+			config.CgrConfig().GeneralCfg().LockingTimeout, cacheKey) // RPC caching needs to be atomic
+		defer guardian.Guardian.UnguardIDs(refID)
 
 		if itm, has := Cache.Get(utils.CacheRPCResponses, cacheKey); has {
 			cachedResp := itm.(*utils.CachedRPCResponse)
@@ -220,7 +230,7 @@ func (rs *Responder) RefundRounding(arg *CallDescriptor, reply *float64) (err er
 	return
 }
 
-func (rs *Responder) GetMaxSessionTime(arg *CallDescriptor, reply *time.Duration) (err error) {
+func (rs *Responder) GetMaxSessionTime(arg *CallDescriptorWithArgDispatcher, reply *time.Duration) (err error) {
 	if arg.Subject == "" {
 		arg.Subject = arg.Account
 	}
@@ -231,12 +241,12 @@ func (rs *Responder) GetMaxSessionTime(arg *CallDescriptor, reply *time.Duration
 	return
 }
 
-func (rs *Responder) Status(arg string, reply *map[string]interface{}) (err error) {
-	if arg != "" { // Introduce  delay in answer, used in some automated tests
-		if delay, err := utils.ParseDurationWithNanosecs(arg); err == nil {
-			time.Sleep(delay)
-		}
-	}
+func (rs *Responder) Status(arg *utils.TenantWithArgDispatcher, reply *map[string]interface{}) (err error) {
+	// if arg != "" { // Introduce  delay in answer, used in some automated tests
+	// 	if delay, err := utils.ParseDurationWithNanosecs(arg); err == nil {
+	// 		time.Sleep(delay)
+	// 	}
+	// }
 	memstats := new(runtime.MemStats)
 	runtime.ReadMemStats(memstats)
 	response := make(map[string]interface{})
@@ -251,12 +261,18 @@ func (rs *Responder) Status(arg string, reply *map[string]interface{}) (err erro
 	return
 }
 
-func (rs *Responder) Shutdown(arg string, reply *string) (err error) {
+func (rs *Responder) Shutdown(arg *utils.TenantWithArgDispatcher, reply *string) (err error) {
 	dm.DataDB().Close()
 	cdrStorage.Close()
 	defer func() { rs.ExitChan <- true }()
 	*reply = "Done!"
 	return
+}
+
+// Ping used to detreminate if component is active
+func (chSv1 *Responder) Ping(ign *utils.CGREventWithArgDispatcher, reply *string) error {
+	*reply = utils.Pong
+	return nil
 }
 
 func (rs *Responder) Call(serviceMethod string, args interface{}, reply interface{}) error {

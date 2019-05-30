@@ -114,8 +114,9 @@ func TestLoaderITRemoveLoad(t *testing.T) {
 		path.Join(*dataDir, "tariffplans", *tpCsvScenario, utils.SuppliersCsv),
 		path.Join(*dataDir, "tariffplans", *tpCsvScenario, utils.AttributesCsv),
 		path.Join(*dataDir, "tariffplans", *tpCsvScenario, utils.ChargersCsv),
-		path.Join(*dataDir, "tariffplans", *tpCsvScenario, utils.DispatchersCsv),
-	), "", "")
+		path.Join(*dataDir, "tariffplans", *tpCsvScenario, utils.DispatcherProfilesCsv),
+		path.Join(*dataDir, "tariffplans", *tpCsvScenario, utils.DispatcherHostsCsv),
+	), "", "", nil, nil)
 
 	if err = loader.LoadDestinations(); err != nil {
 		t.Error("Failed loading destinations: ", err.Error())
@@ -169,7 +170,10 @@ func TestLoaderITRemoveLoad(t *testing.T) {
 		t.Error("Failed loading Charger profiles: ", err.Error())
 	}
 	if err = loader.LoadDispatcherProfiles(); err != nil {
-		t.Error("Failed loading Charger profiles: ", err.Error())
+		t.Error("Failed loading Dispatcher profiles: ", err.Error())
+	}
+	if err = loader.LoadDispatcherHosts(); err != nil {
+		t.Error("Failed loading Dispatcher hosts: ", err.Error())
 	}
 	if err := loader.WriteToDatabase(true, false, false); err != nil {
 		t.Error("Could not write data into dataDb: ", err.Error())
@@ -206,8 +210,9 @@ func TestLoaderITLoadFromCSV(t *testing.T) {
 		path.Join(*dataDir, "tariffplans", *tpCsvScenario, utils.SuppliersCsv),
 		path.Join(*dataDir, "tariffplans", *tpCsvScenario, utils.AttributesCsv),
 		path.Join(*dataDir, "tariffplans", *tpCsvScenario, utils.ChargersCsv),
-		path.Join(*dataDir, "tariffplans", *tpCsvScenario, utils.DispatchersCsv),
-	), "", "")
+		path.Join(*dataDir, "tariffplans", *tpCsvScenario, utils.DispatcherProfilesCsv),
+		path.Join(*dataDir, "tariffplans", *tpCsvScenario, utils.DispatcherHostsCsv),
+	), "", "", nil, nil)
 
 	if err = loader.LoadDestinations(); err != nil {
 		t.Error("Failed loading destinations: ", err.Error())
@@ -261,7 +266,10 @@ func TestLoaderITLoadFromCSV(t *testing.T) {
 		t.Error("Failed loading Charger profiles: ", err.Error())
 	}
 	if err = loader.LoadDispatcherProfiles(); err != nil {
-		t.Error("Failed loading Charger profiles: ", err.Error())
+		t.Error("Failed loading Dispatcher profiles: ", err.Error())
+	}
+	if err = loader.LoadDispatcherHosts(); err != nil {
+		t.Error("Failed loading Dispatcher hosts: ", err.Error())
 	}
 	if err := loader.WriteToDatabase(true, false, false); err != nil {
 		t.Error("Could not write data into dataDb: ", err.Error())
@@ -356,6 +364,20 @@ func TestLoaderITWriteToDatabase(t *testing.T) {
 		}
 		if !reflect.DeepEqual(sg, rcv) {
 			t.Errorf("Expecting: %v, received: %v", sg, rcv)
+		}
+	}
+
+	for tenantid, fltr := range loader.filters {
+		rcv, err := loader.dm.GetFilter(tenantid.Tenant, tenantid.ID, false, false, utils.NonTransactional)
+		if err != nil {
+			t.Error("Failed GetFilter: ", err.Error())
+		}
+		filter, err := APItoFilter(fltr, "UTC")
+		if err != nil {
+			t.Error(err)
+		}
+		if !reflect.DeepEqual(filter, rcv) {
+			t.Errorf("Expecting: %v, received: %v", filter, rcv)
 		}
 	}
 
@@ -458,6 +480,17 @@ func TestLoaderITWriteToDatabase(t *testing.T) {
 		}
 	}
 
+	for tenatid, dph := range loader.dispatcherHosts {
+		rcv, err := loader.dm.GetDispatcherHost(tenatid.Tenant, tenatid.ID, false, false, utils.NonTransactional)
+		if err != nil {
+			t.Errorf("Failed GetDispatcherHost, tenant: %s, id: %s,  error: %s ", dph.Tenant, dph.ID, err.Error())
+		}
+		dp := APItoDispatcherHost(dph)
+		if !reflect.DeepEqual(dp, rcv) {
+			t.Errorf("Expecting: %v, received: %v", dp, rcv)
+		}
+	}
+
 }
 
 // Imports data from csv files in tpScenario to storDb
@@ -481,7 +514,7 @@ func TestLoaderITImportToStorDb(t *testing.T) {
 
 // Loads data from storDb into dataDb
 func TestLoaderITLoadFromStorDb(t *testing.T) {
-	loader := NewTpReader(dataDbStor.DataDB(), storDb, utils.TEST_SQL, "")
+	loader := NewTpReader(dataDbStor.DataDB(), storDb, utils.TEST_SQL, "", nil, nil)
 	if err := loader.LoadDestinations(); err != nil && err.Error() != utils.NotFoundCaps {
 		t.Error("Failed loading destinations: ", err.Error())
 	}
@@ -515,7 +548,7 @@ func TestLoaderITLoadFromStorDb(t *testing.T) {
 }
 
 func TestLoaderITLoadIndividualProfiles(t *testing.T) {
-	loader := NewTpReader(dataDbApier.DataDB(), storDb, utils.TEST_SQL, "")
+	loader := NewTpReader(dataDbApier.DataDB(), storDb, utils.TEST_SQL, "", nil, nil)
 	// Load ratingPlans. This will also set destination keys
 	if rps, err := storDb.GetTPRatingPlans(utils.TEST_SQL, "", nil); err != nil {
 		t.Fatal("Could not retrieve rating plans")

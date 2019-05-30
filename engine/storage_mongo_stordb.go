@@ -48,10 +48,8 @@ func (ms *MongoStorage) GetTpIds(colName string) (tpids []string, err error) {
 	}
 	tpidMap := make(map[string]struct{})
 
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
 	if colName == "" {
-		if err := ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) error {
+		if err := ms.query(func(sctx mongo.SessionContext) error {
 			col, err := ms.DB().ListCollections(sctx, bson.D{}, options.ListCollections().SetNameOnly(true))
 			if err != nil {
 				return err
@@ -70,7 +68,7 @@ func (ms *MongoStorage) GetTpIds(colName string) (tpids []string, err error) {
 			return nil, err
 		}
 	} else {
-		if err := ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) error {
+		if err := ms.query(func(sctx mongo.SessionContext) error {
 			tpidMap, err = getTpIDs(sctx, colName, tpidMap)
 			return err
 		}); err != nil {
@@ -83,7 +81,8 @@ func (ms *MongoStorage) GetTpIds(colName string) (tpids []string, err error) {
 	return tpids, nil
 }
 
-func (ms *MongoStorage) GetTpTableIds(tpid, table string, distinct utils.TPDistinctIds, filter map[string]string, pag *utils.Paginator) ([]string, error) {
+func (ms *MongoStorage) GetTpTableIds(tpid, table string, distinct utils.TPDistinctIds,
+	filter map[string]string, pag *utils.PaginatorWithSearch) ([]string, error) {
 	findMap := bson.M{}
 	if tpid != "" {
 		findMap["tpid"] = tpid
@@ -92,22 +91,23 @@ func (ms *MongoStorage) GetTpTableIds(tpid, table string, distinct utils.TPDisti
 		findMap[k] = v
 	}
 
-	if pag != nil && pag.SearchTerm != "" {
-		var searchItems []bson.M
-		for _, d := range distinct {
-			searchItems = append(searchItems, bson.M{d: bsonx.Regex(".*"+regexp.QuoteMeta(pag.SearchTerm)+".*", "")})
-		}
-		// findMap["$and"] = []bson.M{{"$or": searchItems}} //before
-		findMap["$or"] = searchItems // after
-	}
-
 	fop := options.Find()
 	if pag != nil {
-		if pag.Limit != nil {
-			fop = fop.SetLimit(int64(*pag.Limit))
+		if pag.Search != "" {
+			var searchItems []bson.M
+			for _, d := range distinct {
+				searchItems = append(searchItems, bson.M{d: bsonx.Regex(".*"+regexp.QuoteMeta(pag.Search)+".*", "")})
+			}
+			// findMap["$and"] = []bson.M{{"$or": searchItems}} //before
+			findMap["$or"] = searchItems // after
 		}
-		if pag.Offset != nil {
-			fop = fop.SetSkip(int64(*pag.Offset))
+		if pag.Paginator != nil {
+			if pag.Limit != nil {
+				fop = fop.SetLimit(int64(*pag.Limit))
+			}
+			if pag.Offset != nil {
+				fop = fop.SetSkip(int64(*pag.Offset))
+			}
 		}
 	}
 
@@ -121,9 +121,7 @@ func (ms *MongoStorage) GetTpTableIds(tpid, table string, distinct utils.TPDisti
 	fop.SetProjection(selectors)
 
 	distinctIds := make(utils.StringMap)
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	if err := ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	if err := ms.query(func(sctx mongo.SessionContext) (err error) {
 		cur, err := ms.getCol(table).Find(sctx, findMap, fop)
 		if err != nil {
 			return err
@@ -161,9 +159,7 @@ func (ms *MongoStorage) GetTPTimings(tpid, id string) ([]*utils.ApierTPTiming, e
 		filter["id"] = id
 	}
 	var results []*utils.ApierTPTiming
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	err := ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	err := ms.query(func(sctx mongo.SessionContext) (err error) {
 		cur, err := ms.getCol(utils.TBLTPTimings).Find(sctx, filter)
 		if err != nil {
 			return err
@@ -190,9 +186,7 @@ func (ms *MongoStorage) GetTPDestinations(tpid, id string) ([]*utils.TPDestinati
 		filter["id"] = id
 	}
 	var results []*utils.TPDestination
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	err := ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	err := ms.query(func(sctx mongo.SessionContext) (err error) {
 		cur, err := ms.getCol(utils.TBLTPDestinations).Find(sctx, filter)
 		if err != nil {
 			return err
@@ -219,9 +213,7 @@ func (ms *MongoStorage) GetTPRates(tpid, id string) ([]*utils.TPRate, error) {
 		filter["id"] = id
 	}
 	var results []*utils.TPRate
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	err := ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	err := ms.query(func(sctx mongo.SessionContext) (err error) {
 		cur, err := ms.getCol(utils.TBLTPRates).Find(sctx, filter)
 		if err != nil {
 			return err
@@ -260,9 +252,7 @@ func (ms *MongoStorage) GetTPDestinationRates(tpid, id string, pag *utils.Pagina
 			fop = fop.SetSkip(int64(*pag.Offset))
 		}
 	}
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	err := ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	err := ms.query(func(sctx mongo.SessionContext) (err error) {
 		cur, err := ms.getCol(utils.TBLTPDestinationRates).Find(sctx, filter, fop)
 		if err != nil {
 			return err
@@ -298,9 +288,7 @@ func (ms *MongoStorage) GetTPRatingPlans(tpid, id string, pag *utils.Paginator) 
 			fop = fop.SetSkip(int64(*pag.Offset))
 		}
 	}
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	err := ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	err := ms.query(func(sctx mongo.SessionContext) (err error) {
 		cur, err := ms.getCol(utils.TBLTPRatingPlans).Find(sctx, filter, fop)
 		if err != nil {
 			return err
@@ -336,9 +324,7 @@ func (ms *MongoStorage) GetTPRatingProfiles(tp *utils.TPRatingProfile) ([]*utils
 		filter["loadid"] = tp.LoadId
 	}
 	var results []*utils.TPRatingProfile
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	err := ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	err := ms.query(func(sctx mongo.SessionContext) (err error) {
 		cur, err := ms.getCol(utils.TBLTPRateProfiles).Find(sctx, filter)
 		if err != nil {
 			return err
@@ -365,9 +351,7 @@ func (ms *MongoStorage) GetTPSharedGroups(tpid, id string) ([]*utils.TPSharedGro
 		filter["id"] = id
 	}
 	var results []*utils.TPSharedGroups
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	err := ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	err := ms.query(func(sctx mongo.SessionContext) (err error) {
 		cur, err := ms.getCol(utils.TBLTPSharedGroups).Find(sctx, filter)
 		if err != nil {
 			return err
@@ -388,7 +372,7 @@ func (ms *MongoStorage) GetTPSharedGroups(tpid, id string) ([]*utils.TPSharedGro
 	return results, err
 }
 
-func (ms *MongoStorage) GetTPResources(tpid, tenant, id string) ([]*utils.TPResource, error) {
+func (ms *MongoStorage) GetTPResources(tpid, tenant, id string) ([]*utils.TPResourceProfile, error) {
 	filter := bson.M{"tpid": tpid}
 	if id != "" {
 		filter["id"] = id
@@ -396,16 +380,14 @@ func (ms *MongoStorage) GetTPResources(tpid, tenant, id string) ([]*utils.TPReso
 	if tenant != "" {
 		filter["tenant"] = tenant
 	}
-	var results []*utils.TPResource
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	err := ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	var results []*utils.TPResourceProfile
+	err := ms.query(func(sctx mongo.SessionContext) (err error) {
 		cur, err := ms.getCol(utils.TBLTPResources).Find(sctx, filter)
 		if err != nil {
 			return err
 		}
 		for cur.Next(sctx) {
-			var el utils.TPResource
+			var el utils.TPResourceProfile
 			err := cur.Decode(&el)
 			if err != nil {
 				return err
@@ -420,7 +402,7 @@ func (ms *MongoStorage) GetTPResources(tpid, tenant, id string) ([]*utils.TPReso
 	return results, err
 }
 
-func (ms *MongoStorage) GetTPStats(tpid, tenant, id string) ([]*utils.TPStats, error) {
+func (ms *MongoStorage) GetTPStats(tpid, tenant, id string) ([]*utils.TPStatProfile, error) {
 	filter := bson.M{
 		"tpid": tpid,
 	}
@@ -430,16 +412,14 @@ func (ms *MongoStorage) GetTPStats(tpid, tenant, id string) ([]*utils.TPStats, e
 	if tenant != "" {
 		filter["tenant"] = tenant
 	}
-	var results []*utils.TPStats
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	err := ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	var results []*utils.TPStatProfile
+	err := ms.query(func(sctx mongo.SessionContext) (err error) {
 		cur, err := ms.getCol(utils.TBLTPStats).Find(sctx, filter)
 		if err != nil {
 			return err
 		}
 		for cur.Next(sctx) {
-			var el utils.TPStats
+			var el utils.TPStatProfile
 			err := cur.Decode(&el)
 			if err != nil {
 				return err
@@ -460,9 +440,7 @@ func (ms *MongoStorage) GetTPActions(tpid, id string) ([]*utils.TPActions, error
 		filter["id"] = id
 	}
 	var results []*utils.TPActions
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	err := ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	err := ms.query(func(sctx mongo.SessionContext) (err error) {
 		cur, err := ms.getCol(utils.TBLTPActions).Find(sctx, filter)
 		if err != nil {
 			return err
@@ -489,9 +467,7 @@ func (ms *MongoStorage) GetTPActionPlans(tpid, id string) ([]*utils.TPActionPlan
 		filter["id"] = id
 	}
 	var results []*utils.TPActionPlan
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	err := ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	err := ms.query(func(sctx mongo.SessionContext) (err error) {
 		cur, err := ms.getCol(utils.TBLTPActionPlans).Find(sctx, filter)
 		if err != nil {
 			return err
@@ -520,9 +496,7 @@ func (ms *MongoStorage) GetTPActionTriggers(tpid, id string) ([]*utils.TPActionT
 		filter["id"] = id
 	}
 	var results []*utils.TPActionTriggers
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	err := ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	err := ms.query(func(sctx mongo.SessionContext) (err error) {
 		cur, err := ms.getCol(utils.TBLTPActionTriggers).Find(sctx, filter)
 		if err != nil {
 			return err
@@ -555,9 +529,7 @@ func (ms *MongoStorage) GetTPAccountActions(tp *utils.TPAccountActions) ([]*util
 		filter["loadid"] = tp.LoadId
 	}
 	var results []*utils.TPAccountActions
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	err := ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	err := ms.query(func(sctx mongo.SessionContext) (err error) {
 		cur, err := ms.getCol(utils.TBLTPAccountActions).Find(sctx, filter)
 		if err != nil {
 			return err
@@ -580,9 +552,7 @@ func (ms *MongoStorage) GetTPAccountActions(tp *utils.TPAccountActions) ([]*util
 
 func (ms *MongoStorage) RemTpData(table, tpid string, args map[string]string) error {
 	if len(table) == 0 { // Remove tpid out of all tables
-		ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-		defer ctxSessionCancel()
-		return ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) error {
+		return ms.query(func(sctx mongo.SessionContext) error {
 			col, err := ms.DB().ListCollections(sctx, bson.D{}, options.ListCollections().SetNameOnly(true))
 			if err != nil {
 				return err
@@ -614,9 +584,7 @@ func (ms *MongoStorage) RemTpData(table, tpid string, args map[string]string) er
 	if tpid != "" {
 		args["tpid"] = tpid
 	}
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	return ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	return ms.query(func(sctx mongo.SessionContext) (err error) {
 		dr, err := ms.getCol(table).DeleteOne(sctx, args)
 		if dr.DeletedCount == 0 {
 			return utils.ErrNotFound
@@ -629,9 +597,7 @@ func (ms *MongoStorage) SetTPTimings(tps []*utils.ApierTPTiming) error {
 	if len(tps) == 0 {
 		return nil
 	}
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	return ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	return ms.query(func(sctx mongo.SessionContext) (err error) {
 		for _, tp := range tps {
 			_, err = ms.getCol(utils.TBLTPTimings).UpdateOne(sctx, bson.M{"tpid": tp.TPid, "id": tp.ID},
 				bson.M{"$set": tp},
@@ -649,9 +615,7 @@ func (ms *MongoStorage) SetTPDestinations(tpDsts []*utils.TPDestination) (err er
 	if len(tpDsts) == 0 {
 		return nil
 	}
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	return ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	return ms.query(func(sctx mongo.SessionContext) (err error) {
 		for _, tp := range tpDsts {
 			_, err = ms.getCol(utils.TBLTPDestinations).UpdateOne(sctx, bson.M{"tpid": tp.TPid, "id": tp.ID},
 				bson.M{"$set": tp},
@@ -670,9 +634,7 @@ func (ms *MongoStorage) SetTPRates(tps []*utils.TPRate) error {
 		return nil
 	}
 	m := make(map[string]bool)
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	return ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	return ms.query(func(sctx mongo.SessionContext) (err error) {
 		for _, tp := range tps {
 			if found, _ := m[tp.ID]; !found {
 				m[tp.ID] = true
@@ -695,9 +657,7 @@ func (ms *MongoStorage) SetTPDestinationRates(tps []*utils.TPDestinationRate) er
 		return nil
 	}
 	m := make(map[string]bool)
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	return ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	return ms.query(func(sctx mongo.SessionContext) (err error) {
 		for _, tp := range tps {
 			if found, _ := m[tp.ID]; !found {
 				m[tp.ID] = true
@@ -720,9 +680,7 @@ func (ms *MongoStorage) SetTPRatingPlans(tps []*utils.TPRatingPlan) error {
 		return nil
 	}
 	m := make(map[string]bool)
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	return ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	return ms.query(func(sctx mongo.SessionContext) (err error) {
 		for _, tp := range tps {
 			if found, _ := m[tp.ID]; !found {
 				m[tp.ID] = true
@@ -744,9 +702,7 @@ func (ms *MongoStorage) SetTPRatingProfiles(tps []*utils.TPRatingProfile) error 
 	if len(tps) == 0 {
 		return nil
 	}
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	return ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	return ms.query(func(sctx mongo.SessionContext) (err error) {
 		for _, tp := range tps {
 			_, err = ms.getCol(utils.TBLTPRateProfiles).UpdateOne(sctx, bson.M{
 				"tpid":     tp.TPid,
@@ -768,9 +724,7 @@ func (ms *MongoStorage) SetTPSharedGroups(tps []*utils.TPSharedGroups) error {
 		return nil
 	}
 	m := make(map[string]bool)
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	return ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	return ms.query(func(sctx mongo.SessionContext) (err error) {
 		for _, tp := range tps {
 			if found, _ := m[tp.ID]; !found {
 				m[tp.ID] = true
@@ -793,9 +747,7 @@ func (ms *MongoStorage) SetTPActions(tps []*utils.TPActions) error {
 		return nil
 	}
 	m := make(map[string]bool)
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	return ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	return ms.query(func(sctx mongo.SessionContext) (err error) {
 		for _, tp := range tps {
 			if found, _ := m[tp.ID]; !found {
 				m[tp.ID] = true
@@ -816,9 +768,7 @@ func (ms *MongoStorage) SetTPActionPlans(tps []*utils.TPActionPlan) error {
 		return nil
 	}
 	m := make(map[string]bool)
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	return ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	return ms.query(func(sctx mongo.SessionContext) (err error) {
 		for _, tp := range tps {
 			if found, _ := m[tp.ID]; !found {
 				m[tp.ID] = true
@@ -839,9 +789,7 @@ func (ms *MongoStorage) SetTPActionTriggers(tps []*utils.TPActionTriggers) error
 		return nil
 	}
 	m := make(map[string]bool)
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	return ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	return ms.query(func(sctx mongo.SessionContext) (err error) {
 		for _, tp := range tps {
 			if found, _ := m[tp.ID]; !found {
 				m[tp.ID] = true
@@ -861,9 +809,7 @@ func (ms *MongoStorage) SetTPAccountActions(tps []*utils.TPAccountActions) error
 	if len(tps) == 0 {
 		return nil
 	}
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	return ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	return ms.query(func(sctx mongo.SessionContext) (err error) {
 		for _, tp := range tps {
 			_, err = ms.getCol(utils.TBLTPAccountActions).UpdateOne(sctx, bson.M{
 				"tpid":    tp.TPid,
@@ -879,13 +825,11 @@ func (ms *MongoStorage) SetTPAccountActions(tps []*utils.TPAccountActions) error
 	})
 }
 
-func (ms *MongoStorage) SetTPResources(tpRLs []*utils.TPResource) (err error) {
+func (ms *MongoStorage) SetTPResources(tpRLs []*utils.TPResourceProfile) (err error) {
 	if len(tpRLs) == 0 {
 		return
 	}
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	return ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	return ms.query(func(sctx mongo.SessionContext) (err error) {
 		for _, tp := range tpRLs {
 			_, err = ms.getCol(utils.TBLTPResources).UpdateOne(sctx, bson.M{"tpid": tp.TPid, "id": tp.ID},
 				bson.M{"$set": tp}, options.Update().SetUpsert(true))
@@ -897,13 +841,11 @@ func (ms *MongoStorage) SetTPResources(tpRLs []*utils.TPResource) (err error) {
 	})
 }
 
-func (ms *MongoStorage) SetTPRStats(tps []*utils.TPStats) (err error) {
+func (ms *MongoStorage) SetTPRStats(tps []*utils.TPStatProfile) (err error) {
 	if len(tps) == 0 {
 		return
 	}
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	return ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	return ms.query(func(sctx mongo.SessionContext) (err error) {
 		for _, tp := range tps {
 			_, err = ms.getCol(utils.TBLTPStats).UpdateOne(sctx, bson.M{"tpid": tp.TPid, "id": tp.ID},
 				bson.M{"$set": tp}, options.Update().SetUpsert(true))
@@ -919,9 +861,7 @@ func (ms *MongoStorage) SetSMCost(smc *SMCost) error {
 	if smc.CostDetails == nil {
 		return nil
 	}
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	return ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	return ms.query(func(sctx mongo.SessionContext) (err error) {
 		_, err = ms.getCol(utils.SessionCostsTBL).InsertOne(sctx, smc)
 		return err
 	})
@@ -932,9 +872,7 @@ func (ms *MongoStorage) RemoveSMCost(smc *SMCost) error {
 	if smc != nil {
 		remParams = bson.M{"cgrid": smc.CGRID, "runid": smc.RunID}
 	}
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	return ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	return ms.query(func(sctx mongo.SessionContext) (err error) {
 		_, err = ms.getCol(utils.SessionCostsTBL).DeleteMany(sctx, remParams)
 		return err
 	})
@@ -954,9 +892,7 @@ func (ms *MongoStorage) GetSMCosts(cgrid, runid, originHost, originIDPrefix stri
 	if originIDPrefix != "" {
 		filter[OriginIDLow] = bsonx.Regex(fmt.Sprintf("^%s", originIDPrefix), "")
 	}
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	err = ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	err = ms.query(func(sctx mongo.SessionContext) (err error) {
 		cur, err := ms.getCol(utils.SessionCostsTBL).Find(sctx, filter)
 		if err != nil {
 			return err
@@ -978,13 +914,28 @@ func (ms *MongoStorage) GetSMCosts(cgrid, runid, originHost, originIDPrefix stri
 	return smcs, err
 }
 
+func (ms *MongoStorage) RemoveSMCosts(qryFltr *utils.SMCostFilter) error {
+	filters := bson.M{
+		CGRIDLow:      bson.M{"$in": qryFltr.CGRIDs, "$nin": qryFltr.NotCGRIDs},
+		RunIDLow:      bson.M{"$in": qryFltr.RunIDs, "$nin": qryFltr.NotRunIDs},
+		OriginHostLow: bson.M{"$in": qryFltr.OriginHosts, "$nin": qryFltr.NotOriginHosts},
+		OriginIDLow:   bson.M{"$in": qryFltr.OriginIDs, "$nin": qryFltr.NotOriginIDs},
+		CostSourceLow: bson.M{"$in": qryFltr.CostSources, "$nin": qryFltr.NotCostSources},
+		UsageLow:      bson.M{"$gte": qryFltr.Usage.Min, "$lt": qryFltr.Usage.Max},
+		CreatedAtLow:  bson.M{"$gte": qryFltr.CreatedAt.Begin, "$lt": qryFltr.CreatedAt.End},
+	}
+	ms.cleanEmptyFilters(filters)
+	return ms.query(func(sctx mongo.SessionContext) (err error) {
+		_, err = ms.getCol(utils.SessionCostsTBL).DeleteMany(sctx, filters)
+		return err
+	})
+}
+
 func (ms *MongoStorage) SetCDR(cdr *CDR, allowUpdate bool) (err error) {
 	if cdr.OrderID == 0 {
 		cdr.OrderID = ms.cnter.Next()
 	}
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	return ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	return ms.query(func(sctx mongo.SessionContext) (err error) {
 		if allowUpdate {
 			_, err = ms.getCol(ColCDRs).UpdateOne(sctx,
 				bson.M{CGRIDLow: cdr.CGRID, RunIDLow: cdr.RunID},
@@ -1144,9 +1095,7 @@ func (ms *MongoStorage) GetCDRs(qryFltr *utils.CDRsFilter, remove bool) ([]*CDR,
 	//file.Close()
 	if remove {
 		var chgd int64
-		ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-		defer ctxSessionCancel()
-		err := ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+		err := ms.query(func(sctx mongo.SessionContext) (err error) {
 			dr, err := ms.getCol(ColCDRs).DeleteMany(sctx, filters)
 			chgd = dr.DeletedCount
 			return err
@@ -1190,9 +1139,7 @@ func (ms *MongoStorage) GetCDRs(qryFltr *utils.CDRsFilter, remove bool) ([]*CDR,
 	}
 	if qryFltr.Count {
 		var cnt int64
-		ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-		defer ctxSessionCancel()
-		if err := ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+		if err := ms.query(func(sctx mongo.SessionContext) (err error) {
 			cnt, err = ms.getCol(ColCDRs).Count(sctx, filters, cop)
 			return err
 		}); err != nil {
@@ -1202,9 +1149,7 @@ func (ms *MongoStorage) GetCDRs(qryFltr *utils.CDRsFilter, remove bool) ([]*CDR,
 	}
 	// Execute query
 	var cdrs []*CDR
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	err := ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	err := ms.query(func(sctx mongo.SessionContext) (err error) {
 		cur, err := ms.getCol(ColCDRs).Find(sctx, filters, fop)
 		if err != nil {
 			return err
@@ -1226,13 +1171,11 @@ func (ms *MongoStorage) GetCDRs(qryFltr *utils.CDRsFilter, remove bool) ([]*CDR,
 	return cdrs, 0, err
 }
 
-func (ms *MongoStorage) SetTPStats(tpSTs []*utils.TPStats) (err error) {
+func (ms *MongoStorage) SetTPStats(tpSTs []*utils.TPStatProfile) (err error) {
 	if len(tpSTs) == 0 {
 		return
 	}
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	return ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	return ms.query(func(sctx mongo.SessionContext) (err error) {
 		for _, tp := range tpSTs {
 			_, err = ms.getCol(utils.TBLTPStats).UpdateOne(sctx, bson.M{"tpid": tp.TPid, "id": tp.ID},
 				bson.M{"$set": tp},
@@ -1246,7 +1189,7 @@ func (ms *MongoStorage) SetTPStats(tpSTs []*utils.TPStats) (err error) {
 	})
 }
 
-func (ms *MongoStorage) GetTPThresholds(tpid, tenant, id string) ([]*utils.TPThreshold, error) {
+func (ms *MongoStorage) GetTPThresholds(tpid, tenant, id string) ([]*utils.TPThresholdProfile, error) {
 	filter := bson.M{"tpid": tpid}
 	if id != "" {
 		filter["id"] = id
@@ -1254,16 +1197,14 @@ func (ms *MongoStorage) GetTPThresholds(tpid, tenant, id string) ([]*utils.TPThr
 	if tenant != "" {
 		filter["tenant"] = tenant
 	}
-	var results []*utils.TPThreshold
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	err := ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	var results []*utils.TPThresholdProfile
+	err := ms.query(func(sctx mongo.SessionContext) (err error) {
 		cur, err := ms.getCol(utils.TBLTPThresholds).Find(sctx, filter)
 		if err != nil {
 			return err
 		}
 		for cur.Next(sctx) {
-			var tp utils.TPThreshold
+			var tp utils.TPThresholdProfile
 			err := cur.Decode(&tp)
 			if err != nil {
 				return err
@@ -1278,13 +1219,11 @@ func (ms *MongoStorage) GetTPThresholds(tpid, tenant, id string) ([]*utils.TPThr
 	return results, err
 }
 
-func (ms *MongoStorage) SetTPThresholds(tpTHs []*utils.TPThreshold) (err error) {
+func (ms *MongoStorage) SetTPThresholds(tpTHs []*utils.TPThresholdProfile) (err error) {
 	if len(tpTHs) == 0 {
 		return
 	}
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	return ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	return ms.query(func(sctx mongo.SessionContext) (err error) {
 		for _, tp := range tpTHs {
 			_, err = ms.getCol(utils.TBLTPThresholds).UpdateOne(sctx, bson.M{"tpid": tp.TPid, "id": tp.ID},
 				bson.M{"$set": tp},
@@ -1307,9 +1246,7 @@ func (ms *MongoStorage) GetTPFilters(tpid, tenant, id string) ([]*utils.TPFilter
 		filter["tenant"] = tenant
 	}
 	results := []*utils.TPFilterProfile{}
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	err := ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	err := ms.query(func(sctx mongo.SessionContext) (err error) {
 		cur, err := ms.getCol(utils.TBLTPFilters).Find(sctx, filter)
 		if err != nil {
 			return err
@@ -1334,9 +1271,7 @@ func (ms *MongoStorage) SetTPFilters(tpTHs []*utils.TPFilterProfile) (err error)
 	if len(tpTHs) == 0 {
 		return
 	}
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	return ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	return ms.query(func(sctx mongo.SessionContext) (err error) {
 		for _, tp := range tpTHs {
 			_, err = ms.getCol(utils.TBLTPFilters).UpdateOne(sctx, bson.M{"tpid": tp.TPid, "id": tp.ID},
 				bson.M{"$set": tp},
@@ -1359,9 +1294,7 @@ func (ms *MongoStorage) GetTPSuppliers(tpid, tenant, id string) ([]*utils.TPSupp
 		filter["tenant"] = tenant
 	}
 	var results []*utils.TPSupplierProfile
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	err := ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	err := ms.query(func(sctx mongo.SessionContext) (err error) {
 		cur, err := ms.getCol(utils.TBLTPSuppliers).Find(sctx, filter)
 		if err != nil {
 			return err
@@ -1386,9 +1319,7 @@ func (ms *MongoStorage) SetTPSuppliers(tpSPs []*utils.TPSupplierProfile) (err er
 	if len(tpSPs) == 0 {
 		return
 	}
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	return ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	return ms.query(func(sctx mongo.SessionContext) (err error) {
 		for _, tp := range tpSPs {
 			_, err = ms.getCol(utils.TBLTPSuppliers).UpdateOne(sctx, bson.M{"tpid": tp.TPid, "id": tp.ID},
 				bson.M{"$set": tp},
@@ -1411,9 +1342,7 @@ func (ms *MongoStorage) GetTPAttributes(tpid, tenant, id string) ([]*utils.TPAtt
 		filter["tenant"] = tenant
 	}
 	var results []*utils.TPAttributeProfile
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	err := ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	err := ms.query(func(sctx mongo.SessionContext) (err error) {
 		cur, err := ms.getCol(utils.TBLTPAttributes).Find(sctx, filter)
 		if err != nil {
 			return err
@@ -1438,9 +1367,7 @@ func (ms *MongoStorage) SetTPAttributes(tpSPs []*utils.TPAttributeProfile) (err 
 	if len(tpSPs) == 0 {
 		return
 	}
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	return ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	return ms.query(func(sctx mongo.SessionContext) (err error) {
 		for _, tp := range tpSPs {
 			_, err = ms.getCol(utils.TBLTPAttributes).UpdateOne(sctx, bson.M{"tpid": tp.TPid, "id": tp.ID},
 				bson.M{"$set": tp},
@@ -1463,9 +1390,7 @@ func (ms *MongoStorage) GetTPChargers(tpid, tenant, id string) ([]*utils.TPCharg
 		filter["tenant"] = tenant
 	}
 	var results []*utils.TPChargerProfile
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	err := ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	err := ms.query(func(sctx mongo.SessionContext) (err error) {
 		cur, err := ms.getCol(utils.TBLTPChargers).Find(sctx, filter)
 		if err != nil {
 			return err
@@ -1490,9 +1415,7 @@ func (ms *MongoStorage) SetTPChargers(tpCPP []*utils.TPChargerProfile) (err erro
 	if len(tpCPP) == 0 {
 		return
 	}
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	return ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	return ms.query(func(sctx mongo.SessionContext) (err error) {
 		for _, tp := range tpCPP {
 			_, err = ms.getCol(utils.TBLTPChargers).UpdateOne(sctx, bson.M{"tpid": tp.TPid, "id": tp.ID},
 				bson.M{"$set": tp},
@@ -1506,7 +1429,7 @@ func (ms *MongoStorage) SetTPChargers(tpCPP []*utils.TPChargerProfile) (err erro
 	})
 }
 
-func (ms *MongoStorage) GetTPDispatchers(tpid, tenant, id string) ([]*utils.TPDispatcherProfile, error) {
+func (ms *MongoStorage) GetTPDispatcherProfiles(tpid, tenant, id string) ([]*utils.TPDispatcherProfile, error) {
 	filter := bson.M{"tpid": tpid}
 	if id != "" {
 		filter["id"] = id
@@ -1515,9 +1438,7 @@ func (ms *MongoStorage) GetTPDispatchers(tpid, tenant, id string) ([]*utils.TPDi
 		filter["tenant"] = tenant
 	}
 	var results []*utils.TPDispatcherProfile
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	err := ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	err := ms.query(func(sctx mongo.SessionContext) (err error) {
 		cur, err := ms.getCol(utils.TBLTPDispatchers).Find(sctx, filter)
 		if err != nil {
 			return err
@@ -1538,15 +1459,61 @@ func (ms *MongoStorage) GetTPDispatchers(tpid, tenant, id string) ([]*utils.TPDi
 	return results, err
 }
 
-func (ms *MongoStorage) SetTPDispatchers(tpDPPs []*utils.TPDispatcherProfile) (err error) {
+func (ms *MongoStorage) SetTPDispatcherProfiles(tpDPPs []*utils.TPDispatcherProfile) (err error) {
 	if len(tpDPPs) == 0 {
 		return
 	}
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	return ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	return ms.query(func(sctx mongo.SessionContext) (err error) {
 		for _, tp := range tpDPPs {
 			_, err = ms.getCol(utils.TBLTPDispatchers).UpdateOne(sctx, bson.M{"tpid": tp.TPid, "id": tp.ID},
+				bson.M{"$set": tp},
+				options.Update().SetUpsert(true),
+			)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func (ms *MongoStorage) GetTPDispatcherHosts(tpid, tenant, id string) ([]*utils.TPDispatcherHost, error) {
+	filter := bson.M{"tpid": tpid}
+	if id != "" {
+		filter["id"] = id
+	}
+	if tenant != "" {
+		filter["tenant"] = tenant
+	}
+	var results []*utils.TPDispatcherHost
+	err := ms.query(func(sctx mongo.SessionContext) (err error) {
+		cur, err := ms.getCol(utils.TBLTPDispatcherHosts).Find(sctx, filter)
+		if err != nil {
+			return err
+		}
+		for cur.Next(sctx) {
+			var tp utils.TPDispatcherHost
+			err := cur.Decode(&tp)
+			if err != nil {
+				return err
+			}
+			results = append(results, &tp)
+		}
+		if len(results) == 0 {
+			return utils.ErrNotFound
+		}
+		return cur.Close(sctx)
+	})
+	return results, err
+}
+
+func (ms *MongoStorage) SetTPDispatcherHosts(tpDPPs []*utils.TPDispatcherHost) (err error) {
+	if len(tpDPPs) == 0 {
+		return
+	}
+	return ms.query(func(sctx mongo.SessionContext) (err error) {
+		for _, tp := range tpDPPs {
+			_, err = ms.getCol(utils.TBLTPDispatcherHosts).UpdateOne(sctx, bson.M{"tpid": tp.TPid, "id": tp.ID},
 				bson.M{"$set": tp},
 				options.Update().SetUpsert(true),
 			)
@@ -1565,10 +1532,8 @@ func (ms *MongoStorage) GetVersions(itm string) (vrs Versions, err error) {
 	} else {
 		fop.SetProjection(bson.M{"_id": 0})
 	}
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	if err = ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
-		cur := ms.getCol(colVer).FindOne(sctx, bson.D{}, fop)
+	if err = ms.query(func(sctx mongo.SessionContext) (err error) {
+		cur := ms.getCol(ColVer).FindOne(sctx, bson.D{}, fop)
 		if err := cur.Decode(&vrs); err != nil {
 			if err == mongo.ErrNoDocuments {
 				return utils.ErrNotFound
@@ -1589,17 +1554,15 @@ func (ms *MongoStorage) SetVersions(vrs Versions, overwrite bool) (err error) {
 	if overwrite {
 		ms.RemoveVersions(nil)
 	}
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	return ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
-		_, err = ms.getCol(colVer).UpdateOne(sctx, bson.D{}, bson.M{"$set": vrs},
+	return ms.query(func(sctx mongo.SessionContext) (err error) {
+		_, err = ms.getCol(ColVer).UpdateOne(sctx, bson.D{}, bson.M{"$set": vrs},
 			options.Update().SetUpsert(true),
 		)
 		return err
 	})
 	// }
-	// return ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) error {
-	// 	_, err := ms.getCol(colVer).InsertOne(sctx, vrs)
+	// return ms.query( func(sctx mongo.SessionContext) error {
+	// 	_, err := ms.getCol(ColVer).InsertOne(sctx, vrs)
 	// 	return err
 	// })
 	// _, err = col.Upsert(bson.M{}, bson.M{"$set": &vrs})
@@ -1607,21 +1570,17 @@ func (ms *MongoStorage) SetVersions(vrs Versions, overwrite bool) (err error) {
 
 func (ms *MongoStorage) RemoveVersions(vrs Versions) (err error) {
 	if len(vrs) == 0 {
-		ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-		defer ctxSessionCancel()
-		return ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
-			dr, err := ms.getCol(colVer).DeleteOne(sctx, bson.D{})
+		return ms.query(func(sctx mongo.SessionContext) (err error) {
+			dr, err := ms.getCol(ColVer).DeleteOne(sctx, bson.D{})
 			if dr.DeletedCount == 0 {
 				return utils.ErrNotFound
 			}
 			return err
 		})
 	}
-	ctxSession, ctxSessionCancel := context.WithTimeout(ms.ctx, ms.ctxTTL)
-	defer ctxSessionCancel()
-	return ms.client.UseSession(ctxSession, func(sctx mongo.SessionContext) (err error) {
+	return ms.query(func(sctx mongo.SessionContext) (err error) {
 		for k := range vrs {
-			if _, err = ms.getCol(colVer).UpdateOne(sctx, bson.D{}, bson.M{"$unset": bson.M{k: 1}},
+			if _, err = ms.getCol(ColVer).UpdateOne(sctx, bson.D{}, bson.M{"$unset": bson.M{k: 1}},
 				options.Update().SetUpsert(true)); err != nil {
 				return err
 			}

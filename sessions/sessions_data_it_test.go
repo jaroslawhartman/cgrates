@@ -39,7 +39,7 @@ func TestSessionsDataInitCfg(t *testing.T) {
 	dataCfgPath = path.Join(*dataDir, "conf", "samples", "smg")
 	// Init config first
 	var err error
-	dataCfg, err = config.NewCGRConfigFromFolder(dataCfgPath)
+	dataCfg, err = config.NewCGRConfigFromPath(dataCfgPath)
 	if err != nil {
 		t.Error(err)
 	}
@@ -74,21 +74,6 @@ func TestSessionsDataApierRpcConn(t *testing.T) {
 	sDataRPC, err = jsonrpc.Dial("tcp", dataCfg.ListenCfg().RPCJSONListen) // We connect over JSON so we can also troubleshoot if needed
 	if err != nil {
 		t.Fatal(err)
-	}
-
-	//add a default charger
-	chargerProfile := &engine.ChargerProfile{
-		Tenant:       "cgrates.org",
-		ID:           "Default",
-		RunID:        "*default",
-		AttributeIDs: []string{"*none"},
-		Weight:       20,
-	}
-	var result string
-	if err := sDataRPC.Call("ApierV1.SetChargerProfile", chargerProfile, &result); err != nil {
-		t.Error(err)
-	} else if result != utils.OK {
-		t.Error("Unexpected reply returned", result)
 	}
 }
 
@@ -133,7 +118,7 @@ func TestSessionsDataLastUsedData(t *testing.T) {
 	usage := int64(5120)
 	initArgs := &V1InitSessionArgs{
 		InitSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsDataLastUsedData",
 			Event: map[string]interface{}{
@@ -172,7 +157,7 @@ func TestSessionsDataLastUsedData(t *testing.T) {
 
 	updateArgs := &V1UpdateSessionArgs{
 		UpdateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsDataLastUsedData",
 			Event: map[string]interface{}{
@@ -210,7 +195,7 @@ func TestSessionsDataLastUsedData(t *testing.T) {
 
 	termArgs := &V1TerminateSessionArgs{
 		TerminateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsDataLastUsedData",
 			Event: map[string]interface{}{
@@ -268,7 +253,7 @@ func TestSessionsDataLastUsedMultipleUpdates(t *testing.T) {
 	usage := int64(6144)
 	initArgs := &V1InitSessionArgs{
 		InitSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsDataLastUsedMultipleUpdates",
 			Event: map[string]interface{}{
@@ -314,7 +299,7 @@ func TestSessionsDataLastUsedMultipleUpdates(t *testing.T) {
 	usage = int64(8192)
 	updateArgs := &V1UpdateSessionArgs{
 		UpdateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsDataLastUsedMultipleUpdates",
 			Event: map[string]interface{}{
@@ -359,7 +344,7 @@ func TestSessionsDataLastUsedMultipleUpdates(t *testing.T) {
 	usage = int64(1024)
 	updateArgs = &V1UpdateSessionArgs{
 		UpdateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsDataLastUsedMultipleUpdates",
 			Event: map[string]interface{}{
@@ -403,7 +388,7 @@ func TestSessionsDataLastUsedMultipleUpdates(t *testing.T) {
 	usage = int64(1024)
 	updateArgs = &V1UpdateSessionArgs{
 		UpdateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsDataLastUsedMultipleUpdates",
 			Event: map[string]interface{}{
@@ -445,7 +430,7 @@ func TestSessionsDataLastUsedMultipleUpdates(t *testing.T) {
 
 	termArgs := &V1TerminateSessionArgs{
 		TerminateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsDataLastUsedMultipleUpdates",
 			Event: map[string]interface{}{
@@ -527,7 +512,7 @@ func TestSessionsDataTTLExpired(t *testing.T) {
 	usage := int64(1024)
 	initArgs := &V1InitSessionArgs{
 		InitSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsDataTTLExpired",
 			Event: map[string]interface{}{
@@ -600,7 +585,7 @@ func TestSessionsDataTTLExpMultiUpdates(t *testing.T) {
 	usage := int64(4096)
 	initArgs := &V1InitSessionArgs{
 		InitSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsDataTTLExpMultiUpdates",
 			Event: map[string]interface{}{
@@ -646,7 +631,7 @@ func TestSessionsDataTTLExpMultiUpdates(t *testing.T) {
 	usage = int64(4096)
 	updateArgs := &V1UpdateSessionArgs{
 		UpdateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsDataTTLExpMultiUpdates",
 			Event: map[string]interface{}{
@@ -722,7 +707,7 @@ func TestSessionsDataMultipleDataNoUsage(t *testing.T) {
 	usage := int64(2048)
 	initArgs := &V1InitSessionArgs{
 		InitSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsDataMultipleDataNoUsage",
 			Event: map[string]interface{}{
@@ -768,7 +753,7 @@ func TestSessionsDataMultipleDataNoUsage(t *testing.T) {
 	usage = int64(1024)
 	updateArgs := &V1UpdateSessionArgs{
 		UpdateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsDataMultipleDataNoUsage",
 			Event: map[string]interface{}{
@@ -815,7 +800,7 @@ func TestSessionsDataMultipleDataNoUsage(t *testing.T) {
 	usage = int64(0)
 	updateArgs = &V1UpdateSessionArgs{
 		UpdateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsDataMultipleDataNoUsage",
 			Event: map[string]interface{}{
@@ -860,7 +845,7 @@ func TestSessionsDataMultipleDataNoUsage(t *testing.T) {
 
 	termArgs := &V1TerminateSessionArgs{
 		TerminateSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsDataMultipleDataNoUsage",
 			Event: map[string]interface{}{
@@ -927,7 +912,7 @@ func TestSessionsDataTTLUsageProtection(t *testing.T) {
 	usage := int64(2048)
 	initArgs := &V1InitSessionArgs{
 		InitSession: true,
-		CGREvent: utils.CGREvent{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			ID:     "TestSessionsDataTTLUsageProtection",
 			Event: map[string]interface{}{

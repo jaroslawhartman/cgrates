@@ -32,30 +32,32 @@ var sTestsDspRsp = []func(t *testing.T){
 	testDspResponderShutdown,
 
 	testDspResponderRandom,
+	testDspResponderBroadcast,
+	testDspResponderInternal,
 }
 
 //Test start here
 func TestDspResponderTMySQL(t *testing.T) {
-	testDsp(t, sTestsDspRsp, "TestDspAttributeS", "all", "all2", "attributes", "dispatchers", "tutorial", "oldtutorial", "dispatchers")
+	testDsp(t, sTestsDspRsp, "TestDspResponder", "all", "all2", "dispatchers", "tutorial", "oldtutorial", "dispatchers")
 }
 
 func TestDspResponderMongo(t *testing.T) {
-	testDsp(t, sTestsDspRsp, "TestDspAttributeS", "all", "all2", "attributes_mongo", "dispatchers_mongo", "tutorial", "oldtutorial", "dispatchers")
+	testDsp(t, sTestsDspRsp, "TestDspResponder", "all", "all2", "dispatchers_mongo", "tutorial", "oldtutorial", "dispatchers")
 }
 
 func testDspResponderStatus(t *testing.T) {
 	var reply map[string]interface{}
-	if err := allEngine.RCP.Call(utils.ResponderStatus, "", &reply); err != nil {
+	if err := allEngine.RCP.Call(utils.ResponderStatus, utils.TenantWithArgDispatcher{}, &reply); err != nil {
 		t.Error(err)
 	} else if reply[utils.NodeID] != "ALL" {
 		t.Errorf("Received: %s", reply)
 	}
-	ev := TntWithApiKey{
-		TenantArg: utils.TenantArg{
+	ev := utils.TenantWithArgDispatcher{
+		TenantArg: &utils.TenantArg{
 			Tenant: "cgrates.org",
 		},
-		DispatcherResource: DispatcherResource{
-			APIKey: "rsp12345",
+		ArgDispatcher: &utils.ArgDispatcher{
+			APIKey: utils.StringPointer("rsp12345"),
 		},
 	}
 	if err := dispEngine.RCP.Call(utils.ResponderStatus, &ev, &reply); err != nil {
@@ -75,35 +77,38 @@ func testDspResponderStatus(t *testing.T) {
 func getNodeWithRoute(route string, t *testing.T) string {
 	var reply map[string]interface{}
 	var pingReply string
-	pingEv := CGREvWithApiKey{
-		CGREvent: utils.CGREvent{
+	pingEv := utils.CGREventWithArgDispatcher{
+		CGREvent: &utils.CGREvent{
 			Tenant: "cgrates.org",
 			Event: map[string]interface{}{
 				utils.EVENT_NAME: "Random",
 			},
 		},
-		DispatcherResource: DispatcherResource{
-			APIKey:  "attr12345",
+		ArgDispatcher: &utils.ArgDispatcher{
+			APIKey:  utils.StringPointer("rsp12345"),
 			RouteID: &route,
 		},
 	}
-	ev := TntWithApiKey{
-		TenantArg: utils.TenantArg{
+	ev := utils.TenantWithArgDispatcher{
+		TenantArg: &utils.TenantArg{
 			Tenant: "cgrates.org",
 		},
-		DispatcherResource: DispatcherResource{
-			APIKey:  "rsp12345",
+		ArgDispatcher: &utils.ArgDispatcher{
+			APIKey:  utils.StringPointer("rsp12345"),
 			RouteID: &route,
 		},
 	}
 
-	if err := dispEngine.RCP.Call(utils.AttributeSv1Ping, pingEv, &pingReply); err != nil {
+	if err := dispEngine.RCP.Call(utils.ResponderPing, pingEv, &pingReply); err != nil {
 		t.Error(err)
 	} else if pingReply != utils.Pong {
 		t.Errorf("Received: %s", pingReply)
 	}
-	if err := dispEngine.RCP.Call(utils.ResponderStatus, &ev, &reply); err != nil {
+	if err := dispEngine.RCP.Call(utils.ResponderStatus, ev, &reply); err != nil {
 		t.Error(err)
+	}
+	if reply[utils.NodeID] == nil {
+		return ""
 	}
 	return reply[utils.NodeID].(string)
 }
@@ -121,15 +126,15 @@ func testDspResponderRandom(t *testing.T) {
 func testDspResponderShutdown(t *testing.T) {
 	var reply string
 	var statusReply map[string]interface{}
-	ev := TntWithApiKey{
-		TenantArg: utils.TenantArg{
+	ev := utils.TenantWithArgDispatcher{
+		TenantArg: &utils.TenantArg{
 			Tenant: "cgrates.org",
 		},
-		DispatcherResource: DispatcherResource{
-			APIKey: "rsp12345",
+		ArgDispatcher: &utils.ArgDispatcher{
+			APIKey: utils.StringPointer("rsp12345"),
 		},
 	}
-	if err := dispEngine.RCP.Call(utils.ResponderShutdown, &ev, &reply); err != nil {
+	if err := dispEngine.RCP.Call(utils.ResponderShutdown, ev, &reply); err != nil {
 		t.Error(err)
 	} else if reply != "Done!" {
 		t.Errorf("Received: %s", utils.ToJSON(reply))
@@ -146,4 +151,80 @@ func testDspResponderShutdown(t *testing.T) {
 	}
 	allEngine.startEngine(t)
 	allEngine2.startEngine(t)
+}
+
+func testDspResponderBroadcast(t *testing.T) {
+	var pingReply string
+	pingEv := utils.CGREventWithArgDispatcher{
+		CGREvent: &utils.CGREvent{
+			Tenant: "cgrates.org",
+			Event: map[string]interface{}{
+				utils.EVENT_NAME: "Broadcast",
+			},
+		},
+		ArgDispatcher: &utils.ArgDispatcher{
+			APIKey: utils.StringPointer("rsp12345"),
+		},
+	}
+	if err := dispEngine.RCP.Call(utils.ResponderPing, pingEv, &pingReply); err != nil {
+		t.Error(err)
+	} else if pingReply != utils.Pong {
+		t.Errorf("Received: %s", pingReply)
+	}
+
+	allEngine2.stopEngine(t)
+	pingReply = ""
+	if err := dispEngine.RCP.Call(utils.ResponderPing, pingEv, &pingReply); err == nil ||
+		err.Error() != utils.ErrPartiallyExecuted.Error() {
+		t.Errorf("Expected error: %s received error: %v	 and reply %q", utils.ErrPartiallyExecuted.Error(), err, pingReply)
+	}
+	allEngine.stopEngine(t)
+	pingReply = ""
+	if err := dispEngine.RCP.Call(utils.ResponderPing, pingEv, &pingReply); err == nil ||
+		err.Error() != utils.ErrPartiallyExecuted.Error() {
+		t.Errorf("Expected error: %s received error: %v	 and reply %q", utils.ErrPartiallyExecuted.Error(), err, pingReply)
+	}
+	allEngine.startEngine(t)
+	allEngine2.startEngine(t)
+}
+
+func testDspResponderInternal(t *testing.T) {
+	var reply map[string]interface{}
+	var pingReply string
+	route := "internal"
+	pingEv := utils.CGREventWithArgDispatcher{
+		CGREvent: &utils.CGREvent{
+			Tenant: "cgrates.org",
+			Event: map[string]interface{}{
+				utils.EVENT_NAME: "Internal",
+			},
+		},
+		ArgDispatcher: &utils.ArgDispatcher{
+			APIKey:  utils.StringPointer("rsp12345"),
+			RouteID: &route,
+		},
+	}
+	ev := utils.TenantWithArgDispatcher{
+		TenantArg: &utils.TenantArg{
+			Tenant: "cgrates.org",
+		},
+		ArgDispatcher: &utils.ArgDispatcher{
+			APIKey:  utils.StringPointer("rsp12345"),
+			RouteID: &route,
+		},
+	}
+	if err := dispEngine.RCP.Call(utils.ResponderPing, pingEv, &pingReply); err != nil {
+		t.Error(err)
+	} else if pingReply != utils.Pong {
+		t.Errorf("Received: %s", pingReply)
+	}
+	if err := dispEngine.RCP.Call(utils.ResponderStatus, &ev, &reply); err != nil {
+		t.Error(err)
+	}
+	if reply[utils.NodeID] == nil {
+		return
+	}
+	if strRply := reply[utils.NodeID].(string); strRply != "DispatcherS1" {
+		t.Errorf("Expected: DispatcherS1 , received: %s", strRply)
+	}
 }

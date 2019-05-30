@@ -81,7 +81,7 @@ func TestITMongoTutorial(t *testing.T) {
 
 func testTPitLoadConfig(t *testing.T) {
 	tpCfgPath = path.Join(*dataDir, "conf", "samples", configDIR)
-	if tpCfg, err = config.NewCGRConfigFromFolder(tpCfgPath); err != nil {
+	if tpCfg, err = config.NewCGRConfigFromPath(tpCfgPath); err != nil {
 		t.Error(err)
 	}
 	switch configDIR {
@@ -191,21 +191,21 @@ func testTPitTimings(t *testing.T) {
 	}
 	var rplyTmIDs []string
 	expectedTmIDs := []string{"OFFPEAK_EVENING", "OFFPEAK_MORNING", "OFFPEAK_WEEKEND", "PEAK", tmDummyRemove.ID}
-	if err := tpRPC.Call("ApierV1.GetTPTimingIds", v1.AttrGetTPTimingIds{testTPid, utils.Paginator{}}, &rplyTmIDs); err != nil {
+	if err := tpRPC.Call("ApierV1.GetTPTimingIds", v1.AttrGetTPTimingIds{testTPid, utils.PaginatorWithSearch{}}, &rplyTmIDs); err != nil {
 		t.Error("Calling ApierV1.GetTPTimingIds, got error: ", err.Error())
 	} else if len(expectedTmIDs) != len(rplyTmIDs) {
 		t.Errorf("Calling ApierV1.GetTPTimingIds expected: %v, received: %v", expectedTmIDs, rplyTmIDs)
 	}
 	// Test remove
-	if err := tpRPC.Call("ApierV2.RemTPTiming", v1.AttrGetTPTiming{tmDummyRemove.TPid, tmDummyRemove.ID}, &reply); err != nil {
-		t.Error("Calling ApierV2.RemTPTiming, got error: ", err.Error())
+	if err := tpRPC.Call("ApierV2.RemoveTPTiming", v1.AttrGetTPTiming{tmDummyRemove.TPid, tmDummyRemove.ID}, &reply); err != nil {
+		t.Error("Calling ApierV2.RemoveTPTiming, got error: ", err.Error())
 	} else if reply != utils.OK {
-		t.Error("Calling ApierV2.RemTPTiming received: ", reply)
+		t.Error("Calling ApierV2.RemoveTPTiming received: ", reply)
 	}
 	// Test getIds
 	rplyTmIDs = []string{}
 	expectedTmIDs = []string{"OFFPEAK_EVENING", "OFFPEAK_MORNING", "OFFPEAK_WEEKEND", "PEAK"}
-	if err := tpRPC.Call("ApierV1.GetTPTimingIds", v1.AttrGetTPTimingIds{testTPid, utils.Paginator{}}, &rplyTmIDs); err != nil {
+	if err := tpRPC.Call("ApierV1.GetTPTimingIds", v1.AttrGetTPTimingIds{testTPid, utils.PaginatorWithSearch{}}, &rplyTmIDs); err != nil {
 		t.Error("Calling ApierV1.GetTPTimingIds, got error: ", err.Error())
 	} else if len(expectedTmIDs) != len(rplyTmIDs) {
 		t.Errorf("Calling ApierV1.GetTPTimingIds expected: %v, received: %v", expectedTmIDs, rplyTmIDs)
@@ -242,7 +242,7 @@ func testTPitDestinations(t *testing.T) {
 		t.Errorf("Calling ApierV2.GetTPDestination expected: %v, received: %v", dstDEMobile, rplyDst)
 	}
 	// Test remove
-	if err := tpRPC.Call("ApierV2.RemTPDestination", AttrGetTPDestination{testTPid, dstDUMMY.ID}, &reply); err != nil {
+	if err := tpRPC.Call("ApierV2.RemoveTPDestination", AttrGetTPDestination{testTPid, dstDUMMY.ID}, &reply); err != nil {
 		t.Error(err)
 	} else if reply != utils.OK {
 		t.Error("Received: ", reply)

@@ -326,12 +326,31 @@ func (rs *RedisStorage) RemoveReverseForPrefix(prefix string) (err error) {
 	return nil
 }
 
+func (rs *RedisStorage) getKeysForFilterIndexesKeys(fkeys []string) (keys []string, err error) {
+	for _, itemIDPrefix := range fkeys {
+		mp := make(map[string]string)
+		mp, err = rs.Cmd("HGETALL", itemIDPrefix).Map()
+		if err != nil {
+			return
+		} else if len(mp) == 0 {
+			return nil, utils.ErrNotFound
+		}
+		for k := range mp {
+			keys = append(keys, utils.ConcatenatedKey(itemIDPrefix, k))
+		}
+	}
+	return
+}
+
 func (rs *RedisStorage) GetKeysForPrefix(prefix string) ([]string, error) {
 	r := rs.Cmd("KEYS", prefix+"*")
 	if r.Err != nil {
 		return nil, r.Err
 	}
 	if keys, _ := r.List(); len(keys) != 0 {
+		if filterIndexesPrefixMap.HasKey(prefix) {
+			return rs.getKeysForFilterIndexesKeys(keys)
+		}
 		return keys, nil
 	}
 	return nil, nil
@@ -347,7 +366,7 @@ func (rs *RedisStorage) HasDataDrv(category, subject, tenant string) (bool, erro
 	case utils.ResourcesPrefix, utils.ResourceProfilesPrefix, utils.StatQueuePrefix,
 		utils.StatQueueProfilePrefix, utils.ThresholdPrefix, utils.ThresholdProfilePrefix,
 		utils.FilterPrefix, utils.SupplierProfilePrefix, utils.AttributeProfilePrefix,
-		utils.ChargerProfilePrefix, utils.DispatcherProfilePrefix:
+		utils.ChargerProfilePrefix, utils.DispatcherProfilePrefix, utils.DispatcherHostPrefix:
 		i, err := rs.Cmd("EXISTS", category+utils.ConcatenatedKey(tenant, subject)).Int()
 		return i == 1, err
 	}
@@ -1137,9 +1156,6 @@ func (rs *RedisStorage) GetFilterIndexesDrv(cacheID, itemIDPrefix, filterType st
 		if err = rs.ms.Unmarshal([]byte(v), &sm); err != nil {
 			return
 		}
-		if _, hasKey := indexes[k]; !hasKey {
-			indexes[k] = make(utils.StringMap)
-		}
 		indexes[k] = sm
 	}
 	return
@@ -1543,6 +1559,70 @@ func (rs *RedisStorage) RemoveDispatcherProfileDrv(tenant, id string) (err error
 	return
 }
 
+func (rs *RedisStorage) GetDispatcherHostDrv(tenant, id string) (r *DispatcherHost, err error) {
+	key := utils.DispatcherHostPrefix + utils.ConcatenatedKey(tenant, id)
+	var values []byte
+	if values, err = rs.Cmd("GET", key).Bytes(); err != nil {
+		if err == redis.ErrRespNil { // did not find the destination
+			err = utils.ErrNotFound
+		}
+		return
+	}
+	if err = rs.ms.Unmarshal(values, &r); err != nil {
+		return
+	}
+	return
+}
+
+func (rs *RedisStorage) SetDispatcherHostDrv(r *DispatcherHost) (err error) {
+	result, err := rs.ms.Marshal(r)
+	if err != nil {
+		return err
+	}
+	return rs.Cmd("SET", utils.DispatcherHostPrefix+utils.ConcatenatedKey(r.Tenant, r.ID), result).Err
+}
+
+func (rs *RedisStorage) RemoveDispatcherHostDrv(tenant, id string) (err error) {
+	key := utils.DispatcherHostPrefix + utils.ConcatenatedKey(tenant, id)
+	if err = rs.Cmd("DEL", key).Err; err != nil {
+		return
+	}
+	return
+}
+
 func (rs *RedisStorage) GetStorageType() string {
 	return utils.REDIS
+}
+
+func (rs *RedisStorage) GetItemLoadIDsDrv(itemIDPrefix string) (loadIDs map[string]int64, err error) {
+	if itemIDPrefix != "" {
+		fldVal, err := rs.Cmd("HGET", utils.LoadIDs, itemIDPrefix).Int64()
+		if err != nil {
+			if err == redis.ErrRespNil {
+				err = utils.ErrNotFound
+			}
+			return nil, err
+		}
+		return map[string]int64{itemIDPrefix: fldVal}, nil
+	}
+	mpLoadIDs, err := rs.Cmd("HGETALL", utils.LoadIDs).Map()
+	if err != nil {
+		return nil, err
+	}
+	loadIDs = make(map[string]int64)
+	for key, val := range mpLoadIDs {
+		intVal, err := strconv.ParseInt(val, 10, 64)
+		if err != nil {
+			return nil, err
+		}
+		loadIDs[key] = intVal
+	}
+	if len(loadIDs) == 0 {
+		return nil, utils.ErrNotFound
+	}
+	return
+}
+
+func (rs *RedisStorage) SetLoadIDsDrv(loadIDs map[string]int64) error {
+	return rs.Cmd("HMSET", utils.LoadIDs, loadIDs).Err
 }

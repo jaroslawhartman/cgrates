@@ -235,7 +235,7 @@ func TestDebitCreditBlocker(t *testing.T) {
 	b1 := &Balance{Uuid: "testa", Value: 0.1152,
 		Weight: 20, DestinationIDs: utils.StringMap{"NAT": true},
 		RatingSubject: "passmonde", Blocker: true}
-	b2 := &Balance{Uuid: "*default", Value: 1.5, Weight: 0}
+	b2 := &Balance{Uuid: utils.MetaDefault, Value: 1.5, Weight: 0}
 	cc := &CallCost{
 		Destination: "0723045326",
 		Timespans: []*TimeSpan{
@@ -2183,6 +2183,93 @@ func TestAccountAsAccountDigest(t *testing.T) {
 		if bd.ID == "sms1" && !reflect.DeepEqual(expectacntSummary.BalanceSummaries[0], bd) {
 			t.Errorf("Expecting: %+v, received: %+v", expectacntSummary, acntSummary)
 		}
+	}
+}
+
+func TestAccountGetBalancesGetBalanceWithSameWeight(t *testing.T) {
+	acc := &Account{
+		BalanceMap: map[string]Balances{
+			utils.MONETARY: Balances{
+				&Balance{
+					ID:     "SpecialBalance1",
+					Value:  10,
+					Weight: 10.0,
+				},
+				&Balance{
+					ID:     "SpecialBalance2",
+					Value:  10,
+					Weight: 10.0,
+				},
+			},
+		},
+	}
+	bcs := acc.getBalancesForPrefix("", "", utils.MONETARY, "")
+	if len(bcs) != 2 && bcs[0].ID != "SpecialBalance1" && bcs[1].ID != "SpecialBalance2" {
+		t.Errorf("Unexpected order balances : %+v", utils.ToJSON(bcs))
+	}
+}
+
+func TestAccountGetBalancesForPrefix2(t *testing.T) {
+	acc := &Account{
+		BalanceMap: map[string]Balances{
+			utils.MONETARY: Balances{
+				&Balance{
+					ID:     "SpecialBalance1",
+					Value:  10,
+					Weight: 10.0,
+				},
+				&Balance{
+					ID:     "SpecialBalance2",
+					Value:  10,
+					Weight: 20.0,
+				},
+			},
+		},
+	}
+	bcs := acc.getBalancesForPrefix("", "", utils.MONETARY, "")
+	if len(bcs) != 2 && bcs[0].ID != "SpecialBalance2" && bcs[0].Weight != 20.0 {
+		t.Errorf("Unexpected order balances : %+v", utils.ToJSON(bcs))
+	}
+}
+
+func TestAccountGetMultipleBalancesForPrefixWithSameWeight(t *testing.T) {
+	acc := &Account{
+		BalanceMap: map[string]Balances{
+			utils.MONETARY: Balances{
+				&Balance{
+					ID:     "SpecialBalance1",
+					Value:  10,
+					Weight: 10.0,
+				},
+				&Balance{
+					ID:     "SpecialBalance2",
+					Value:  10,
+					Weight: 10.0,
+				},
+				&Balance{
+					ID:     "SpecialBalance3",
+					Value:  10,
+					Weight: 10.0,
+				},
+				&Balance{
+					ID:     "SpecialBalance4",
+					Value:  10,
+					Weight: 10.0,
+				},
+				&Balance{
+					ID:     "SpecialBalance5",
+					Value:  10,
+					Weight: 10.0,
+				},
+			},
+		},
+	}
+	bcs := acc.getBalancesForPrefix("", "", utils.MONETARY, "")
+	if len(bcs) != 5 &&
+		bcs[0].ID != "SpecialBalance1" && bcs[1].ID != "SpecialBalance2" &&
+		bcs[2].ID != "SpecialBalance3" && bcs[3].ID != "SpecialBalance4" &&
+		bcs[4].ID != "SpecialBalance5" {
+		t.Errorf("Unexpected order balances : %+v", utils.ToJSON(bcs))
 	}
 }
 
